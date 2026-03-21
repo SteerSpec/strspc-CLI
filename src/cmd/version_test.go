@@ -6,8 +6,15 @@ import (
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 )
 
+func setTestVersionInfo(t *testing.T, v VersionInfo) {
+	t.Helper()
+	prev := versionInfo
+	t.Cleanup(func() { versionInfo = prev })
+	SetVersionInfo(v)
+}
+
 func TestVersionCommandOutput(t *testing.T) {
-	SetVersionInfo(VersionInfo{
+	setTestVersionInfo(t, VersionInfo{
 		Version:   "1.0.0",
 		BuildTime: "2026-01-01T00:00:00Z",
 		GitCommit: "abc1234",
@@ -26,7 +33,7 @@ func TestVersionCommandOutput(t *testing.T) {
 }
 
 func TestVersionCommandTruncatesCommit(t *testing.T) {
-	SetVersionInfo(VersionInfo{
+	setTestVersionInfo(t, VersionInfo{
 		Version:   "1.0.0",
 		BuildTime: "2026-01-01T00:00:00Z",
 		GitCommit: "abc1234567890",
@@ -43,7 +50,7 @@ func TestVersionCommandTruncatesCommit(t *testing.T) {
 }
 
 func TestVersionCommandDefaults(t *testing.T) {
-	SetVersionInfo(VersionInfo{
+	setTestVersionInfo(t, VersionInfo{
 		Version:   "dev",
 		BuildTime: "unknown",
 		GitCommit: "unknown",

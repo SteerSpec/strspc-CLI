@@ -40,6 +40,9 @@ func TestUnknownCommandReturnsError(t *testing.T) {
 }
 
 func TestSetVersionInfo(t *testing.T) {
+	prev := versionInfo
+	t.Cleanup(func() { versionInfo = prev })
+
 	info := VersionInfo{
 		Version:   "1.2.3",
 		BuildTime: "2026-01-01",
