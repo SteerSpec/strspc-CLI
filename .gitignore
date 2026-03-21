@@ -6,3 +6,6 @@ coverage.out
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+
+# Beads credential key
+.beads/.beads-credential-key
