@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -21,32 +22,35 @@ func SetVersionInfo(v VersionInfo) {
 	versionInfo = v
 }
 
-var rootCmd = &cobra.Command{
-	Use:   "strspc",
-	Short: "SteerSpec CLI",
-	Long:  "SteerSpec CLI — manage steering specifications from the command line.",
-}
-
-func init() {
-	rootCmd.AddCommand(versionCmd)
-	rootCmd.SetHelpFunc(customHelp)
+// NewRootCmd creates a fresh root command with all subcommands registered.
+func NewRootCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "strspc",
+		Short: "SteerSpec CLI",
+		Long:  "SteerSpec CLI — manage steering specifications from the command line.",
+	}
+	cmd.AddCommand(newVersionCmd())
+	cmd.SetHelpFunc(customHelp)
+	return cmd
 }
 
 func Execute() {
-	cobra.CheckErr(rootCmd.Execute())
+	cobra.CheckErr(NewRootCmd().Execute())
 }
 
 func customHelp(cmd *cobra.Command, _ []string) {
-	fmt.Println(brandStyle.Render(cmd.UseLine()))
-	fmt.Println()
+	w := cmd.OutOrStdout()
+
+	writeln(w, brandStyle.Render(cmd.UseLine()))
+	writeln(w)
 
 	desc := cmd.Long
 	if strings.TrimSpace(desc) == "" {
 		desc = cmd.Short
 	}
 	if strings.TrimSpace(desc) != "" {
-		fmt.Println(descStyle.Render("  " + desc))
-		fmt.Println()
+		writeln(w, descStyle.Render("  "+desc))
+		writeln(w)
 	}
 
 	var visibleCmds []*cobra.Command
@@ -57,31 +61,35 @@ func customHelp(cmd *cobra.Command, _ []string) {
 	}
 
 	if len(visibleCmds) > 0 {
-		fmt.Println(brandStyle.Render("Available Commands:"))
+		writeln(w, brandStyle.Render("Available Commands:"))
 		for _, c := range visibleCmds {
 			name := cmdStyle.Render(fmt.Sprintf("  %-12s", c.Name()))
 			d := descStyle.Render(c.Short)
-			fmt.Println(name + d)
+			writeln(w, name+d)
 		}
-		fmt.Println()
+		writeln(w)
 	}
 
 	localFlags := renderFlags(cmd.LocalFlags())
 	inheritedFlags := renderFlags(cmd.InheritedFlags())
 
 	if len(localFlags) > 0 {
-		fmt.Println(brandStyle.Render("Flags:"))
-		fmt.Println(strings.Join(localFlags, "\n"))
-		fmt.Println()
+		writeln(w, brandStyle.Render("Flags:"))
+		writeln(w, strings.Join(localFlags, "\n"))
+		writeln(w)
 	}
 
 	if len(inheritedFlags) > 0 {
-		fmt.Println(brandStyle.Render("Global Flags:"))
-		fmt.Println(strings.Join(inheritedFlags, "\n"))
-		fmt.Println()
+		writeln(w, brandStyle.Render("Global Flags:"))
+		writeln(w, strings.Join(inheritedFlags, "\n"))
+		writeln(w)
 	}
 
-	fmt.Println(descStyle.Render(fmt.Sprintf("  Use \"%s [command] --help\" for more information about a command.", cmd.CommandPath())))
+	writeln(w, descStyle.Render(fmt.Sprintf("  Use \"%s [command] --help\" for more information about a command.", cmd.CommandPath())))
+}
+
+func writeln(w io.Writer, a ...any) {
+	_, _ = fmt.Fprintln(w, a...)
 }
 
 func renderFlags(flags *pflag.FlagSet) []string {
