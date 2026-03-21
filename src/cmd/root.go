@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -34,9 +33,7 @@ func init() {
 }
 
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
-	}
+	cobra.CheckErr(rootCmd.Execute())
 }
 
 func customHelp(cmd *cobra.Command, args []string) {
@@ -73,5 +70,5 @@ func customHelp(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println()
-	fmt.Println(descStyle.Render("  Use \"strspc [command] --help\" for more information about a command."))
+	fmt.Println(descStyle.Render(fmt.Sprintf("  Use \"%s [command] --help\" for more information about a command.", cmd.Name())))
 }
