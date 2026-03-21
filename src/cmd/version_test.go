@@ -14,7 +14,7 @@ func TestVersionCommandOutput(t *testing.T) {
 		GitBranch: "main",
 	})
 
-	output, err := testutil.ExecuteCommand(rootCmd, "version")
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "version")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestVersionCommandTruncatesCommit(t *testing.T) {
 		GitBranch: "main",
 	})
 
-	output, err := testutil.ExecuteCommand(rootCmd, "version")
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "version")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestVersionCommandDefaults(t *testing.T) {
 		GitBranch: "unknown",
 	})
 
-	output, err := testutil.ExecuteCommand(rootCmd, "version")
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "version")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -22,19 +22,20 @@ func SetVersionInfo(v VersionInfo) {
 	versionInfo = v
 }
 
-var rootCmd = &cobra.Command{
-	Use:   "strspc",
-	Short: "SteerSpec CLI",
-	Long:  "SteerSpec CLI — manage steering specifications from the command line.",
-}
-
-func init() {
-	rootCmd.AddCommand(versionCmd)
-	rootCmd.SetHelpFunc(customHelp)
+// NewRootCmd creates a fresh root command with all subcommands registered.
+func NewRootCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "strspc",
+		Short: "SteerSpec CLI",
+		Long:  "SteerSpec CLI — manage steering specifications from the command line.",
+	}
+	cmd.AddCommand(newVersionCmd())
+	cmd.SetHelpFunc(customHelp)
+	return cmd
 }
 
 func Execute() {
-	cobra.CheckErr(rootCmd.Execute())
+	cobra.CheckErr(NewRootCmd().Execute())
 }
 
 func customHelp(cmd *cobra.Command, _ []string) {

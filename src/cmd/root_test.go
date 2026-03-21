@@ -7,7 +7,7 @@ import (
 )
 
 func TestHelpContainsAvailableCommands(t *testing.T) {
-	output, err := testutil.ExecuteCommand(rootCmd, "--help")
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "--help")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -16,7 +16,7 @@ func TestHelpContainsAvailableCommands(t *testing.T) {
 }
 
 func TestHelpContainsFlags(t *testing.T) {
-	output, err := testutil.ExecuteCommand(rootCmd, "--help")
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "--help")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -25,7 +25,7 @@ func TestHelpContainsFlags(t *testing.T) {
 }
 
 func TestHelpContainsDescription(t *testing.T) {
-	output, err := testutil.ExecuteCommand(rootCmd, "--help")
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "--help")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -33,7 +33,7 @@ func TestHelpContainsDescription(t *testing.T) {
 }
 
 func TestUnknownCommandReturnsError(t *testing.T) {
-	_, err := testutil.ExecuteCommand(rootCmd, "nonexistent")
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "nonexistent")
 	if err == nil {
 		t.Fatal("expected error for unknown command, got nil")
 	}
