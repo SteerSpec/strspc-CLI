@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/spf13/cobra"
 )
 
@@ -29,10 +30,10 @@ var schemaFiles = []struct {
 
 // realmJSON is the structure written to realm.json.
 type realmJSON struct {
-	Schema            string        `json:"$schema"`
-	Realm             realmMeta     `json:"realm"`
-	Dependencies      []interface{} `json:"dependencies"`
-	RuleIdentifierFmt *string       `json:"rule_identifier_format"`
+	Schema            string            `json:"$schema"`
+	Realm             realmMeta         `json:"realm"`
+	Dependencies      []entity.RealmDep `json:"dependencies"`
+	RuleIdentifierFmt *string           `json:"rule_identifier_format"`
 }
 
 type realmMeta struct {
@@ -45,12 +46,41 @@ type realmMeta struct {
 // Must not start or end with a dot or hyphen.
 var realmIDPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9.\-]*[a-z0-9])?$`)
 
+// parseDependency parses a dependency string in the format:
+//
+//	<realm_id>@<version>[=<source>]
+//
+// Examples:
+//
+//	dev.steerspec.core@0.1.0
+//	dev.steerspec.core@0.1.0=github://SteerSpec/strspc-rules@latest/rules/core
+func parseDependency(s string) (entity.RealmDep, error) {
+	var dep entity.RealmDep
+
+	// Split off optional source.
+	idVersion, source, hasSource := strings.Cut(s, "=")
+	if hasSource {
+		dep.Source = source
+	}
+
+	// Split realm_id@version.
+	parts := strings.SplitN(idVersion, "@", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return dep, fmt.Errorf("invalid dependency format %q: expected <realm_id>@<version>[=<source>]", s)
+	}
+
+	dep.RealmID = parts[0]
+	dep.Version = parts[1]
+	return dep, nil
+}
+
 func newRealmInitCmd() *cobra.Command {
 	var (
 		realmID string
 		title   string
 		dir     string
 		force   bool
+		deps    []string
 	)
 
 	cmd := &cobra.Command{
@@ -98,6 +128,19 @@ func newRealmInitCmd() *cobra.Command {
 				return err
 			}
 
+			// Parse dependencies.
+			var realmDeps []entity.RealmDep
+			for _, d := range deps {
+				dep, err := parseDependency(d)
+				if err != nil {
+					return err
+				}
+				realmDeps = append(realmDeps, dep)
+			}
+			if realmDeps == nil {
+				realmDeps = []entity.RealmDep{}
+			}
+
 			// Write realm.json.
 			realm := realmJSON{
 				Schema: "./_schema/realm.v1.schema.json",
@@ -106,7 +149,7 @@ func newRealmInitCmd() *cobra.Command {
 					Title:   title,
 					Version: "0.1.0",
 				},
-				Dependencies:      []interface{}{},
+				Dependencies:      realmDeps,
 				RuleIdentifierFmt: nil,
 			}
 
@@ -143,6 +186,7 @@ func newRealmInitCmd() *cobra.Command {
 	cmd.Flags().StringVar(&title, "title", "", "realm title")
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "target directory")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing realm")
+	cmd.Flags().StringArrayVar(&deps, "dependency", nil, "realm dependency (format: realm_id@version[=source])")
 
 	return cmd
 }
@@ -193,8 +237,10 @@ func printConfigSuggestion(w io.Writer, realmDir string) {
 		return // already referenced
 	}
 
-	writeln(w, descStyle.Render("Tip: Add this source to .strspc/config.yaml:"))
-	writeln(w, cmdStyle.Render(fmt.Sprintf("  - source: %s", realmDir)))
-	writeln(w, cmdStyle.Render("    scope: local"))
+	writeln(w, descStyle.Render("Tip: Add this to the rules section in .strspc/config.yaml:"))
+	writeln(w)
+	writeln(w, cmdStyle.Render("  rules:"))
+	writeln(w, cmdStyle.Render(fmt.Sprintf("    - source: %s", realmDir)))
+	writeln(w, cmdStyle.Render("      scope: local"))
 	writeln(w)
 }

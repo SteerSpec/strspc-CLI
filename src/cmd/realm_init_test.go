@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
@@ -207,7 +208,7 @@ func TestRealmInitDetectsConfig(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	testutil.AssertContains(t, output, "Tip: Add this source")
+	testutil.AssertContains(t, output, "Tip: Add this to the rules section")
 }
 
 func TestRealmInitConfigAlreadyReferenced(t *testing.T) {
@@ -235,7 +236,98 @@ func TestRealmInitConfigAlreadyReferenced(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	testutil.AssertNotContains(t, output, "Tip: Add this source")
+	testutil.AssertNotContains(t, output, "Tip: Add this to the rules section")
+}
+
+func TestRealmInitWithDependency(t *testing.T) {
+	setupSchemaServer(t)
+	dir := t.TempDir()
+	target := filepath.Join(dir, "rules")
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init",
+		"--dir", target,
+		"--id", "dev.test.spec",
+		"--dependency", "dev.steerspec.core@0.1.0",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(target, "realm.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var realm realmJSON
+	if err := json.Unmarshal(data, &realm); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(realm.Dependencies) != 1 {
+		t.Fatalf("expected 1 dependency, got %d", len(realm.Dependencies))
+	}
+	if realm.Dependencies[0].RealmID != "dev.steerspec.core" {
+		t.Errorf("dep realm_id = %q, want %q", realm.Dependencies[0].RealmID, "dev.steerspec.core")
+	}
+	if realm.Dependencies[0].Version != "0.1.0" {
+		t.Errorf("dep version = %q, want %q", realm.Dependencies[0].Version, "0.1.0")
+	}
+}
+
+func TestRealmInitDependencyWithSource(t *testing.T) {
+	setupSchemaServer(t)
+	dir := t.TempDir()
+	target := filepath.Join(dir, "rules")
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init",
+		"--dir", target,
+		"--id", "dev.test.spec",
+		"--dependency", "dev.steerspec.core@0.1.0=github://SteerSpec/strspc-rules@latest/rules/core",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(target, "realm.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var realm realmJSON
+	if err := json.Unmarshal(data, &realm); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(realm.Dependencies) != 1 {
+		t.Fatalf("expected 1 dependency, got %d", len(realm.Dependencies))
+	}
+	dep := realm.Dependencies[0]
+	if dep.RealmID != "dev.steerspec.core" {
+		t.Errorf("dep realm_id = %q, want %q", dep.RealmID, "dev.steerspec.core")
+	}
+	if dep.Source != "github://SteerSpec/strspc-rules@latest/rules/core" {
+		t.Errorf("dep source = %q, want github://...", dep.Source)
+	}
+
+	// Verify source appears in JSON output.
+	if !strings.Contains(string(data), `"source"`) {
+		t.Error("expected source field in realm.json output")
+	}
+}
+
+func TestRealmInitDependencyParseError(t *testing.T) {
+	setupSchemaServer(t)
+	dir := t.TempDir()
+	target := filepath.Join(dir, "rules")
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init",
+		"--dir", target,
+		"--dependency", "invalid-no-version",
+	)
+	if err == nil {
+		t.Fatal("expected error for invalid dependency format, got nil")
+	}
+	testutil.AssertContains(t, err.Error(), "invalid dependency format")
 }
 
 func TestRealmInitHelp(t *testing.T) {
@@ -247,4 +339,5 @@ func TestRealmInitHelp(t *testing.T) {
 	testutil.AssertContains(t, output, "--title")
 	testutil.AssertContains(t, output, "--dir")
 	testutil.AssertContains(t, output, "--force")
+	testutil.AssertContains(t, output, "--dependency")
 }

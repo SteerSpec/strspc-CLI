@@ -14,11 +14,11 @@ const defaultConfig = `# SteerSpec configuration
 
 # Rule sources — where to fetch rules from
 rules:
-  # Core rules from the SteerSpec specification
-  - source: github://SteerSpec/strspc-rules@latest/rules/core
-    scope: global
+  # Core rules from the SteerSpec specification (requires strspc sync)
+  # - source: github://SteerSpec/strspc-rules@latest/rules/core
+  #   scope: global
 
-  # Local rules (uncomment to enable)
+  # Local rules (uncomment after strspc realm init)
   # - source: ./rules/
   #   scope: local
 
