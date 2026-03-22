@@ -49,7 +49,7 @@ func newRenderCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&outputDir, "output", "o", "", "output directory (default: stdout)")
+	cmd.Flags().StringVarP(&outputDir, "output", "o", "", "output directory (default: stdout for single file, alongside source for directory)")
 	cmd.Flags().StringVar(&format, "format", "markdown", "output format")
 	cmd.Flags().StringVar(&templatePath, "template", "", "custom Go template file")
 	cmd.Flags().StringVar(&schemaVersion, "schema-version", "v1", "entity schema version to validate against")
@@ -89,6 +89,7 @@ func renderFile(cmd *cobra.Command, r render.Renderer, path, outputDir, schemaVe
 
 func renderDirectory(cmd *cobra.Command, r render.Renderer, dir, outputDir, schemaVersion string) error {
 	errW := cmd.ErrOrStderr()
+	seen := 0
 	rendered := 0
 
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
@@ -102,6 +103,8 @@ func renderDirectory(cmd *cobra.Command, r render.Renderer, dir, outputDir, sche
 		if strings.HasPrefix(filepath.Base(path), "_") {
 			return nil
 		}
+
+		seen++
 
 		ef, loadErr := entity.Load(path)
 		if loadErr != nil {
@@ -144,11 +147,14 @@ func renderDirectory(cmd *cobra.Command, r render.Renderer, dir, outputDir, sche
 		return err
 	}
 
+	if seen == 0 {
+		return fmt.Errorf("no JSON files found in %s", dir)
+	}
 	if rendered == 0 {
-		return fmt.Errorf("no entity JSON files found in %s", dir)
+		return fmt.Errorf("all %d JSON file(s) in %s were skipped (see warnings above)", seen, dir)
 	}
 
-	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Rendered %d file(s)\n", rendered)
+	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Rendered %d of %d file(s)\n", rendered, seen)
 	return nil
 }
 
@@ -156,6 +162,11 @@ func validateSchema(ef *entity.File, version string) error {
 	expected := schemaURL(version)
 	if ef.Schema != expected {
 		return fmt.Errorf("schema mismatch: file declares %q, expected %q", ef.Schema, expected)
+	}
+	for i := range ef.SubEntities {
+		if err := validateSchema(&ef.SubEntities[i], version); err != nil {
+			return fmt.Errorf("sub-entity %s: %w", ef.SubEntities[i].Entity.ID, err)
+		}
 	}
 	return nil
 }

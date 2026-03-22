@@ -1,0 +1,17 @@
+{
+  "$schema": "https://steerspec.dev/schemas/entity/v1.json",
+  "entity": { "id": "PAR", "title": "Parent" },
+  "rule_set": { "version": "0.1.0", "timestamp": "2026-03-21T00:00:00Z", "hash": null },
+  "rules": [],
+  "sub_entities": [
+    {
+      "$schema": "https://steerspec.dev/schemas/entity/v99.json",
+      "entity": { "id": "BAD", "title": "Bad Schema Child", "parent": "PAR" },
+      "rule_set": { "version": "0.1.0", "timestamp": "2026-03-21T00:00:00Z", "hash": null },
+      "rules": [],
+      "sub_entities": [],
+      "notes": []
+    }
+  ],
+  "notes": []
+}

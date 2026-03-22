@@ -71,7 +71,7 @@ func newRenderContext(ef *entity.File, depth int) renderContext {
 
 // Render writes the entity file as Markdown to w.
 func (r *MarkdownRenderer) Render(w io.Writer, ef *entity.File) error {
-	tmpl, err := r.loadTemplate()
+	tmpl, err := r.parseTemplate()
 	if err != nil {
 		return err
 	}
@@ -90,26 +90,11 @@ func (r *MarkdownRenderer) Render(w io.Writer, ef *entity.File) error {
 	return err
 }
 
-func (r *MarkdownRenderer) loadTemplate() (*template.Template, error) {
-	funcMap := r.funcMap()
+func (r *MarkdownRenderer) parseTemplate() (*template.Template, error) {
+	// cachedTmpl holds the parsed template so renderEntity doesn't re-parse.
+	var cachedTmpl *template.Template
 
-	if r.templatePath != "" {
-		data, err := os.ReadFile(r.templatePath)
-		if err != nil {
-			return nil, fmt.Errorf("reading custom template: %w", err)
-		}
-		return template.New("custom").Funcs(funcMap).Parse(string(data))
-	}
-
-	data, err := defaultTemplateFS.ReadFile("templates/default.md.tmpl")
-	if err != nil {
-		return nil, fmt.Errorf("reading embedded template: %w", err)
-	}
-	return template.New("default").Funcs(funcMap).Parse(string(data))
-}
-
-func (r *MarkdownRenderer) funcMap() template.FuncMap {
-	return template.FuncMap{
+	funcMap := template.FuncMap{
 		"heading": func(depth int) string {
 			if depth > 6 {
 				depth = 6
@@ -132,17 +117,37 @@ func (r *MarkdownRenderer) funcMap() template.FuncMap {
 			return notesByRule[ruleID]
 		},
 		"renderEntity": func(ctx renderContext) (string, error) {
-			tmpl, err := r.loadTemplate()
-			if err != nil {
-				return "", err
-			}
 			var buf bytes.Buffer
-			if err := tmpl.Execute(&buf, ctx); err != nil {
+			if err := cachedTmpl.Execute(&buf, ctx); err != nil {
 				return "", err
 			}
 			return buf.String(), nil
 		},
 	}
+
+	var (
+		data []byte
+		err  error
+		name string
+	)
+
+	if r.templatePath != "" {
+		data, err = os.ReadFile(r.templatePath)
+		name = "custom"
+	} else {
+		data, err = defaultTemplateFS.ReadFile("templates/default.md.tmpl")
+		name = "default"
+	}
+	if err != nil {
+		return nil, fmt.Errorf("reading template: %w", err)
+	}
+
+	cachedTmpl, err = template.New(name).Funcs(funcMap).Parse(string(data))
+	if err != nil {
+		return nil, fmt.Errorf("parsing template: %w", err)
+	}
+
+	return cachedTmpl, nil
 }
 
 func collapseBlankLines(s string) string {

@@ -90,6 +90,14 @@ func TestRenderSchemaMismatch(t *testing.T) {
 	}
 }
 
+func TestRenderSubEntitySchemaMismatch(t *testing.T) {
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/bad_sub_schema.json")
+	if err == nil {
+		t.Fatal("expected error for sub-entity schema mismatch, got nil")
+	}
+	testutil.AssertContains(t, err.Error(), "sub-entity BAD")
+}
+
 func TestRenderHelpContainsFlags(t *testing.T) {
 	output, err := testutil.ExecuteCommand(NewRootCmd(), "render", "--help")
 	if err != nil {
