@@ -14,11 +14,11 @@ const defaultConfig = `# SteerSpec configuration
 
 # Rule sources — where to fetch rules from
 rules:
-  # Core rules from the SteerSpec specification
-  - source: github://SteerSpec/strspc-rules@latest/rules/core
-    scope: global
+  # Core rules from the SteerSpec specification (strspc sync not yet available)
+  # - source: github://SteerSpec/strspc-rules@latest/rules/core
+  #   scope: global
 
-  # Local rules (uncomment to enable)
+  # Local rules (uncomment after strspc realm init)
   # - source: ./rules/
   #   scope: local
 
@@ -81,8 +81,8 @@ func newInitCmd() *cobra.Command {
 			writeln(w)
 			writeln(w, descStyle.Render("Next steps:"))
 			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Edit .strspc/config.yaml to configure rule sources"))
-			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Run ")+cmdStyle.Render("strspc sync")+descStyle.Render(" to fetch rules"))
-			writeln(w, cmdStyle.Render("  3.")+descStyle.Render(" Run ")+cmdStyle.Render("strspc check")+descStyle.Render(" to validate your code"))
+			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Add local rules: ")+cmdStyle.Render("strspc realm init"))
+			writeln(w, cmdStyle.Render("  3.")+descStyle.Render(" Coming soon: validate your code with ")+cmdStyle.Render("strspc check"))
 			writeln(w)
 			writeln(w, descStyle.Render("Docs: https://steerspec.dev/docs/getting-started"))
 
