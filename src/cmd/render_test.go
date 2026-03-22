@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
@@ -88,6 +89,7 @@ func TestRenderSchemaMismatch(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for schema mismatch, got nil")
 	}
+	testutil.AssertContains(t, err.Error(), "schema version mismatch")
 }
 
 func TestRenderSubEntitySchemaMismatch(t *testing.T) {
@@ -96,6 +98,66 @@ func TestRenderSubEntitySchemaMismatch(t *testing.T) {
 		t.Fatal("expected error for sub-entity schema mismatch, got nil")
 	}
 	testutil.AssertContains(t, err.Error(), "sub-entity BAD")
+}
+
+func TestRenderDirectorySkipsRealmSilently(t *testing.T) {
+	outDir := t.TempDir()
+	// testdata/ contains realm.json (non-entity) — should be skipped without warnings.
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/", "-o", outDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// realm.json should not produce a warning in output.
+	if strings.Contains(output, "realm.json") {
+		t.Errorf("realm.json should be silently skipped, got output: %s", output)
+	}
+	// Should not produce a realm.md file.
+	realmOut := filepath.Join(outDir, "realm.md")
+	if _, err := os.Stat(realmOut); !os.IsNotExist(err) {
+		t.Error("realm.md should not be created")
+	}
+}
+
+func TestRenderJSONSingleFile(t *testing.T) {
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json", "--json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, output, `"id": "TST"`)
+	testutil.AssertContains(t, output, `"title": "Test Entity"`)
+	testutil.AssertContains(t, output, `"$schema"`)
+}
+
+func TestRenderJSONToOutput(t *testing.T) {
+	outDir := t.TempDir()
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json", "--json", "-o", outDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	outPath := filepath.Join(outDir, "basic.json")
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("reading output file: %v", err)
+	}
+	content := string(data)
+	testutil.AssertContains(t, content, `"id": "TST"`)
+}
+
+func TestRenderJSONWithFormatErrors(t *testing.T) {
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json", "--json", "--format", "markdown")
+	if err == nil {
+		t.Fatal("expected error for --json with --format, got nil")
+	}
+	testutil.AssertContains(t, err.Error(), "--json cannot be combined")
+}
+
+func TestRenderJSONWithTemplateErrors(t *testing.T) {
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json", "--json", "--template", "foo.tmpl")
+	if err == nil {
+		t.Fatal("expected error for --json with --template, got nil")
+	}
+	testutil.AssertContains(t, err.Error(), "--json cannot be combined")
 }
 
 func TestRenderHelpContainsFlags(t *testing.T) {
@@ -107,4 +169,5 @@ func TestRenderHelpContainsFlags(t *testing.T) {
 	testutil.AssertContains(t, output, "--format")
 	testutil.AssertContains(t, output, "--template")
 	testutil.AssertContains(t, output, "--schema-version")
+	testutil.AssertContains(t, output, "--json")
 }
