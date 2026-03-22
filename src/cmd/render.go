@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/SteerSpec/strspc-CLI/src/internal/entity"
-	"github.com/SteerSpec/strspc-CLI/src/internal/render"
+	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/render"
 )
 
 func newRenderCmd() *cobra.Command {
