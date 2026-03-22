@@ -208,7 +208,7 @@ func TestRealmInitDetectsConfig(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	testutil.AssertContains(t, output, "Tip: Add this to the rules section")
+	testutil.AssertContains(t, output, "Tip: Add this under")
 }
 
 func TestRealmInitConfigAlreadyReferenced(t *testing.T) {
@@ -236,7 +236,7 @@ func TestRealmInitConfigAlreadyReferenced(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	testutil.AssertNotContains(t, output, "Tip: Add this to the rules section")
+	testutil.AssertNotContains(t, output, "Tip: Add this under")
 }
 
 func TestRealmInitWithDependency(t *testing.T) {
@@ -271,6 +271,11 @@ func TestRealmInitWithDependency(t *testing.T) {
 	}
 	if realm.Dependencies[0].Version != "0.1.0" {
 		t.Errorf("dep version = %q, want %q", realm.Dependencies[0].Version, "0.1.0")
+	}
+
+	// Verify JSON key shape to protect on-disk schema.
+	if !strings.Contains(string(data), `"realm_id"`) {
+		t.Error("expected realm_id key in realm.json output")
 	}
 }
 

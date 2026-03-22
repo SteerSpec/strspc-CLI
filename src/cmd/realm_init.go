@@ -60,6 +60,10 @@ func parseDependency(s string) (entity.RealmDep, error) {
 	// Split off optional source.
 	idVersion, source, hasSource := strings.Cut(s, "=")
 	if hasSource {
+		source = strings.TrimSpace(source)
+		if source == "" {
+			return dep, fmt.Errorf("invalid dependency %q: source must not be empty when '=' is present", s)
+		}
 		dep.Source = source
 	}
 
@@ -67,6 +71,11 @@ func parseDependency(s string) (entity.RealmDep, error) {
 	parts := strings.SplitN(idVersion, "@", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return dep, fmt.Errorf("invalid dependency format %q: expected <realm_id>@<version>[=<source>]", s)
+	}
+
+	// Validate realm ID against the established pattern.
+	if !realmIDPattern.MatchString(parts[0]) {
+		return dep, fmt.Errorf("invalid realm ID %q in dependency %q", parts[0], s)
 	}
 
 	dep.RealmID = parts[0]
@@ -237,10 +246,9 @@ func printConfigSuggestion(w io.Writer, realmDir string) {
 		return // already referenced
 	}
 
-	writeln(w, descStyle.Render("Tip: Add this to the rules section in .strspc/config.yaml:"))
+	writeln(w, descStyle.Render("Tip: Add this under `rules:` in .strspc/config.yaml:"))
 	writeln(w)
-	writeln(w, cmdStyle.Render("  rules:"))
-	writeln(w, cmdStyle.Render(fmt.Sprintf("    - source: %s", realmDir)))
-	writeln(w, cmdStyle.Render("      scope: local"))
+	writeln(w, cmdStyle.Render(fmt.Sprintf("  - source: %s", realmDir)))
+	writeln(w, cmdStyle.Render("    scope: local"))
 	writeln(w)
 }

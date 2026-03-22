@@ -14,7 +14,7 @@ const defaultConfig = `# SteerSpec configuration
 
 # Rule sources — where to fetch rules from
 rules:
-  # Core rules from the SteerSpec specification (requires strspc sync)
+  # Core rules from the SteerSpec specification (strspc sync not yet available)
   # - source: github://SteerSpec/strspc-rules@latest/rules/core
   #   scope: global
 
