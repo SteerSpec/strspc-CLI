@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	posixpath "path"
 	"path/filepath"
 	"strings"
 
@@ -135,7 +136,9 @@ func renderDirectory(cmd *cobra.Command, r render.Renderer, dir, outputDir, sche
 		}
 
 		if valErr := validateSchema(ef, schemaVersion); valErr != nil {
-			if valErr == errNotEntity {
+			// Intentional exact match (==): errors.Is would also match errNotEntity
+			// wrapped inside sub-entity errors, hiding real validation issues.
+			if valErr == errNotEntity { //nolint:errorlint // exact match avoids matching wrapped sub-entity errors
 				// Not an entity file (e.g. realm.json) — skip silently.
 				seen--
 				return nil
@@ -229,8 +232,14 @@ func renderDirectoryJSON(cmd *cobra.Command, dir, outputDir, schemaVersion strin
 	}
 
 	// Prevent writing JSON output into the input directory tree.
-	absDir, _ := filepath.Abs(dir)
-	absOut, _ := filepath.Abs(outputDir)
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("resolving input directory path: %w", err)
+	}
+	absOut, err := filepath.Abs(outputDir)
+	if err != nil {
+		return fmt.Errorf("resolving output directory path: %w", err)
+	}
 	if strings.HasPrefix(absOut, absDir+string(filepath.Separator)) || absOut == absDir {
 		return fmt.Errorf("--json output directory %q must not be inside input directory %q", outputDir, dir)
 	}
@@ -239,9 +248,9 @@ func renderDirectoryJSON(cmd *cobra.Command, dir, outputDir, schemaVersion strin
 	seen := 0
 	rendered := 0
 
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	err = filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
 		if d.IsDir() {
 			if strings.HasPrefix(d.Name(), "_") {
@@ -265,7 +274,9 @@ func renderDirectoryJSON(cmd *cobra.Command, dir, outputDir, schemaVersion strin
 		}
 
 		if valErr := validateSchema(ef, schemaVersion); valErr != nil {
-			if valErr == errNotEntity {
+			// Intentional exact match (==): errors.Is would also match errNotEntity
+			// wrapped inside sub-entity errors, hiding real validation issues.
+			if valErr == errNotEntity { //nolint:errorlint // exact match avoids matching wrapped sub-entity errors
 				seen--
 				return nil
 			}
@@ -343,11 +354,12 @@ func isEntitySchema(schema, version string) bool {
 
 // isEntitySchemaAnyVersion checks whether the $schema references any entity schema version.
 // Matches patterns like "entity.v1.schema.json" (relative) or ".../entity/v1.json" (URL).
+// Uses path.Base (not filepath.Base) so URL schemas work cross-platform.
 func isEntitySchemaAnyVersion(schema string) bool {
 	if schema == "" {
 		return false
 	}
-	base := filepath.Base(schema)
+	base := posixpath.Base(schema)
 	// Relative style: entity.v<N>.schema.json
 	if strings.HasPrefix(base, "entity.v") && strings.HasSuffix(base, ".schema.json") {
 		return true
