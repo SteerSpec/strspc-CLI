@@ -76,7 +76,13 @@ func newLintCmd() *cobra.Command {
 			w := cmd.OutOrStdout()
 
 			if jsonOutput {
-				return outputJSON(w, res)
+				if err := writeJSON(w, res); err != nil {
+					return err
+				}
+				if !res.OK() {
+					return fmt.Errorf("lint found %d error(s)", len(res.Errors()))
+				}
+				return nil
 			}
 
 			outputText(w, res)
@@ -205,7 +211,9 @@ func outputText(w io.Writer, res *result.Result) {
 	}
 }
 
-func outputJSON(w io.Writer, res *result.Result) error {
+// writeJSON writes diagnostics as a JSON array. It does not inspect result
+// severity — callers are responsible for returning an appropriate error.
+func writeJSON(w io.Writer, res *result.Result) error {
 	diags := res.Diagnostics
 	if diags == nil {
 		diags = []result.Diagnostic{}
@@ -216,12 +224,5 @@ func outputJSON(w io.Writer, res *result.Result) error {
 		return fmt.Errorf("marshaling diagnostics: %w", err)
 	}
 	_, writeErr := w.Write(append(data, '\n'))
-	if writeErr != nil {
-		return writeErr
-	}
-
-	if !res.OK() {
-		return fmt.Errorf("lint found %d error(s)", len(res.Errors()))
-	}
-	return nil
+	return writeErr
 }

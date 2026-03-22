@@ -48,7 +48,14 @@ func newRealmValidateCmd() *cobra.Command {
 			w := cmd.OutOrStdout()
 
 			if jsonOutput {
-				return outputJSON(w, res)
+				if err := writeJSON(w, res); err != nil {
+					return err
+				}
+				if !res.OK() {
+					errs := res.Errors()
+					return fmt.Errorf("realm validate found %d error(s)", len(errs))
+				}
+				return nil
 			}
 
 			outputText(w, res)
