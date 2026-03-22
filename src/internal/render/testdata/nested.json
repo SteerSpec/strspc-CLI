@@ -1,0 +1,54 @@
+{
+  "$schema": "https://steerspec.dev/schemas/entity/v1.json",
+  "entity": {
+    "id": "PAR",
+    "title": "Parent Entity",
+    "description": "An entity with sub-entities."
+  },
+  "rule_set": {
+    "version": "1.0.0",
+    "timestamp": "2026-03-21T00:00:00Z",
+    "hash": null
+  },
+  "rules": [
+    {
+      "id": "PAR-001",
+      "revision": 0,
+      "state": "D",
+      "body": "IS the parent of all child entities.",
+      "added_by": "@author",
+      "added_at": "2026-03-21",
+      "supersedes": null
+    }
+  ],
+  "sub_entities": [
+    {
+      "$schema": "https://steerspec.dev/schemas/entity/v1.json",
+      "entity": {
+        "id": "CHILD",
+        "title": "Child Entity",
+        "description": "A child of the parent entity.",
+        "parent": "PAR"
+      },
+      "rule_set": {
+        "version": "1.0.0",
+        "timestamp": "2026-03-21T00:00:00Z",
+        "hash": null
+      },
+      "rules": [
+        {
+          "id": "CHILD-001",
+          "revision": 0,
+          "state": "D",
+          "body": "MUST reference its parent.",
+          "added_by": "@author",
+          "added_at": "2026-03-21",
+          "supersedes": null
+        }
+      ],
+      "sub_entities": [],
+      "notes": []
+    }
+  ],
+  "notes": []
+}
