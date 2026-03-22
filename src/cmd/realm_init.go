@@ -69,8 +69,9 @@ func parseDependency(s string) (entity.RealmDep, error) {
 	}
 
 	// Split realm_id@version.
+	idVersion = strings.TrimSpace(idVersion)
 	parts := strings.SplitN(idVersion, "@", 2)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
 		return dep, fmt.Errorf("invalid dependency format %q: expected <realm_id>@<version>[=<source>]", s)
 	}
 
