@@ -56,6 +56,7 @@ var realmIDPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9.\-]*[a-z0-9])?$`)
 //	dev.steerspec.core@0.1.0=github://SteerSpec/strspc-rules@latest/rules/core
 func parseDependency(s string) (entity.RealmDep, error) {
 	var dep entity.RealmDep
+	s = strings.TrimSpace(s)
 
 	// Split off optional source.
 	idVersion, source, hasSource := strings.Cut(s, "=")
@@ -122,6 +123,19 @@ func newRealmInitCmd() *cobra.Command {
 				}
 			}
 
+			// Parse and validate dependencies before any filesystem/network operations.
+			var realmDeps []entity.RealmDep
+			for _, d := range deps {
+				dep, err := parseDependency(d)
+				if err != nil {
+					return err
+				}
+				realmDeps = append(realmDeps, dep)
+			}
+			if realmDeps == nil {
+				realmDeps = []entity.RealmDep{}
+			}
+
 			// Create target directory.
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return fmt.Errorf("creating directory %s: %w", dir, err)
@@ -135,19 +149,6 @@ func newRealmInitCmd() *cobra.Command {
 
 			if err := fetchSchemas(schemaDir); err != nil {
 				return err
-			}
-
-			// Parse dependencies.
-			var realmDeps []entity.RealmDep
-			for _, d := range deps {
-				dep, err := parseDependency(d)
-				if err != nil {
-					return err
-				}
-				realmDeps = append(realmDeps, dep)
-			}
-			if realmDeps == nil {
-				realmDeps = []entity.RealmDep{}
 			}
 
 			// Write realm.json.

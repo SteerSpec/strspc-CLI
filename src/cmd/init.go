@@ -81,8 +81,8 @@ func newInitCmd() *cobra.Command {
 			writeln(w)
 			writeln(w, descStyle.Render("Next steps:"))
 			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Edit .strspc/config.yaml to configure rule sources"))
-			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Run ")+cmdStyle.Render("strspc sync")+descStyle.Render(" to fetch rules"))
-			writeln(w, cmdStyle.Render("  3.")+descStyle.Render(" Run ")+cmdStyle.Render("strspc check")+descStyle.Render(" to validate your code"))
+			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Add local rules: ")+cmdStyle.Render("strspc realm init"))
+			writeln(w, cmdStyle.Render("  3.")+descStyle.Render(" Validate your code: ")+cmdStyle.Render("strspc check")+descStyle.Render(" (coming soon)"))
 			writeln(w)
 			writeln(w, descStyle.Render("Docs: https://steerspec.dev/docs/getting-started"))
 
