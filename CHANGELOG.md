@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.4.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.3.0...v1.4.0) (2026-03-22)
+
+
+### Features
+
+* **realm:** add --dependency flag to realm init ([554c27b](https://github.com/SteerSpec/strspc-CLI/commit/554c27b8bf64be87a184de4dd0ad7ca02a970bcc)), closes [#37](https://github.com/SteerSpec/strspc-CLI/issues/37) [#36](https://github.com/SteerSpec/strspc-CLI/issues/36)
+
+
+### Bug Fixes
+
+* address PR [#39](https://github.com/SteerSpec/strspc-CLI/issues/39) review comments ([c6781ae](https://github.com/SteerSpec/strspc-CLI/commit/c6781ae498c646fdd8678b2177a349dc9d76b120))
+* address second round of PR [#39](https://github.com/SteerSpec/strspc-CLI/issues/39) review comments ([a7e4665](https://github.com/SteerSpec/strspc-CLI/commit/a7e466588ae124b1d20a5b395af2f81dc4686987))
+* **init:** bridge fixes for init and realm init ([ab5700d](https://github.com/SteerSpec/strspc-CLI/commit/ab5700d44bd9cdaed1e84242520ade449cc97757))
+* **init:** comment out unimplemented github:// source in default config ([554c27b](https://github.com/SteerSpec/strspc-CLI/commit/554c27b8bf64be87a184de4dd0ad7ca02a970bcc))
+* trim idVersion after Cut, rephrase coming soon text ([8b06907](https://github.com/SteerSpec/strspc-CLI/commit/8b06907f7017b144dfa66dc312c9e386eebbfeff))
+
+
+### Refactoring
+
+* **render:** replace local schema validation with manager imports ([935f0d6](https://github.com/SteerSpec/strspc-CLI/commit/935f0d6c7c84a244b3e2109a391fd438a2136519))
+* **render:** replace local schema validation with manager imports ([f9ef012](https://github.com/SteerSpec/strspc-CLI/commit/f9ef0125475f9d4c0458e345b7e133012c46ff00)), closes [#27](https://github.com/SteerSpec/strspc-CLI/issues/27)
+
 ## [1.3.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.2.2...v1.3.0) (2026-03-22)
 
 
