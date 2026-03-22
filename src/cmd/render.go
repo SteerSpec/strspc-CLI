@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	posixpath "path"
 	"path/filepath"
 	"strings"
 
@@ -13,6 +12,7 @@ import (
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/render"
+	"github.com/SteerSpec/strspc-manager/src/schema"
 )
 
 func newRenderCmd() *cobra.Command {
@@ -79,7 +79,7 @@ func renderFile(cmd *cobra.Command, r render.Renderer, path, outputDir, schemaVe
 		return err
 	}
 
-	if err := validateSchema(ef, schemaVersion); err != nil {
+	if err := schema.ValidateFileSchema(ef, schemaVersion); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 
@@ -135,10 +135,8 @@ func renderDirectory(cmd *cobra.Command, r render.Renderer, dir, outputDir, sche
 			return nil
 		}
 
-		if valErr := validateSchema(ef, schemaVersion); valErr != nil {
-			// Intentional exact match (==): errors.Is would also match errNotEntity
-			// wrapped inside sub-entity errors, hiding real validation issues.
-			if valErr == errNotEntity { //nolint:errorlint // exact match avoids matching wrapped sub-entity errors
+		if valErr := schema.ValidateFileSchema(ef, schemaVersion); valErr != nil {
+			if errors.Is(valErr, schema.ErrNotEntity) {
 				// Not an entity file (e.g. realm.json) — skip silently.
 				seen--
 				return nil
@@ -203,7 +201,7 @@ func renderFileJSON(cmd *cobra.Command, path, outputDir, schemaVersion string) e
 		return err
 	}
 
-	if err := validateSchema(ef, schemaVersion); err != nil {
+	if err := schema.ValidateFileSchema(ef, schemaVersion); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 
@@ -273,10 +271,8 @@ func renderDirectoryJSON(cmd *cobra.Command, dir, outputDir, schemaVersion strin
 			return nil
 		}
 
-		if valErr := validateSchema(ef, schemaVersion); valErr != nil {
-			// Intentional exact match (==): errors.Is would also match errNotEntity
-			// wrapped inside sub-entity errors, hiding real validation issues.
-			if valErr == errNotEntity { //nolint:errorlint // exact match avoids matching wrapped sub-entity errors
+		if valErr := schema.ValidateFileSchema(ef, schemaVersion); valErr != nil {
+			if errors.Is(valErr, schema.ErrNotEntity) {
 				seen--
 				return nil
 			}
@@ -323,50 +319,4 @@ func renderDirectoryJSON(cmd *cobra.Command, dir, outputDir, schemaVersion strin
 
 	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Rendered %d of %d file(s)\n", rendered, seen)
 	return nil
-}
-
-// errNotEntity is returned when a file's $schema does not reference an entity schema.
-var errNotEntity = errors.New("not an entity file")
-
-func validateSchema(ef *entity.File, version string) error {
-	if !isEntitySchema(ef.Schema, version) {
-		// Check if it's an entity schema at all (any version).
-		if !isEntitySchemaAnyVersion(ef.Schema) {
-			return errNotEntity
-		}
-		return fmt.Errorf("schema version mismatch: file declares %q, expected version %q", ef.Schema, version)
-	}
-	for i := range ef.SubEntities {
-		if err := validateSchema(&ef.SubEntities[i], version); err != nil {
-			return fmt.Errorf("sub-entity %s: %w", ef.SubEntities[i].Entity.ID, err)
-		}
-	}
-	return nil
-}
-
-// isEntitySchema checks whether the $schema value matches entity schema for the given version.
-// Supports both relative paths (./_schema/entity.v1.schema.json) and absolute URLs
-// (https://steerspec.dev/schemas/entity/v1.json).
-func isEntitySchema(schema, version string) bool {
-	return strings.HasSuffix(schema, "entity."+version+".schema.json") ||
-		strings.HasSuffix(schema, "entity/"+version+".json")
-}
-
-// isEntitySchemaAnyVersion checks whether the $schema references any entity schema version.
-// Matches patterns like "entity.v1.schema.json" (relative) or ".../entity/v1.json" (URL).
-// Uses path.Base (not filepath.Base) so URL schemas work cross-platform.
-func isEntitySchemaAnyVersion(schema string) bool {
-	if schema == "" {
-		return false
-	}
-	base := posixpath.Base(schema)
-	// Relative style: entity.v<N>.schema.json
-	if strings.HasPrefix(base, "entity.v") && strings.HasSuffix(base, ".schema.json") {
-		return true
-	}
-	// URL style: v<N>.json under an /entity/ path segment
-	if strings.HasPrefix(base, "v") && strings.HasSuffix(base, ".json") && strings.Contains(schema, "/entity/") {
-		return true
-	}
-	return false
 }
