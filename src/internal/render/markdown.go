@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"text/template"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/entity"
@@ -29,6 +30,10 @@ func WithTemplate(path string) Option {
 type MarkdownRenderer struct {
 	formatter    RuleIDFormatter
 	templatePath string
+
+	tmplOnce sync.Once
+	tmpl     *template.Template
+	tmplErr  error
 }
 
 // NewMarkdownRenderer creates a new Markdown renderer with optional configuration.
@@ -40,6 +45,13 @@ func NewMarkdownRenderer(opts ...Option) *MarkdownRenderer {
 		opt(r)
 	}
 	return r
+}
+
+func (r *MarkdownRenderer) getTemplate() (*template.Template, error) {
+	r.tmplOnce.Do(func() {
+		r.tmpl, r.tmplErr = r.parseTemplate()
+	})
+	return r.tmpl, r.tmplErr
 }
 
 // renderContext holds the data passed to the template.
@@ -71,7 +83,7 @@ func newRenderContext(ef *entity.File, depth int) renderContext {
 
 // Render writes the entity file as Markdown to w.
 func (r *MarkdownRenderer) Render(w io.Writer, ef *entity.File) error {
-	tmpl, err := r.parseTemplate()
+	tmpl, err := r.getTemplate()
 	if err != nil {
 		return err
 	}
@@ -83,8 +95,14 @@ func (r *MarkdownRenderer) Render(w io.Writer, ef *entity.File) error {
 		return fmt.Errorf("executing template: %w", err)
 	}
 
-	// Clean up excessive blank lines (3+ consecutive newlines → 2)
-	output := collapseBlankLines(buf.String())
+	var output string
+	if r.templatePath == "" {
+		// Clean up excessive blank lines (3+ consecutive newlines → 2) for the default template.
+		output = collapseBlankLines(buf.String())
+	} else {
+		// Preserve exact formatting for custom templates.
+		output = buf.String()
+	}
 
 	_, err = io.WriteString(w, output)
 	return err

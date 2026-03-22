@@ -117,16 +117,25 @@ func renderDirectory(cmd *cobra.Command, r render.Renderer, dir, outputDir, sche
 			return nil
 		}
 
+		// Preserve relative directory structure under outputDir to avoid
+		// filename collisions when the input tree has subdirectories.
+		relPath, relErr := filepath.Rel(dir, path)
+		if relErr != nil {
+			return fmt.Errorf("computing relative path: %w", relErr)
+		}
+
 		target := outputDir
 		if target == "" {
 			target = filepath.Dir(path)
+		} else {
+			target = filepath.Join(target, filepath.Dir(relPath))
 		}
 
 		if mkErr := os.MkdirAll(target, 0o755); mkErr != nil {
 			return fmt.Errorf("creating output directory: %w", mkErr)
 		}
 
-		base := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		base := strings.TrimSuffix(filepath.Base(relPath), filepath.Ext(relPath))
 		outPath := filepath.Join(target, base+".md")
 
 		f, createErr := os.Create(outPath)
