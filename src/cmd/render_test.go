@@ -144,6 +144,14 @@ func TestRenderJSONToOutput(t *testing.T) {
 	testutil.AssertContains(t, content, `"id": "TST"`)
 }
 
+func TestRenderJSONDirectoryWithoutOutputErrors(t *testing.T) {
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/", "--json")
+	if err == nil {
+		t.Fatal("expected error for directory render with --json and no -o, got nil")
+	}
+	testutil.AssertContains(t, err.Error(), "--json with directory input requires -o")
+}
+
 func TestRenderJSONWithFormatErrors(t *testing.T) {
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json", "--json", "--format", "markdown")
 	if err == nil {

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -67,7 +66,7 @@ func newRenderCmd() *cobra.Command {
 	cmd.Flags().StringVar(&format, "format", "markdown", "output format")
 	cmd.Flags().StringVar(&templatePath, "template", "", "custom Go template file")
 	cmd.Flags().StringVar(&schemaVersion, "schema-version", "v1", "entity schema version to validate against")
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output parsed entity JSON (identity transform)")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output normalized entity JSON")
 
 	return cmd
 }
@@ -135,7 +134,7 @@ func renderDirectory(cmd *cobra.Command, r render.Renderer, dir, outputDir, sche
 		}
 
 		if valErr := validateSchema(ef, schemaVersion); valErr != nil {
-			if errors.Is(valErr, errNotEntity) {
+			if valErr == errNotEntity {
 				// Not an entity file (e.g. realm.json) — skip silently.
 				seen--
 				return nil
@@ -224,6 +223,10 @@ func renderFileJSON(cmd *cobra.Command, path, outputDir, schemaVersion string) e
 }
 
 func renderDirectoryJSON(cmd *cobra.Command, dir, outputDir, schemaVersion string) error {
+	if outputDir == "" {
+		return fmt.Errorf("--json with directory input requires -o/--output to avoid overwriting source files")
+	}
+
 	errW := cmd.ErrOrStderr()
 	seen := 0
 	rendered := 0
@@ -254,7 +257,7 @@ func renderDirectoryJSON(cmd *cobra.Command, dir, outputDir, schemaVersion strin
 		}
 
 		if valErr := validateSchema(ef, schemaVersion); valErr != nil {
-			if errors.Is(valErr, errNotEntity) {
+			if valErr == errNotEntity {
 				seen--
 				return nil
 			}
