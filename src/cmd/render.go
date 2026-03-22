@@ -96,11 +96,18 @@ func renderDirectory(cmd *cobra.Command, r render.Renderer, dir, outputDir, sche
 		if err != nil {
 			return err
 		}
-		if d.IsDir() || filepath.Ext(path) != ".json" {
+		if d.IsDir() {
+			// Skip underscore-prefixed directories (e.g. _schema/)
+			if strings.HasPrefix(d.Name(), "_") {
+				return filepath.SkipDir
+			}
 			return nil
 		}
-		// Skip files starting with _ (e.g. _schema/)
-		if strings.HasPrefix(filepath.Base(path), "_") {
+		if filepath.Ext(path) != ".json" {
+			return nil
+		}
+		// Skip JSON files starting with _
+		if strings.HasPrefix(d.Name(), "_") {
 			return nil
 		}
 
