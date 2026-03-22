@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.2](https://github.com/SteerSpec/strspc-CLI/compare/v1.2.1...v1.2.2) (2026-03-22)
+
+
+### Refactoring
+
+* import entity + render from strspc-manager ([7f19f96](https://github.com/SteerSpec/strspc-CLI/commit/7f19f967ba64bb636266e14e2cf196990a9a5042))
+* import entity + render from strspc-manager, delete internal duplicates ([e5fe93c](https://github.com/SteerSpec/strspc-CLI/commit/e5fe93cc3774363a5cd5d002699059efa8ea0dce)), closes [#24](https://github.com/SteerSpec/strspc-CLI/issues/24)
+
 ## [1.2.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.2.0...v1.2.1) (2026-03-22)
 
 
