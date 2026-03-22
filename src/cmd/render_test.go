@@ -10,7 +10,7 @@ import (
 )
 
 func TestRenderSingleFile(t *testing.T) {
-	output, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json")
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/basic.json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -22,7 +22,7 @@ func TestRenderSingleFile(t *testing.T) {
 
 func TestRenderSingleFileToOutput(t *testing.T) {
 	outDir := t.TempDir()
-	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json", "-o", outDir)
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/basic.json", "-o", outDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestRenderSingleFileToOutput(t *testing.T) {
 
 func TestRenderDirectory(t *testing.T) {
 	outDir := t.TempDir()
-	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/", "-o", outDir)
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/", "-o", outDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -70,14 +70,14 @@ func TestRenderInvalidPath(t *testing.T) {
 }
 
 func TestRenderUnsupportedFormat(t *testing.T) {
-	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json", "--format", "html")
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/basic.json", "--format", "html")
 	if err == nil {
 		t.Fatal("expected error for unsupported format, got nil")
 	}
 }
 
 func TestRenderDefaultFormat(t *testing.T) {
-	output, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json")
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/basic.json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestRenderDefaultFormat(t *testing.T) {
 }
 
 func TestRenderSchemaMismatch(t *testing.T) {
-	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json", "--schema-version", "v2")
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/basic.json", "--schema-version", "v2")
 	if err == nil {
 		t.Fatal("expected error for schema mismatch, got nil")
 	}
@@ -119,7 +119,7 @@ func TestRenderDirectorySkipsRealmSilently(t *testing.T) {
 }
 
 func TestRenderJSONSingleFile(t *testing.T) {
-	output, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json", "--json")
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/basic.json", "--json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestRenderJSONSingleFile(t *testing.T) {
 
 func TestRenderJSONToOutput(t *testing.T) {
 	outDir := t.TempDir()
-	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json", "--json", "-o", outDir)
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/basic.json", "--json", "-o", outDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestRenderJSONOutputInsideInputErrors(t *testing.T) {
 }
 
 func TestRenderJSONWithFormatErrors(t *testing.T) {
-	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json", "--json", "--format", "markdown")
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/basic.json", "--json", "--format", "markdown")
 	if err == nil {
 		t.Fatal("expected error for --json with --format, got nil")
 	}
@@ -169,7 +169,7 @@ func TestRenderJSONWithFormatErrors(t *testing.T) {
 }
 
 func TestRenderJSONWithTemplateErrors(t *testing.T) {
-	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "../internal/render/testdata/basic.json", "--json", "--template", "foo.tmpl")
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/basic.json", "--json", "--template", "foo.tmpl")
 	if err == nil {
 		t.Fatal("expected error for --json with --template, got nil")
 	}
