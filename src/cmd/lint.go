@@ -66,6 +66,8 @@ func newLintCmd() *cobra.Command {
 				for i := range res.Diagnostics {
 					if res.Diagnostics[i].Path == "" {
 						res.Diagnostics[i].Path = inputPath
+					} else {
+						res.Diagnostics[i].Path = inputPath + ": " + res.Diagnostics[i].Path
 					}
 				}
 			}
@@ -95,67 +97,70 @@ func newLintCmd() *cobra.Command {
 	return cmd
 }
 
-// lintDirPerFile lints each .json file individually without cross-file checks.
+// lintDirPerFile walks a directory tree and lints each entity JSON file
+// individually without cross-file checks. Skips underscore-prefixed
+// directories (e.g. _schema/) and files, as well as realm.json.
 func lintDirPerFile(linter *rulelint.Linter, dir string) *result.Result {
 	res := &result.Result{}
 
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		res.Add(result.Diagnostic{
-			Module:   "rule-lint",
-			Code:     "RL000",
-			Severity: result.Error,
-			Message:  fmt.Sprintf("reading directory: %s", err),
-			Path:     dir,
-		})
-		return res
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			res.Add(result.Diagnostic{
+				Module:   "rule-lint",
+				Code:     "RL000",
+				Severity: result.Error,
+				Message:  fmt.Sprintf("accessing path: %s", walkErr),
+				Path:     path,
+			})
+			return nil
 		}
-		fpath := filepath.Join(dir, entry.Name())
-		data, readErr := os.ReadFile(fpath)
+		if d.IsDir() {
+			if strings.HasPrefix(d.Name(), "_") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".json" || strings.HasPrefix(d.Name(), "_") {
+			return nil
+		}
+		if d.Name() == "realm.json" {
+			return nil
+		}
+
+		data, readErr := os.ReadFile(path)
 		if readErr != nil {
 			res.Add(result.Diagnostic{
 				Module:   "rule-lint",
 				Code:     "RL000",
 				Severity: result.Error,
 				Message:  fmt.Sprintf("reading file: %s", readErr),
-				Path:     fpath,
+				Path:     path,
 			})
-			continue
-		}
-
-		// Skip realm.json files.
-		if isRealmFile(data) {
-			continue
+			return nil
 		}
 
 		fileRes := linter.LintBytes(data)
-		for _, d := range fileRes.Diagnostics {
-			if d.Path == "" {
-				d.Path = fpath
+		for _, diag := range fileRes.Diagnostics {
+			if diag.Path == "" {
+				diag.Path = path
 			} else {
-				d.Path = fpath + ": " + d.Path
+				diag.Path = path + ": " + diag.Path
 			}
-			res.Add(d)
+			res.Add(diag)
 		}
+		return nil
+	})
+	if err != nil {
+		res.Add(result.Diagnostic{
+			Module:   "rule-lint",
+			Code:     "RL000",
+			Severity: result.Error,
+			Message:  fmt.Sprintf("walking directory: %s", err),
+			Path:     dir,
+		})
 	}
 
 	return res
-}
-
-// isRealmFile detects realm.json files by checking for a "realm" top-level key.
-func isRealmFile(data []byte) bool {
-	var probe struct {
-		Realm *json.RawMessage `json:"realm"`
-	}
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return false
-	}
-	return probe.Realm != nil
 }
 
 func outputText(w interface{ Write([]byte) (int, error) }, res *result.Result) {
@@ -175,7 +180,11 @@ func outputText(w interface{ Write([]byte) (int, error) }, res *result.Result) {
 	}
 
 	if errors == 0 && warnings == 0 {
-		writeln(w, brandStyle.Render("No issues found"))
+		if infos > 0 {
+			writeln(w, descStyle.Render("No errors or warnings found"))
+		} else {
+			writeln(w, brandStyle.Render("No issues found"))
+		}
 		return
 	}
 

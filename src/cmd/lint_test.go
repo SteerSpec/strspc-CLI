@@ -73,7 +73,7 @@ func TestLintSingleFileValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	testutil.AssertContains(t, output, "No issues")
+	testutil.AssertContains(t, output, "No errors or warnings")
 }
 
 func TestLintSingleFileInvalid(t *testing.T) {
@@ -98,7 +98,7 @@ func TestLintDirectoryValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	testutil.AssertContains(t, output, "No issues")
+	testutil.AssertContains(t, output, "No errors or warnings")
 }
 
 func TestLintDirectoryInvalid(t *testing.T) {
@@ -236,5 +236,5 @@ func TestLintSkipsRealmJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	testutil.AssertContains(t, output, "No issues")
+	testutil.AssertContains(t, output, "No errors or warnings")
 }
