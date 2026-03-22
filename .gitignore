@@ -9,3 +9,6 @@ coverage.out
 
 # Beads credential key
 .beads/.beads-credential-key
+
+# Playwright MCP
+.playwright-mcp/
