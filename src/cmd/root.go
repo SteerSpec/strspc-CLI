@@ -30,6 +30,7 @@ func NewRootCmd() *cobra.Command {
 		Long:  "SteerSpec CLI — manage steering specifications from the command line.",
 	}
 	cmd.AddCommand(newVersionCmd())
+	cmd.AddCommand(newRenderCmd())
 	cmd.SetHelpFunc(customHelp)
 	return cmd
 }

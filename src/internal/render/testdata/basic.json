@@ -1,0 +1,45 @@
+{
+  "$schema": "https://steerspec.dev/schemas/entity/v1.json",
+  "entity": {
+    "id": "TST",
+    "title": "Test Entity",
+    "description": "A test entity for unit tests."
+  },
+  "rule_set": {
+    "version": "0.1.0",
+    "timestamp": "2026-03-21T00:00:00Z",
+    "hash": "blake3:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+  },
+  "rules": [
+    {
+      "id": "TST-001",
+      "revision": 0,
+      "state": "D",
+      "body": "MUST be used for testing purposes only.",
+      "added_by": "@tester",
+      "added_at": "2026-03-21",
+      "supersedes": null
+    },
+    {
+      "id": "TST-002",
+      "revision": 1,
+      "state": "P",
+      "body": "MAY include additional test data.",
+      "added_by": "@tester",
+      "added_at": "2026-03-21",
+      "supersedes": null
+    }
+  ],
+  "sub_entities": [],
+  "notes": [
+    {
+      "id": "TST-001/01",
+      "rule_ref": "TST-001",
+      "type": "rationale",
+      "content": "Testing is essential for quality assurance.",
+      "added_by": "@tester",
+      "added_at": "2026-03-21",
+      "revision": 0
+    }
+  ]
+}

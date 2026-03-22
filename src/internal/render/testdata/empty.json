@@ -1,0 +1,15 @@
+{
+  "$schema": "https://steerspec.dev/schemas/entity/v1.json",
+  "entity": {
+    "id": "EMP",
+    "title": "Empty Entity"
+  },
+  "rule_set": {
+    "version": "0.0.1",
+    "timestamp": "2026-03-21T00:00:00Z",
+    "hash": null
+  },
+  "rules": [],
+  "sub_entities": [],
+  "notes": []
+}
