@@ -1,0 +1,242 @@
+package cmd
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/realmlint"
+	"github.com/SteerSpec/strspc-manager/src/result"
+)
+
+// setupRealmValidateTest overrides newRealmValidator to skip schema validation
+// (RM002) and entity linting (RM005) so tests focus on structural checks
+// without needing network access.
+func setupRealmValidateTest(t *testing.T) {
+	t.Helper()
+	original := newRealmValidator
+	newRealmValidator = func(strict bool) *realmlint.RealmLinter {
+		return realmlint.New(realmlint.WithStrict(strict))
+	}
+	t.Cleanup(func() { newRealmValidator = original })
+}
+
+const validRealmJSON = `{
+  "$schema": "./_schema/realm.v1.schema.json",
+  "realm": {
+    "id": "dev.steerspec.test",
+    "title": "Test Realm",
+    "version": "0.1.0"
+  },
+  "dependencies": [],
+  "rule_identifier_format": null
+}`
+
+const invalidRealmIDJSON = `{
+  "$schema": "./_schema/realm.v1.schema.json",
+  "realm": {
+    "id": "INVALID!",
+    "title": "Bad Realm",
+    "version": "0.1.0"
+  },
+  "dependencies": []
+}`
+
+// setupValidRealm creates a minimal valid realm directory structure.
+func setupValidRealm(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, "_schema"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(validRealmJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Minimal entity schema stub.
+	if err := os.WriteFile(filepath.Join(dir, "_schema", "entity.v1.schema.json"), []byte(`{"$id": "entity-v1"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRealmValidateValid(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, output, "No errors or warnings")
+}
+
+func TestRealmValidateInvalid(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	// No realm.json — RM001 should fire.
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir)
+	if err == nil {
+		t.Fatal("expected error for missing realm.json, got nil")
+	}
+	testutil.AssertContains(t, err.Error(), "error(s)")
+}
+
+func TestRealmValidateDefaultDir(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+
+	// Create rules/ subdirectory with valid realm.
+	rulesDir := filepath.Join(dir, "rules")
+	setupValidRealm(t, rulesDir)
+
+	// Change to dir so default ./rules/ resolves.
+	origWd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+	_ = os.Chdir(dir)
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, output, "No errors or warnings")
+}
+
+func TestRealmValidateJSONOutput(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	// No realm.json — produces errors.
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir, "--json")
+	if err == nil {
+		t.Fatal("expected error for invalid realm with --json, got nil")
+	}
+
+	var diags []result.Diagnostic
+	if jsonErr := json.Unmarshal([]byte(output), &diags); jsonErr != nil {
+		t.Fatalf("output is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+	if len(diags) == 0 {
+		t.Fatal("expected at least one diagnostic")
+	}
+
+	found := false
+	for _, d := range diags {
+		if d.Code == "RM001" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected RM001 diagnostic in JSON output")
+	}
+}
+
+func TestRealmValidateJSONOutputValid(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir, "--json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var diags []result.Diagnostic
+	if jsonErr := json.Unmarshal([]byte(output), &diags); jsonErr != nil {
+		t.Fatalf("output is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+}
+
+func TestRealmValidateNoSchemaDir(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	// realm.json but no _schema/ → RM003.
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(validRealmJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir)
+	if err == nil {
+		t.Fatal("expected error for missing _schema/, got nil")
+	}
+	testutil.AssertContains(t, output, "RM003")
+}
+
+func TestRealmValidateInvalidRealmID(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "_schema"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(invalidRealmIDJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "_schema", "entity.v1.schema.json"), []byte(`{"$id": "entity-v1"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir)
+	if err == nil {
+		t.Fatal("expected error for invalid realm ID, got nil")
+	}
+	testutil.AssertContains(t, output, "RM007")
+}
+
+func TestRealmValidateDuplicateEUID(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+
+	// Two entity files with the same EUID → RM006.
+	entityJSON := `{
+  "entity": {"id": "DUP", "title": "Duplicate"},
+  "rule_set": {"version": "1.0.0", "timestamp": "2026-01-01T00:00:00Z", "hash": null},
+  "rules": [],
+  "notes": []
+}`
+	if err := os.WriteFile(filepath.Join(dir, "DUP1.json"), []byte(entityJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "DUP2.json"), []byte(entityJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir)
+	if err == nil {
+		t.Fatal("expected error for duplicate EUID, got nil")
+	}
+	testutil.AssertContains(t, output, "RM006")
+}
+
+func TestRealmValidateStrict(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+
+	// Without --strict: should pass (info diagnostics only).
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir)
+	if err != nil {
+		t.Fatalf("unexpected error without --strict: %v", err)
+	}
+
+	// With --strict: info diagnostics about skipped schema/entity checks
+	// remain as info (not promoted), so this should still pass.
+	// The strict flag promotes warnings to errors — we need a scenario
+	// that produces a warning. RM006 duplicate EUID is always an error.
+	// For now, verify --strict doesn't break valid realms.
+	_, err = testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir, "--strict")
+	if err != nil {
+		t.Fatalf("unexpected error with --strict on valid realm: %v", err)
+	}
+}
+
+func TestRealmValidateHelp(t *testing.T) {
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", "--help")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, output, "--json")
+	testutil.AssertContains(t, output, "--strict")
+}
