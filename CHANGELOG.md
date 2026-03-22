@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.2.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.1.0...v1.2.0) (2026-03-22)
+
+
+### Features
+
+* **render:** fix schema validation for realm files and add --json flag ([acddd87](https://github.com/SteerSpec/strspc-CLI/commit/acddd87f52b01b4b8691c50313d4d256ae136870))
+* **render:** fix schema validation for realm files and add --json flag ([7e629ae](https://github.com/SteerSpec/strspc-CLI/commit/7e629aeb60b612ed9b195dfd4564bbc95506afc5)), closes [#18](https://github.com/SteerSpec/strspc-CLI/issues/18)
+
+
+### Bug Fixes
+
+* **render:** address PR review feedback ([7b2b6d4](https://github.com/SteerSpec/strspc-CLI/commit/7b2b6d4394232f1945aa1f15cbcdbf06fd98eb5f))
+* **render:** address round 2 PR review feedback ([3736041](https://github.com/SteerSpec/strspc-CLI/commit/3736041a196973542b964962035c76486c58c436))
+* **render:** address round 3 PR review feedback ([75fcdb8](https://github.com/SteerSpec/strspc-CLI/commit/75fcdb86d13cf5d2074222aadeb47f3dccc6fa51))
+
+
+### Documentation
+
+* overhaul README with install, usage, and architecture ([127800b](https://github.com/SteerSpec/strspc-CLI/commit/127800bff88059d669c176d9fd969e8c457121e7))
+
 ## [1.1.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.0.0...v1.1.0) (2026-03-22)
 
 
