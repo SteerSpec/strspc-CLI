@@ -232,9 +232,17 @@ func TestLintSkipsRealmJSON(t *testing.T) {
 	realmJSON := `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "test", "title": "Test", "version": "0.1.0"}, "dependencies": []}`
 	writeEntityFile(t, dir, "realm.json", realmJSON)
 
+	// Without --cross-ref.
 	output, err := testutil.ExecuteCommand(NewRootCmd(), "lint", dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, output, "No errors or warnings")
+
+	// With --cross-ref: LintDir also skips realm.json internally.
+	output, err = testutil.ExecuteCommand(NewRootCmd(), "lint", dir, "--cross-ref")
+	if err != nil {
+		t.Fatalf("unexpected error with --cross-ref: %v", err)
 	}
 	testutil.AssertContains(t, output, "No errors or warnings")
 }

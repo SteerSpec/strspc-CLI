@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -163,8 +164,8 @@ func lintDirPerFile(linter *rulelint.Linter, dir string) *result.Result {
 	return res
 }
 
-func outputText(w interface{ Write([]byte) (int, error) }, res *result.Result) {
-	var errors, warnings, infos int
+func outputText(w io.Writer, res *result.Result) {
+	var errors, warnings int
 	for _, d := range res.Diagnostics {
 		switch d.Severity {
 		case result.Error:
@@ -174,17 +175,12 @@ func outputText(w interface{ Write([]byte) (int, error) }, res *result.Result) {
 			warnings++
 			writeln(w, descStyle.Render(d.String()))
 		case result.Info:
-			infos++
 			writeln(w, descStyle.Render(d.String()))
 		}
 	}
 
 	if errors == 0 && warnings == 0 {
-		if infos > 0 {
-			writeln(w, descStyle.Render("No errors or warnings found"))
-		} else {
-			writeln(w, brandStyle.Render("No issues found"))
-		}
+		writeln(w, brandStyle.Render("No errors or warnings found"))
 		return
 	}
 
@@ -197,7 +193,7 @@ func outputText(w interface{ Write([]byte) (int, error) }, res *result.Result) {
 	}
 }
 
-func outputJSON(w interface{ Write([]byte) (int, error) }, res *result.Result) error {
+func outputJSON(w io.Writer, res *result.Result) error {
 	diags := res.Diagnostics
 	if diags == nil {
 		diags = []result.Diagnostic{}
