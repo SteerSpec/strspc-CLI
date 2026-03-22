@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.5.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.4.0...v1.5.0) (2026-03-22)
+
+
+### Features
+
+* **lint:** add strspc lint command wrapping rulelint ([ec8bf7e](https://github.com/SteerSpec/strspc-CLI/commit/ec8bf7ecbf9cd41b417f67fa6f6b0a74082d2a2c))
+* **lint:** add strspc lint command wrapping rulelint ([7d125ba](https://github.com/SteerSpec/strspc-CLI/commit/7d125ba7c123cd68284aeff67a12642bc17bd941)), closes [#14](https://github.com/SteerSpec/strspc-CLI/issues/14)
+
+
+### Bug Fixes
+
+* **lint:** address PR review comments ([65df826](https://github.com/SteerSpec/strspc-CLI/commit/65df826925f2f7f22644ae228752f7d8c4e82f64))
+* **lint:** address second round of PR review comments ([5f12561](https://github.com/SteerSpec/strspc-CLI/commit/5f125619c5b958ef3381498c0e5cce9950e96217))
+* **lint:** error when directory contains no entity files ([318727d](https://github.com/SteerSpec/strspc-CLI/commit/318727d0d32094fa9b59869ec5c1fdfe2fd6387d))
+
 ## [1.4.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.3.0...v1.4.0) (2026-03-22)
 
 
