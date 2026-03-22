@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.2.0...v1.2.1) (2026-03-22)
+
+
+### Bug Fixes
+
+* **ci:** use PAT in release-please to trigger GoReleaser ([2248dcd](https://github.com/SteerSpec/strspc-CLI/commit/2248dcddb5cb99480fd0dacfce288b43f4e08017))
+* **ci:** use PAT in release-please to trigger GoReleaser ([83850c8](https://github.com/SteerSpec/strspc-CLI/commit/83850c8d84d2fce152c271b4ccfd4f083193e2fe)), closes [#21](https://github.com/SteerSpec/strspc-CLI/issues/21)
+
 ## [1.2.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.1.0...v1.2.0) (2026-03-22)
 
 
