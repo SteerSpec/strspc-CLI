@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.2.2...v1.3.0) (2026-03-22)
+
+
+### Features
+
+* implement strspc init and strspc realm init commands ([9a1480e](https://github.com/SteerSpec/strspc-CLI/commit/9a1480e49978d81a74fb1b1b02527e7f8d158ec3))
+* **init:** implement strspc init command ([bbbd362](https://github.com/SteerSpec/strspc-CLI/commit/bbbd36263d52eeb6a84c851beb51e4dff1c471f2)), closes [#4](https://github.com/SteerSpec/strspc-CLI/issues/4)
+* **realm:** implement strspc realm init command ([095cd77](https://github.com/SteerSpec/strspc-CLI/commit/095cd77447fefcfc80987bc9a2bdd5fb9f232c4c)), closes [#9](https://github.com/SteerSpec/strspc-CLI/issues/9)
+
+
+### Bug Fixes
+
+* address PR [#28](https://github.com/SteerSpec/strspc-CLI/issues/28) review comments ([bdf2f16](https://github.com/SteerSpec/strspc-CLI/commit/bdf2f163a644259a1c353039edee37f2a2a94738))
+
 ## [1.2.2](https://github.com/SteerSpec/strspc-CLI/compare/v1.2.1...v1.2.2) (2026-03-22)
 
 
