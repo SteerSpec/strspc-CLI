@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.1.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.0.0...v1.1.0) (2026-03-22)
+
+
+### Features
+
+* **render:** implement rule-render module (JSON → Markdown) ([dde7067](https://github.com/SteerSpec/strspc-CLI/commit/dde7067793609f504feab52e49f59230603f5401))
+* **render:** implement rule-render module (JSON → Markdown) ([1e8e8b7](https://github.com/SteerSpec/strspc-CLI/commit/1e8e8b760dcdfd88bc99b146dbdce4c5dbf4dc12)), closes [#1](https://github.com/SteerSpec/strspc-CLI/issues/1)
+
+
+### Bug Fixes
+
+* **render:** address PR review feedback ([f986674](https://github.com/SteerSpec/strspc-CLI/commit/f9866744f1808f5c59c7757a07345da7f6aac93d))
+* **render:** address round 2 PR review feedback ([f5d9dca](https://github.com/SteerSpec/strspc-CLI/commit/f5d9dca3c32015233e86e345288874487d419f32))
+* **render:** skip underscore-prefixed directories in directory walk ([35f9cc3](https://github.com/SteerSpec/strspc-CLI/commit/35f9cc3ed5dfccff54ede456174059ee69f9ebe3))
+
 ## 1.0.0 (2026-03-21)
 
 
