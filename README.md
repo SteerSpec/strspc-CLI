@@ -118,7 +118,7 @@ The CLI consumes rules and schemas published at [steerspec.dev](https://steerspe
 make build          # build binary → ./strspc
 make test           # run tests with -race
 make lint           # golangci-lint
-make fmt            # gofumpt formatting
+make fmt            # formatting via golangci-lint fmt
 make install-hooks  # install conventional commits git hook
 ```
 

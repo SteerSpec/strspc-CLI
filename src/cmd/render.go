@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,8 +25,8 @@ func newRenderCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "render [path]",
-		Short: "Render entity JSON to Markdown",
-		Long:  "Convert SteerSpec entity JSON files to Markdown (or other formats). Accepts a single file or a directory.",
+		Short: "Render entity JSON to Markdown or JSON",
+		Long:  "Convert SteerSpec entity JSON files to Markdown or normalized JSON. Accepts a single file or a directory.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if jsonOutput && (cmd.Flags().Changed("format") || templatePath != "") {
@@ -183,10 +184,10 @@ func renderDirectory(cmd *cobra.Command, r render.Renderer, dir, outputDir, sche
 	}
 
 	if seen == 0 {
-		return fmt.Errorf("no JSON files found in %s", dir)
+		return fmt.Errorf("no entity JSON files found in %s", dir)
 	}
 	if rendered == 0 {
-		return fmt.Errorf("all %d JSON file(s) in %s were skipped (see warnings above)", seen, dir)
+		return fmt.Errorf("all %d entity JSON file(s) in %s were skipped (see warnings above)", seen, dir)
 	}
 
 	_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Rendered %d of %d file(s)\n", rendered, seen)
@@ -225,6 +226,13 @@ func renderFileJSON(cmd *cobra.Command, path, outputDir, schemaVersion string) e
 func renderDirectoryJSON(cmd *cobra.Command, dir, outputDir, schemaVersion string) error {
 	if outputDir == "" {
 		return fmt.Errorf("--json with directory input requires -o/--output to avoid overwriting source files")
+	}
+
+	// Prevent writing JSON output into the input directory tree.
+	absDir, _ := filepath.Abs(dir)
+	absOut, _ := filepath.Abs(outputDir)
+	if strings.HasPrefix(absOut, absDir+string(filepath.Separator)) || absOut == absDir {
+		return fmt.Errorf("--json output directory %q must not be inside input directory %q", outputDir, dir)
 	}
 
 	errW := cmd.ErrOrStderr()
@@ -275,12 +283,7 @@ func renderDirectoryJSON(cmd *cobra.Command, dir, outputDir, schemaVersion strin
 			return fmt.Errorf("computing relative path: %w", relErr)
 		}
 
-		target := outputDir
-		if target == "" {
-			target = filepath.Dir(path)
-		} else {
-			target = filepath.Join(target, filepath.Dir(relPath))
-		}
+		target := filepath.Join(outputDir, filepath.Dir(relPath))
 
 		if mkErr := os.MkdirAll(target, 0o755); mkErr != nil {
 			return fmt.Errorf("creating output directory: %w", mkErr)
@@ -312,7 +315,7 @@ func renderDirectoryJSON(cmd *cobra.Command, dir, outputDir, schemaVersion strin
 }
 
 // errNotEntity is returned when a file's $schema does not reference an entity schema.
-var errNotEntity = fmt.Errorf("not an entity file")
+var errNotEntity = errors.New("not an entity file")
 
 func validateSchema(ef *entity.File, version string) error {
 	if !isEntitySchema(ef.Schema, version) {
@@ -339,7 +342,19 @@ func isEntitySchema(schema, version string) bool {
 }
 
 // isEntitySchemaAnyVersion checks whether the $schema references any entity schema version.
+// Matches patterns like "entity.v1.schema.json" (relative) or ".../entity/v1.json" (URL).
 func isEntitySchemaAnyVersion(schema string) bool {
-	return strings.Contains(schema, "entity.") && strings.HasSuffix(schema, ".schema.json") ||
-		strings.Contains(schema, "entity/") && strings.HasSuffix(schema, ".json")
+	if schema == "" {
+		return false
+	}
+	base := filepath.Base(schema)
+	// Relative style: entity.v<N>.schema.json
+	if strings.HasPrefix(base, "entity.v") && strings.HasSuffix(base, ".schema.json") {
+		return true
+	}
+	// URL style: v<N>.json under an /entity/ path segment
+	if strings.HasPrefix(base, "v") && strings.HasSuffix(base, ".json") && strings.Contains(schema, "/entity/") {
+		return true
+	}
+	return false
 }
