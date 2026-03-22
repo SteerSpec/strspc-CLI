@@ -13,15 +13,16 @@ import (
 )
 
 // setupSchemaServer starts a test HTTP server that serves fake schema files
-// and sets schemaBaseURL to point to it. Returns a cleanup function.
+// and sets schemaBaseURL to point to it, registering cleanup via t.Cleanup.
 func setupSchemaServer(t *testing.T) {
 	t.Helper()
 	mux := http.NewServeMux()
 	for _, sf := range schemaFiles {
-		content := fmt.Sprintf(`{"$id": "test-%s"}`, sf.local)
-		mux.HandleFunc("/"+sf.remote, func(w http.ResponseWriter, _ *http.Request) {
+		contentCopy := fmt.Sprintf(`{"$id": "test-%s"}`, sf.local)
+		remoteCopy := sf.remote
+		mux.HandleFunc("/"+remoteCopy, func(w http.ResponseWriter, _ *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(content))
+			_, _ = w.Write([]byte(contentCopy))
 		})
 	}
 	server := httptest.NewServer(mux)
@@ -104,6 +105,18 @@ func TestRealmInitDefaultID(t *testing.T) {
 	}
 }
 
+func TestRealmInitInvalidID(t *testing.T) {
+	setupSchemaServer(t)
+	dir := t.TempDir()
+	target := filepath.Join(dir, "rules")
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "INVALID ID!")
+	if err == nil {
+		t.Fatal("expected error for invalid realm ID, got nil")
+	}
+	testutil.AssertContains(t, err.Error(), "invalid realm ID")
+}
+
 func TestRealmInitAlreadyExists(t *testing.T) {
 	setupSchemaServer(t)
 	dir := t.TempDir()
@@ -167,6 +180,62 @@ func TestRealmInitSchemaFetchError(t *testing.T) {
 		t.Fatal("expected error for schema fetch failure, got nil")
 	}
 	testutil.AssertContains(t, err.Error(), "fetching schema")
+}
+
+func TestRealmInitDetectsConfig(t *testing.T) {
+	setupSchemaServer(t)
+	dir := t.TempDir()
+
+	// Create .strspc/config.yaml without referencing the realm dir.
+	strspcDir := filepath.Join(dir, ".strspc")
+	if err := os.MkdirAll(strspcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(strspcDir, "config.yaml"), []byte("rules: []\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	target := filepath.Join(dir, "rules")
+
+	// Run from inside dir so printConfigSuggestion finds .strspc/config.yaml.
+	origWd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+	_ = os.Chdir(dir)
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	testutil.AssertContains(t, output, "Tip: Add this source")
+}
+
+func TestRealmInitConfigAlreadyReferenced(t *testing.T) {
+	setupSchemaServer(t)
+	dir := t.TempDir()
+
+	target := filepath.Join(dir, "rules")
+
+	// Create .strspc/config.yaml that already references the realm dir.
+	strspcDir := filepath.Join(dir, ".strspc")
+	if err := os.MkdirAll(strspcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configContent := fmt.Sprintf("rules:\n  - source: %s\n", target)
+	if err := os.WriteFile(filepath.Join(strspcDir, "config.yaml"), []byte(configContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	origWd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+	_ = os.Chdir(dir)
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	testutil.AssertNotContains(t, output, "Tip: Add this source")
 }
 
 func TestRealmInitHelp(t *testing.T) {

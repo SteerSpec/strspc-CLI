@@ -16,7 +16,7 @@ func TestInitCreatesConfig(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	testutil.AssertContains(t, output, "Initialized SteerSpec")
+	testutil.AssertContains(t, output, "Initialized SteerSpec in "+filepath.Join(dir, ".strspc"))
 
 	configPath := filepath.Join(dir, ".strspc", "config.yaml")
 	data, err := os.ReadFile(configPath)

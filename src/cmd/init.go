@@ -72,10 +72,12 @@ func newInitCmd() *cobra.Command {
 				return fmt.Errorf("writing config.yaml: %w", err)
 			}
 
-			appendGitignore(targetDir)
+			if err := appendGitignore(targetDir); err != nil {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not update .gitignore: %v\n", err)
+			}
 
 			w := cmd.OutOrStdout()
-			writeln(w, brandStyle.Render("Initialized SteerSpec in .strspc/"))
+			writeln(w, brandStyle.Render(fmt.Sprintf("Initialized SteerSpec in %s", filepath.Join(targetDir, ".strspc"))))
 			writeln(w)
 			writeln(w, descStyle.Render("Next steps:"))
 			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Edit .strspc/config.yaml to configure rule sources"))
@@ -94,29 +96,35 @@ func newInitCmd() *cobra.Command {
 }
 
 // appendGitignore adds .strspc/cache.db to .gitignore if the file exists
-// and doesn't already contain the entry.
-func appendGitignore(dir string) {
+// and doesn't already contain the entry. Returns nil if .gitignore doesn't
+// exist (nothing to do) or if the entry was added successfully.
+func appendGitignore(dir string) error {
 	gitignorePath := filepath.Join(dir, ".gitignore")
 
 	data, err := os.ReadFile(gitignorePath)
 	if err != nil {
-		return // no .gitignore — nothing to do
+		return nil // no .gitignore — nothing to do
 	}
 
 	entry := ".strspc/cache.db"
 	if strings.Contains(string(data), entry) {
-		return // already present
+		return nil // already present
 	}
 
 	f, err := os.OpenFile(gitignorePath, os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
-		return
+		return fmt.Errorf("opening .gitignore: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 
 	// Ensure we start on a new line.
 	if len(data) > 0 && data[len(data)-1] != '\n' {
-		_, _ = f.WriteString("\n")
+		if _, err := f.WriteString("\n"); err != nil {
+			return fmt.Errorf("writing to .gitignore: %w", err)
+		}
 	}
-	_, _ = f.WriteString(entry + "\n")
+	if _, err := f.WriteString(entry + "\n"); err != nil {
+		return fmt.Errorf("writing to .gitignore: %w", err)
+	}
+	return nil
 }

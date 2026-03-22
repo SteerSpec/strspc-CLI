@@ -7,12 +7,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
 
-// schemaBaseURL is the base URL for fetching schemas. Exported for testing.
+// schemaBaseURL is the base URL for fetching schemas. Package-level so tests can override it.
 var schemaBaseURL = "https://steerspec.dev/schemas"
 
 // schemaFiles maps remote schema paths to local filenames under _schema/.
@@ -39,6 +41,10 @@ type realmMeta struct {
 	Version string `json:"version"`
 }
 
+// realmIDPattern validates realm IDs: lowercase alphanumeric, dots, and hyphens.
+// Must not start or end with a dot or hyphen.
+var realmIDPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9.\-]*[a-z0-9])?$`)
+
 func newRealmInitCmd() *cobra.Command {
 	var (
 		realmID string
@@ -60,13 +66,21 @@ func newRealmInitCmd() *cobra.Command {
 				}
 			}
 
-			// Default realm ID to directory name.
+			// Default realm ID to directory name (no validation for defaults).
+			idExplicit := cmd.Flags().Changed("id")
 			if realmID == "" {
 				abs, err := filepath.Abs(dir)
 				if err != nil {
 					return fmt.Errorf("resolving directory path: %w", err)
 				}
 				realmID = filepath.Base(abs)
+			}
+
+			// Validate explicitly provided realm IDs.
+			if idExplicit {
+				if !realmIDPattern.MatchString(realmID) {
+					return fmt.Errorf("invalid realm ID %q: must be lowercase alphanumeric with dots and hyphens (e.g. com.acme.myproject)", realmID)
+				}
 			}
 
 			// Create target directory.
@@ -106,8 +120,9 @@ func newRealmInitCmd() *cobra.Command {
 			}
 
 			// Print success.
+			cleanDir := filepath.Clean(dir)
 			w := cmd.OutOrStdout()
-			writeln(w, brandStyle.Render(fmt.Sprintf("Initialized Realm %q in %s/", realmID, dir)))
+			writeln(w, brandStyle.Render(fmt.Sprintf("Initialized Realm %q in %s", realmID, cleanDir)))
 			writeln(w)
 			writeln(w, descStyle.Render("Next steps:"))
 			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Add entities: ")+cmdStyle.Render("strspc realm add MYENTITY --title \"My Entity\""))
@@ -116,7 +131,7 @@ func newRealmInitCmd() *cobra.Command {
 			writeln(w)
 
 			// Suggest linking to .strspc/config.yaml if it exists.
-			printConfigSuggestion(w, dir)
+			printConfigSuggestion(w, cleanDir)
 
 			writeln(w, descStyle.Render("Docs: https://steerspec.dev/docs/realm"))
 
@@ -132,6 +147,8 @@ func newRealmInitCmd() *cobra.Command {
 	return cmd
 }
 
+var schemaHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
 func fetchSchemas(schemaDir string) error {
 	for _, sf := range schemaFiles {
 		if err := fetchSchema(schemaDir, sf.remote, sf.local); err != nil {
@@ -145,7 +162,7 @@ func fetchSchema(schemaDir, remote, local string) error {
 	url := schemaBaseURL + "/" + remote
 	outPath := filepath.Join(schemaDir, local)
 
-	resp, err := http.Get(url) //nolint:gosec // URL is a compile-time constant
+	resp, err := schemaHTTPClient.Get(url) //nolint:gosec // URL is a compile-time constant
 	if err != nil {
 		return fmt.Errorf("fetching schema %s: %w", remote, err)
 	}
@@ -164,6 +181,8 @@ func fetchSchema(schemaDir, remote, local string) error {
 }
 
 func printConfigSuggestion(w io.Writer, realmDir string) {
+	realmDir = filepath.Clean(realmDir)
+
 	configPath := filepath.Join(".strspc", "config.yaml")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -175,7 +194,7 @@ func printConfigSuggestion(w io.Writer, realmDir string) {
 	}
 
 	writeln(w, descStyle.Render("Tip: Add this source to .strspc/config.yaml:"))
-	writeln(w, cmdStyle.Render(fmt.Sprintf("  - source: %s/", realmDir)))
+	writeln(w, cmdStyle.Render(fmt.Sprintf("  - source: %s", realmDir)))
 	writeln(w, cmdStyle.Render("    scope: local"))
 	writeln(w)
 }
