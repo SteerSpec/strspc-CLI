@@ -1,5 +1,5 @@
 {
-  "$schema": "https://steerspec.dev/schemas/entity/v1.json",
+  "$schema": "./_schema/entity.v1.schema.json",
   "entity": {
     "id": "PAR",
     "title": "Parent Entity",
@@ -23,7 +23,7 @@
   ],
   "sub_entities": [
     {
-      "$schema": "https://steerspec.dev/schemas/entity/v1.json",
+      "$schema": "./_schema/entity.v1.schema.json",
       "entity": {
         "id": "CHILD",
         "title": "Child Entity",

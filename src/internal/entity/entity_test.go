@@ -10,8 +10,8 @@ func TestLoadValidFile(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if f.Schema != "https://steerspec.dev/schemas/entity/v1.json" {
-		t.Errorf("schema = %q, want steerspec.dev schema", f.Schema)
+	if f.Schema != "./_schema/entity.v1.schema.json" {
+		t.Errorf("schema = %q, want entity.v1.schema.json", f.Schema)
 	}
 	if f.Entity.ID != "TST" {
 		t.Errorf("entity.id = %q, want TST", f.Entity.ID)
