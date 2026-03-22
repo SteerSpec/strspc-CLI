@@ -103,6 +103,7 @@ func newLintCmd() *cobra.Command {
 // directories (e.g. _schema/) and files, as well as realm.json.
 func lintDirPerFile(linter *rulelint.Linter, dir string) *result.Result {
 	res := &result.Result{}
+	seen := 0
 
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -128,6 +129,7 @@ func lintDirPerFile(linter *rulelint.Linter, dir string) *result.Result {
 			return nil
 		}
 
+		seen++
 		data, readErr := os.ReadFile(path)
 		if readErr != nil {
 			res.Add(result.Diagnostic{
@@ -157,6 +159,16 @@ func lintDirPerFile(linter *rulelint.Linter, dir string) *result.Result {
 			Code:     "RL000",
 			Severity: result.Error,
 			Message:  fmt.Sprintf("walking directory: %s", err),
+			Path:     dir,
+		})
+	}
+
+	if seen == 0 {
+		res.Add(result.Diagnostic{
+			Module:   "rule-lint",
+			Code:     "RL000",
+			Severity: result.Error,
+			Message:  fmt.Sprintf("no entity JSON files found in %s", dir),
 			Path:     dir,
 		})
 	}

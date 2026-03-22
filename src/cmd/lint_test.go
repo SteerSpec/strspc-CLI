@@ -204,6 +204,17 @@ func TestLintNoPath(t *testing.T) {
 	}
 }
 
+func TestLintEmptyDirectory(t *testing.T) {
+	setupLintTest(t)
+	dir := t.TempDir()
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "lint", dir)
+	if err == nil {
+		t.Fatal("expected error for empty directory, got nil")
+	}
+	testutil.AssertContains(t, err.Error(), "error(s)")
+}
+
 func TestLintNonExistent(t *testing.T) {
 	setupLintTest(t)
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "lint", "/nonexistent/path")
