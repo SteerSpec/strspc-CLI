@@ -257,6 +257,30 @@ func TestRealmAddSubrealmInvalidID(t *testing.T) {
 	testutil.AssertContains(t, err.Error(), "invalid realm ID")
 }
 
+func TestRealmAddSubrealmErrorWhenParentSchemaIsFile(t *testing.T) {
+	parentDir := makeParentRealm(t, "com.test.parent", nil)
+
+	// Replace _schema/ directory with a regular file.
+	schemaPath := filepath.Join(parentDir, "_schema")
+	if err := os.RemoveAll(schemaPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(schemaPath, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	childDir := filepath.Join(t.TempDir(), "child")
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "add-subrealm",
+		"--id", "com.test.parent.child",
+		"--dir", childDir,
+		"--parent-dir", parentDir,
+	)
+	if err == nil {
+		t.Fatal("expected error when parent _schema/ is a file, got nil")
+	}
+	testutil.AssertContains(t, err.Error(), "not a directory")
+}
+
 func TestRealmAddSubrealmFallsBackToFetchWhenNoParentSchema(t *testing.T) {
 	setupSchemaServer(t)
 

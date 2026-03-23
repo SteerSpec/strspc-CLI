@@ -77,7 +77,10 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 			if statErr != nil && !os.IsNotExist(statErr) {
 				return fmt.Errorf("accessing parent _schema/: %w", statErr)
 			}
-			if statErr == nil && info.IsDir() {
+			if statErr == nil && !info.IsDir() {
+				return fmt.Errorf("parent _schema/ exists but is not a directory: %s", parentSchemaDir)
+			}
+			if statErr == nil {
 				if err := copySchemas(parentSchemaDir, schemaDir); err != nil {
 					return err
 				}
