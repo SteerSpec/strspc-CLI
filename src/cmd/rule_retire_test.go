@@ -17,7 +17,7 @@ func TestRuleRetireImplementedToRetired(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	testutil.AssertContains(t, out, "Retired rule TST-001")
+	testutil.AssertContains(t, out, "Implemented → Retired")
 
 	f := loadEntityFile(t, dir, "TST")
 	if f.Rules[0].State != "R" {
@@ -35,7 +35,7 @@ func TestRuleRetireRetiredToTerminated(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	testutil.AssertContains(t, out, "Terminated rule TST-001")
+	testutil.AssertContains(t, out, "Retired → Terminated")
 
 	f := loadEntityFile(t, dir, "TST")
 	if f.Rules[0].State != "T" {

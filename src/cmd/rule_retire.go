@@ -37,10 +37,13 @@ Examples:
 			entityPath := resolveEntityPath(dir, entityID)
 
 			var oldVersion, version string
-			var newState string
+			var oldState, newState string
 
 			err = loadModifySaveEntity(entityPath, func(f *entity.File) error {
 				oldVersion = f.RuleSet.Version
+				if r := findRule(f, ruleID); r != nil {
+					oldState = r.State
+				}
 				if retireErr := entityops.RetireRule(f, ruleID); retireErr != nil {
 					return retireErr
 				}
@@ -65,7 +68,7 @@ Examples:
 				})
 			}
 
-			writeln(w, brandStyle.Render(fmt.Sprintf("%s rule %s → %s", stateLabel(newState), ruleID, stateLabel(newState))))
+			writeln(w, brandStyle.Render(fmt.Sprintf("%s rule %s: %s → %s", stateLabel(newState), ruleID, stateLabel(oldState), stateLabel(newState))))
 			writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", oldVersion, version)))
 
 			return nil

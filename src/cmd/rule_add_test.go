@@ -49,15 +49,15 @@ func TestRuleAddJSON(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var result map[string]string
+	var result map[string]any
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("failed to parse JSON output: %v\nOutput: %s", err, out)
 	}
 	if result["rule_id"] != "TST-001" {
-		t.Errorf("expected rule_id TST-001, got %s", result["rule_id"])
+		t.Errorf("expected rule_id TST-001, got %v", result["rule_id"])
 	}
 	if result["state"] != "D" {
-		t.Errorf("expected state D, got %s", result["state"])
+		t.Errorf("expected state D, got %v", result["state"])
 	}
 }
 

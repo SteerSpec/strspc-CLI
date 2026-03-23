@@ -54,15 +54,15 @@ func TestRuleSupersedeJSON(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var result map[string]string
+	var result map[string]any
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("failed to parse JSON: %v", err)
 	}
 	if result["rule_id"] != "TST-002" {
-		t.Errorf("expected rule_id TST-002, got %s", result["rule_id"])
+		t.Errorf("expected rule_id TST-002, got %v", result["rule_id"])
 	}
 	if result["supersedes"] != "TST-001" {
-		t.Errorf("expected supersedes TST-001, got %s", result["supersedes"])
+		t.Errorf("expected supersedes TST-001, got %v", result["supersedes"])
 	}
 }
 

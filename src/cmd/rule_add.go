@@ -60,9 +60,10 @@ Examples:
 			w := cmd.OutOrStdout()
 
 			if jsonOut {
-				return writeJSONOutput(w, map[string]string{
+				return writeJSONOutput(w, map[string]any{
 					"rule_id":     newRuleID,
 					"state":       entityops.StateDraft,
+					"revision":    0,
 					"version":     version,
 					"old_version": oldVersion,
 				})
