@@ -36,10 +36,11 @@ Examples:
 
 			entityPath := resolveEntityPath(dir, entityID)
 
-			var version string
+			var oldVersion, version string
 			var newState string
 
 			err = loadModifySaveEntity(entityPath, func(f *entity.File) error {
+				oldVersion = f.RuleSet.Version
 				if abandonErr := entityops.AbandonRule(f, ruleID); abandonErr != nil {
 					return abandonErr
 				}
@@ -57,14 +58,15 @@ Examples:
 
 			if jsonOut {
 				return writeJSONOutput(w, map[string]string{
-					"rule_id": ruleID,
-					"state":   newState,
-					"version": version,
+					"rule_id":     ruleID,
+					"state":       newState,
+					"version":     version,
+					"old_version": oldVersion,
 				})
 			}
 
 			writeln(w, brandStyle.Render(fmt.Sprintf("Abandoned rule %s → %s", ruleID, stateLabel(newState))))
-			writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s", version)))
+			writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", oldVersion, version)))
 
 			return nil
 		},

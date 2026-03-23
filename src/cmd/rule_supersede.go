@@ -47,9 +47,10 @@ Examples:
 			entityPath := resolveEntityPath(dir, entityID)
 
 			var newRuleID string
-			var version string
+			var oldVersion, version string
 
 			err = loadModifySaveEntity(entityPath, func(f *entity.File) error {
+				oldVersion = f.RuleSet.Version
 				var supersedeErr error
 				newRuleID, supersedeErr = entityops.SupersedeRule(f, ruleID, body, addedBy)
 				if supersedeErr != nil {
@@ -66,15 +67,16 @@ Examples:
 
 			if jsonOut {
 				return writeJSONOutput(w, map[string]string{
-					"rule_id":    newRuleID,
-					"state":      entityops.StateDraft,
-					"supersedes": ruleID,
-					"version":    version,
+					"rule_id":     newRuleID,
+					"state":       entityops.StateDraft,
+					"supersedes":  ruleID,
+					"version":     version,
+					"old_version": oldVersion,
 				})
 			}
 
 			writeln(w, brandStyle.Render(fmt.Sprintf("Created rule %s (Draft) — supersedes %s", newRuleID, ruleID)))
-			writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s", version)))
+			writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", oldVersion, version)))
 
 			return nil
 		},
