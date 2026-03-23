@@ -66,6 +66,31 @@ func TestRuleSupersedeJSON(t *testing.T) {
 	}
 }
 
+func TestRuleSupersedeRetired(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "R", "Retired rule", "@alice"))
+
+	root := NewRootCmd()
+	out, err := testutil.ExecuteCommand(root, "rule", "supersede", "TST-001",
+		"--body", "Replacement for retired rule",
+		"--added-by", "@bob",
+		"--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	testutil.AssertContains(t, out, "TST-002")
+	testutil.AssertContains(t, out, "supersedes TST-001")
+
+	f := loadEntityFile(t, dir, "TST")
+	if len(f.Rules) != 2 {
+		t.Fatalf("expected 2 rules, got %d", len(f.Rules))
+	}
+	if f.Rules[1].State != "D" {
+		t.Errorf("expected new rule state D, got %s", f.Rules[1].State)
+	}
+}
+
 func TestRuleSupersedeInvalidState(t *testing.T) {
 	dir := t.TempDir()
 	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft", "@alice"))

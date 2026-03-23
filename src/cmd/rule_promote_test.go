@@ -57,8 +57,8 @@ func TestRulePromoteJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &result); err != nil {
 		t.Fatalf("failed to parse JSON: %v", err)
 	}
-	if result["state"] != "P" {
-		t.Errorf("expected state P, got %s", result["state"])
+	if result["new_state"] != "P" {
+		t.Errorf("expected new_state P, got %s", result["new_state"])
 	}
 }
 

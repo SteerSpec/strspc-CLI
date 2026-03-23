@@ -62,7 +62,7 @@ Examples:
 			if jsonOut {
 				return writeJSONOutput(w, map[string]string{
 					"rule_id":     ruleID,
-					"state":       newState,
+					"new_state":   newState,
 					"old_state":   oldState,
 					"version":     version,
 					"old_version": oldVersion,
