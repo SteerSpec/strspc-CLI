@@ -33,6 +33,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newRenderCmd())
 	cmd.AddCommand(newInitCmd())
 	cmd.AddCommand(newRealmCmd())
+	cmd.AddCommand(newRuleCmd())
 	cmd.AddCommand(newLintCmd())
 	cmd.SetHelpFunc(customHelp)
 	return cmd

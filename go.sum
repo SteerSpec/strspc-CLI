@@ -1,5 +1,5 @@
-github.com/SteerSpec/strspc-manager v1.4.0 h1:Oi1tG/Vuk0p8l7fgLcYT9Fra6yaUa9wG2a/PqhuN9kQ=
-github.com/SteerSpec/strspc-manager v1.4.0/go.mod h1:d9nBCcrIwrHFJRZsuKE7wkFcfXoEvuexifVgJZwc5To=
+github.com/SteerSpec/strspc-manager v1.7.1 h1:uzBVR5X3W21DY4dfRdCse5WmGQHLeKHSL/DhPgjojJE=
+github.com/SteerSpec/strspc-manager v1.7.1/go.mod h1:d9nBCcrIwrHFJRZsuKE7wkFcfXoEvuexifVgJZwc5To=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1/go.mod h1:uYgXzlJ7ZpABp8OJ+exZzJJhRNQ2ASbcXHWsFqH8hp8=
 github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc h1:4pZI35227imm7yK2bGPcfpFEmuY1gc2YSTShr4iJBfs=

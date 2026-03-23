@@ -3,7 +3,7 @@ module github.com/SteerSpec/strspc-CLI
 go 1.26.1
 
 require (
-	github.com/SteerSpec/strspc-manager v1.4.0
+	github.com/SteerSpec/strspc-manager v1.7.1
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
