@@ -17,8 +17,7 @@ func TestRulePromoteDraftToPublished(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	testutil.AssertContains(t, out, "TST-001")
-	testutil.AssertContains(t, out, "Published")
+	testutil.AssertContains(t, out, "Draft → Published")
 
 	f := loadEntityFile(t, dir, "TST")
 	if f.Rules[0].State != "P" {
@@ -36,7 +35,7 @@ func TestRulePromotePublishedToImplemented(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	testutil.AssertContains(t, out, "Implemented")
+	testutil.AssertContains(t, out, "Published → Implemented")
 
 	f := loadEntityFile(t, dir, "TST")
 	if f.Rules[0].State != "I" {

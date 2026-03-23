@@ -63,6 +63,7 @@ Examples:
 				return writeJSONOutput(w, map[string]string{
 					"rule_id":     ruleID,
 					"state":       newState,
+					"old_state":   oldState,
 					"version":     version,
 					"old_version": oldVersion,
 				})

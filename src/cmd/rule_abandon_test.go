@@ -17,7 +17,7 @@ func TestRuleAbandonDraft(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	testutil.AssertContains(t, out, "Abandoned")
+	testutil.AssertContains(t, out, "Draft → Abandoned")
 
 	f := loadEntityFile(t, dir, "TST")
 	if f.Rules[0].State != "A" {
