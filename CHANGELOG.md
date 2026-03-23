@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.9.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.8.1...v1.9.0) (2026-03-23)
+
+
+### Features
+
+* **rule:** add rule lifecycle commands ([47b6c46](https://github.com/SteerSpec/strspc-CLI/commit/47b6c46d5ad0df2af4ac2b15cf7beddf1a9a3525))
+* **rule:** add rule lifecycle commands (add, update, promote, retire, abandon, supersede) ([113e439](https://github.com/SteerSpec/strspc-CLI/commit/113e439451f06cb788a650fd9df53027db189125))
+
+
+### Bug Fixes
+
+* **rule:** add revision to add/supersede JSON, fix retire transition display ([5b7c5f0](https://github.com/SteerSpec/strspc-CLI/commit/5b7c5f0f4a96270ad7ec954a05961916a1e1ca6f))
+* **rule:** show old → new state transition in promote, retire, abandon ([ff76223](https://github.com/SteerSpec/strspc-CLI/commit/ff76223931ff4160078fd1df03add6f4210283e7))
+* **rule:** show version bump transition and fix retire verb ([9c93c7e](https://github.com/SteerSpec/strspc-CLI/commit/9c93c7eb23975552cd46f411a6d3f655b79997df))
+* **rule:** use old_state/new_state in transition JSON, add retired supersede test ([9e1c5ba](https://github.com/SteerSpec/strspc-CLI/commit/9e1c5baeead8f80cdbb2741b930d57a9b4d6c553))
+
 ## [1.8.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.8.0...v1.8.1) (2026-03-23)
 
 
