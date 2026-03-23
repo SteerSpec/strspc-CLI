@@ -268,13 +268,16 @@ func TestRealmAddSubrealmFallsBackToFetchWhenNoParentSchema(t *testing.T) {
 		Dependencies:      []entity.RealmDep{},
 		RuleIdentifierFmt: nil,
 	}
-	data, _ := json.MarshalIndent(realm, "", "  ")
+	data, err := json.MarshalIndent(realm, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(parentDir, "realm.json"), append(data, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	childDir := filepath.Join(t.TempDir(), "child")
-	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "add-subrealm",
+	_, err = testutil.ExecuteCommand(NewRootCmd(), "realm", "add-subrealm",
 		"--id", "com.test.parent.child",
 		"--dir", childDir,
 		"--parent-dir", parentDir,

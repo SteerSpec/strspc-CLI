@@ -73,7 +73,11 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 			}
 
 			parentSchemaDir := filepath.Join(parentDir, "_schema")
-			if info, err := os.Stat(parentSchemaDir); err == nil && info.IsDir() {
+			info, statErr := os.Stat(parentSchemaDir)
+			if statErr != nil && !os.IsNotExist(statErr) {
+				return fmt.Errorf("accessing parent _schema/: %w", statErr)
+			}
+			if statErr == nil && info.IsDir() {
 				if err := copySchemas(parentSchemaDir, schemaDir); err != nil {
 					return err
 				}
@@ -111,7 +115,7 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 			writeln(w)
 			writeln(w, descStyle.Render("Next steps:"))
 			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Add entities: ")+cmdStyle.Render(fmt.Sprintf("strspc realm add MYENTITY --title \"My Entity\" --dir %s", cleanDir)))
-			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Validate: ")+cmdStyle.Render(fmt.Sprintf("strspc realm validate --dir %s", cleanDir)))
+			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Validate: ")+cmdStyle.Render(fmt.Sprintf("strspc realm validate %s", cleanDir)))
 			writeln(w)
 
 			return nil
