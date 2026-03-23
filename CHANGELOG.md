@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.8.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.7.0...v1.8.0) (2026-03-23)
+
+
+### Features
+
+* **realm:** add strspc realm dep add/remove/list ([44cf1c3](https://github.com/SteerSpec/strspc-CLI/commit/44cf1c31e711e086c77e6f5fd4defa7ec9d98e12))
+* **realm:** add strspc realm dep add/remove/list commands ([213b83c](https://github.com/SteerSpec/strspc-CLI/commit/213b83cf504ed0e832ea6f8f697293ccfd3ed9df)), closes [#38](https://github.com/SteerSpec/strspc-CLI/issues/38)
+
+
+### Bug Fixes
+
+* **realm:** address second round of PR review comments ([ce08168](https://github.com/SteerSpec/strspc-CLI/commit/ce08168d916060476a805878ed02e00f3c6c3355))
+* **realm:** improve error handling in realm dep commands ([0399e11](https://github.com/SteerSpec/strspc-CLI/commit/0399e110f1c119b0447a90076b61530797ab71da))
+
 ## [1.7.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.6.0...v1.7.0) (2026-03-23)
 
 
