@@ -20,12 +20,28 @@ type realmFileForWrite struct {
 	RuleIdentifierFormat interface{}       `json:"rule_identifier_format"`
 }
 
+// checkRealmJSON verifies realm.json exists and is a regular file.
+func checkRealmJSON(dir string) (string, error) {
+	realmPath := filepath.Join(dir, "realm.json")
+	info, err := os.Stat(realmPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("not a valid Realm directory: %s (missing realm.json)", dir)
+		}
+		return "", fmt.Errorf("accessing realm.json: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("not a valid Realm directory: %s (realm.json is not a regular file)", dir)
+	}
+	return realmPath, nil
+}
+
 // loadAndWriteRealm is a helper that loads realm.json, applies a mutation
 // to its dependencies, and writes it back.
 func loadAndWriteRealm(realmPath string, mutate func([]entity.RealmDep) ([]entity.RealmDep, error)) error {
 	rf, err := entity.LoadRealm(realmPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("loading realm.json: %w", err)
 	}
 
 	deps, err := mutate(rf.Dependencies)
@@ -49,7 +65,10 @@ func loadAndWriteRealm(realmPath string, mutate func([]entity.RealmDep) ([]entit
 		return fmt.Errorf("marshaling realm.json: %w", err)
 	}
 
-	return os.WriteFile(realmPath, append(data, '\n'), 0o644)
+	if err := os.WriteFile(realmPath, append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("writing realm.json: %w", err)
+	}
+	return nil
 }
 
 func newRealmDepCmd() *cobra.Command {

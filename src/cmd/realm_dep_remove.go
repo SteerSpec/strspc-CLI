@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -22,12 +20,13 @@ func newRealmDepRemoveCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			realmID := args[0]
 
-			realmPath := filepath.Join(dir, "realm.json")
-			if _, statErr := os.Stat(realmPath); statErr != nil {
-				if os.IsNotExist(statErr) {
-					return fmt.Errorf("not a valid Realm directory: %s (missing realm.json)", dir)
-				}
-				return fmt.Errorf("accessing realm.json: %w", statErr)
+			if !realmIDPattern.MatchString(realmID) {
+				return fmt.Errorf("invalid realm ID %q", realmID)
+			}
+
+			realmPath, checkErr := checkRealmJSON(dir)
+			if checkErr != nil {
+				return checkErr
 			}
 
 			err := loadAndWriteRealm(realmPath, func(deps []entity.RealmDep) ([]entity.RealmDep, error) {
