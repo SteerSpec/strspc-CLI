@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -36,20 +37,22 @@ func newRealmAddCmd() *cobra.Command {
 				return fmt.Errorf("invalid EUID %q: must be 3-18 alphanumeric characters", euid)
 			}
 
+			title = strings.TrimSpace(title)
 			if title == "" {
 				return fmt.Errorf("--title is required")
 			}
 
-			// Check realm.json exists.
+			// Check realm.json exists and is accessible.
 			realmPath := filepath.Join(dir, "realm.json")
-			if _, err := os.Stat(realmPath); err != nil {
-				return fmt.Errorf("not a valid Realm directory: %s (missing realm.json)", dir)
+			info, err := os.Stat(realmPath)
+			if err != nil {
+				if os.IsNotExist(err) {
+					return fmt.Errorf("not a valid Realm directory: %s (missing realm.json)", dir)
+				}
+				return fmt.Errorf("accessing realm.json: %w", err)
 			}
-
-			// Check entity file doesn't already exist.
-			entityPath := filepath.Join(dir, euid+".json")
-			if _, err := os.Stat(entityPath); err == nil {
-				return fmt.Errorf("entity %q already exists: %s", euid, entityPath)
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("not a valid Realm directory: %s (realm.json is not a regular file)", dir)
 			}
 
 			f := entity.File{
@@ -57,7 +60,7 @@ func newRealmAddCmd() *cobra.Command {
 				Entity: entity.Entity{
 					ID:          euid,
 					Title:       title,
-					Description: description,
+					Description: strings.TrimSpace(description),
 				},
 				RuleSet: entity.RuleSet{
 					Version:   "0.1.0",
@@ -68,13 +71,27 @@ func newRealmAddCmd() *cobra.Command {
 				Notes: []entity.Note{},
 			}
 
-			data, err := json.MarshalIndent(f, "", "  ")
-			if err != nil {
-				return fmt.Errorf("marshaling entity: %w", err)
+			data, marshalErr := json.MarshalIndent(f, "", "  ")
+			if marshalErr != nil {
+				return fmt.Errorf("marshaling entity: %w", marshalErr)
 			}
 
-			if err := os.WriteFile(entityPath, append(data, '\n'), 0o644); err != nil {
-				return fmt.Errorf("writing %s: %w", entityPath, err)
+			// Use O_CREATE|O_EXCL for atomic create — fails if file already exists.
+			entityPath := filepath.Join(dir, euid+".json")
+			out, createErr := os.OpenFile(entityPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+			if createErr != nil {
+				if os.IsExist(createErr) {
+					return fmt.Errorf("entity %q already exists: %s", euid, entityPath)
+				}
+				return fmt.Errorf("creating %s: %w", entityPath, createErr)
+			}
+			_, writeErr := out.Write(append(data, '\n'))
+			closeErr := out.Close()
+			if writeErr != nil {
+				return fmt.Errorf("writing %s: %w", entityPath, writeErr)
+			}
+			if closeErr != nil {
+				return fmt.Errorf("closing %s: %w", entityPath, closeErr)
 			}
 
 			w := cmd.OutOrStdout()
