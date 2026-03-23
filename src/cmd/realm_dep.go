@@ -12,7 +12,8 @@ import (
 )
 
 // realmFileForWrite mirrors entity.RealmFile but without omitempty on
-// dependencies, so the field is always present in serialized output.
+// dependencies and rule_identifier_format, so both fields are always
+// present in serialized output (matching realm init's output format).
 type realmFileForWrite struct {
 	Schema               string            `json:"$schema"`
 	Realm                entity.RealmMeta  `json:"realm"`
@@ -98,13 +99,13 @@ func newRealmDepListCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			realmPath := filepath.Join(dir, "realm.json")
+			realmPath, checkErr := checkRealmJSON(dir)
+			if checkErr != nil {
+				return checkErr
+			}
 			rf, err := entity.LoadRealm(realmPath)
 			if err != nil {
-				if os.IsNotExist(err) {
-					return fmt.Errorf("not a valid Realm directory: %s (missing realm.json)", dir)
-				}
-				return err
+				return fmt.Errorf("loading realm.json: %w", err)
 			}
 
 			w := cmd.OutOrStdout()

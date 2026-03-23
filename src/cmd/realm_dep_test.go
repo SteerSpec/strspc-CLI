@@ -93,7 +93,9 @@ func TestRealmDepRemoveBasic(t *testing.T) {
 	setupValidRealm(t, dir)
 
 	// Add then remove.
-	_, _ = testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@0.1.0", "--dir", dir)
+	if _, addErr := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@0.1.0", "--dir", dir); addErr != nil {
+		t.Fatalf("unexpected error on add: %v", addErr)
+	}
 
 	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "remove", "dev.steerspec.core", "--dir", dir)
 	if err != nil {
@@ -123,7 +125,9 @@ func TestRealmDepList(t *testing.T) {
 	setupValidRealm(t, dir)
 
 	// Add a dependency.
-	_, _ = testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@0.1.0", "--dir", dir)
+	if _, addErr := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@0.1.0", "--dir", dir); addErr != nil {
+		t.Fatalf("unexpected error on add: %v", addErr)
+	}
 
 	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "list", "--dir", dir)
 	if err != nil {
@@ -137,7 +141,9 @@ func TestRealmDepListJSON(t *testing.T) {
 	dir := t.TempDir()
 	setupValidRealm(t, dir)
 
-	_, _ = testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@0.1.0", "--dir", dir)
+	if _, addErr := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@0.1.0", "--dir", dir); addErr != nil {
+		t.Fatalf("unexpected error on add: %v", addErr)
+	}
 
 	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "list", "--json", "--dir", dir)
 	if err != nil {

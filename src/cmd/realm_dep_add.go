@@ -15,9 +15,9 @@ func newRealmDepAddCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:           "add <realm_id>@<version>",
+		Use:           "add <realm_id>@<version>[=<source>]",
 		Short:         "Add a dependency to a Realm",
-		Long:          "Add a dependency to realm.json. Format: <realm_id>@<version>",
+		Long:          "Add a dependency to realm.json. Format: <realm_id>@<version>[=<source>]. Source can also be specified via --source.",
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
