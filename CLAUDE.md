@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Rule Manager Specification
+
+This CLI wraps strspc-manager modules. The specification that defines how rules are
+validated and enforced lives at:
+[`strspc-manager/docs/SPEC.md`](https://github.com/SteerSpec/strspc-manager/blob/main/docs/SPEC.md).
+
+Key sections for CLI work: §6 (Module Breakdown), §8 (Enforcement Architecture).
+
 ## Project
 
 strspc-CLI — CLI tool for SteerSpec (part of the steerspec org).
