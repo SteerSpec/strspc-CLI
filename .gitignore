@@ -12,3 +12,6 @@ coverage.out
 
 # Playwright MCP
 .playwright-mcp/
+
+# Git worktrees
+.claude/worktrees/
