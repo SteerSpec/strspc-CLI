@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.8.0...v1.8.1) (2026-03-23)
+
+
+### Documentation
+
+* add Rule Manager Spec reference to CLAUDE.md ([988fc25](https://github.com/SteerSpec/strspc-CLI/commit/988fc259a968d0632e15074948f5beff6889a3a5))
+* add Rule Manager Spec reference to CLAUDE.md ([3193622](https://github.com/SteerSpec/strspc-CLI/commit/31936224814ccc61168dac9c462a3ba223e7ea90))
+
 ## [1.8.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.7.0...v1.8.0) (2026-03-23)
 
 
