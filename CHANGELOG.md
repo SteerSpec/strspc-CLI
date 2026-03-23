@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.5.0...v1.6.0) (2026-03-22)
+
+
+### Features
+
+* **realm:** add strspc realm validate command ([aa55c32](https://github.com/SteerSpec/strspc-CLI/commit/aa55c32cb244a23a54595fdeeed5fbcc0bad7378))
+* **realm:** add strspc realm validate command ([f247c4e](https://github.com/SteerSpec/strspc-CLI/commit/f247c4e38b46fe072391edd9801c52047726b26b)), closes [#11](https://github.com/SteerSpec/strspc-CLI/issues/11)
+
+
+### Bug Fixes
+
+* **lint:** use command-specific error messages in JSON output ([3b4e923](https://github.com/SteerSpec/strspc-CLI/commit/3b4e923b7aefc36124e582904bdc4bee690611be))
+
 ## [1.5.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.4.0...v1.5.0) (2026-03-22)
 
 
