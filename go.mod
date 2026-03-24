@@ -3,13 +3,14 @@ module github.com/SteerSpec/strspc-CLI
 go 1.26.1
 
 require (
-	github.com/SteerSpec/strspc-manager v1.7.1
+	github.com/SteerSpec/strspc-manager v1.8.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
 )
 
 require (
+	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
 	github.com/charmbracelet/x/ansi v0.8.0 // indirect
