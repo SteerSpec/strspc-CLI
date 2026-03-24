@@ -151,9 +151,16 @@ func makeGitRepoDir(t *testing.T, baseFiles, headFiles map[string][]byte) string
 	run("git", "add", ".")
 	run("git", "commit", "-m", "initial")
 
-	// Write working-tree versions.
+	// Write working-tree versions. A nil value deletes the file (simulates deletion).
 	for name, data := range headFiles {
-		if err := os.WriteFile(filepath.Join(dir, name), data, 0o644); err != nil {
+		path := filepath.Join(dir, name)
+		if data == nil {
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if err := os.WriteFile(path, data, 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -257,7 +264,10 @@ func TestDiffJSONOutput(t *testing.T) {
 	promoted := entityV2Promote("ENT")
 	dir := makeGitRepo(t, "ENT.json", promoted, entityV2InvalidEdit("ENT"))
 
-	output, _ := testutil.ExecuteCommand(NewRootCmd(), "diff", filepath.Join(dir, "ENT.json"), "--json")
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "diff", filepath.Join(dir, "ENT.json"), "--json")
+	if err == nil {
+		t.Fatal("expected error for invalid transition in JSON mode, got nil")
+	}
 
 	var diags []result.Diagnostic
 	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &diags); err != nil {

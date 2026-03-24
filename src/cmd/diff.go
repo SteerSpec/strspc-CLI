@@ -35,16 +35,6 @@ func newDiffCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			headPath := args[0]
 
-			// Resolve base ref: --pr takes precedence over --base.
-			baseRef := base
-			if prNumber > 0 {
-				sha, err := prBaseSHA(prNumber)
-				if err != nil {
-					return err
-				}
-				baseRef = sha
-			}
-
 			info, err := os.Stat(headPath)
 			if err != nil {
 				if os.IsNotExist(err) {
@@ -53,11 +43,21 @@ func newDiffCmd() *cobra.Command {
 				return fmt.Errorf("accessing %s: %w", headPath, err)
 			}
 
-			// Resolve the git repo root from the given path so git commands run
-			// from the correct repo, not the process working directory.
+			// Resolve the git repo root from the given path so all git and gh
+			// commands run from the correct repo, not the process working directory.
 			repoDir, err := gitRoot(headPath)
 			if err != nil {
 				return err
+			}
+
+			// Resolve base ref: --pr takes precedence over --base.
+			baseRef := base
+			if prNumber > 0 {
+				sha, err := prBaseSHA(prNumber, repoDir)
+				if err != nil {
+					return err
+				}
+				baseRef = sha
 			}
 
 			var res *result.Result
@@ -119,70 +119,75 @@ func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, e
 }
 
 // diffDir compares entity JSON files in headDir against their versions at baseRef.
+// Walks the directory tree recursively, skipping _-prefixed dirs/files and realm.json.
 // Only files whose content differs from the base (or are new) are validated.
 // Files deleted from headDir are reported as RD005.
 func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, error) {
 	res := &result.Result{}
 	opts := diffOpts(strict)
 
-	// Index JSON files present in headDir.
-	entries, err := os.ReadDir(headDir)
-	if err != nil {
-		return nil, fmt.Errorf("reading directory %s: %w", headDir, err)
-	}
-	headFiles := make(map[string]string) // basename → full path
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".json") {
-			headFiles[e.Name()] = filepath.Join(headDir, e.Name())
+	// Walk headDir to find entity JSON files and compare each against baseRef.
+	headRelPaths := make(map[string]bool)
+	walkErr := filepath.WalkDir(headDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
+		if d.IsDir() {
+			if strings.HasPrefix(d.Name(), "_") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasPrefix(d.Name(), "_") || !strings.HasSuffix(d.Name(), ".json") || d.Name() == "realm.json" {
+			return nil
+		}
+
+		rel, relErr := filepath.Rel(headDir, path)
+		if relErr != nil {
+			return relErr
+		}
+		headRelPaths[rel] = true
+
+		headData, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return fmt.Errorf("reading %s: %w", path, readErr)
+		}
+
+		baseData, showErr := gitShow(baseRef, path, repoDir)
+		if showErr != nil && !isGitNotFound(showErr) {
+			return showErr
+		}
+		if showErr == nil && bytes.Equal(baseData, headData) {
+			return nil // file unchanged — nothing to validate
+		}
+		if showErr == nil {
+			for _, diag := range rulediff.Compare(baseData, headData, opts...).Diagnostics {
+				res.Add(diag)
+			}
+		} else {
+			for _, diag := range rulediff.CompareNew(headData, opts...).Diagnostics {
+				res.Add(diag)
+			}
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return nil, fmt.Errorf("walking %s: %w", headDir, walkErr)
 	}
 
-	// Index JSON files present at baseRef.
-	baseNames, err := gitListJSONFiles(baseRef, headDir, repoDir)
+	// Report files deleted from headDir (exist at baseRef but absent from the walk).
+	baseRelPaths, err := gitListRelPaths(baseRef, headDir, repoDir)
 	if err != nil {
 		return nil, err
 	}
-	baseSet := make(map[string]bool, len(baseNames))
-	for _, name := range baseNames {
-		baseSet[name] = true
-	}
-
-	// For each file in headDir: compare or validate as new.
-	for name, headPath := range headFiles {
-		headData, readErr := os.ReadFile(headPath)
-		if readErr != nil {
-			return nil, fmt.Errorf("reading %s: %w", headPath, readErr)
-		}
-		if baseSet[name] {
-			baseData, showErr := gitShow(baseRef, headPath, repoDir)
-			if showErr != nil && !isGitNotFound(showErr) {
-				return nil, showErr
-			}
-			if showErr == nil && bytes.Equal(baseData, headData) {
-				continue // file unchanged — nothing to validate
-			}
-			if showErr == nil {
-				for _, d := range rulediff.Compare(baseData, headData, opts...).Diagnostics {
-					res.Add(d)
-				}
-				continue
-			}
-		}
-		// File is new (not in base).
-		for _, d := range rulediff.CompareNew(headData, opts...).Diagnostics {
-			res.Add(d)
-		}
-	}
-
-	// Report files deleted from headDir.
-	for _, name := range baseNames {
-		if _, ok := headFiles[name]; !ok {
+	for _, rel := range baseRelPaths {
+		if !headRelPaths[rel] {
 			res.Add(result.Diagnostic{
 				Module:   "rule-diff",
 				Code:     "RD005",
 				Severity: result.Error,
-				Message:  "entity file deleted: " + name,
-				Path:     filepath.Join(headDir, name),
+				Message:  "entity file deleted: " + rel,
+				Path:     filepath.Join(headDir, rel),
 			})
 		}
 	}
@@ -196,9 +201,11 @@ func gitRoot(path string) (string, error) {
 	if info, err := os.Stat(path); err == nil && !info.IsDir() {
 		dir = filepath.Dir(path)
 	}
-	out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output()
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel")
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("not a git repository: %s", path)
+		return "", fmt.Errorf("not a git repository: %s (git error: %v, output: %s)",
+			path, err, strings.TrimSpace(string(out)))
 	}
 	return strings.TrimSpace(string(out)), nil
 }
@@ -241,42 +248,67 @@ func realAbs(p string) (string, error) {
 	return filepath.Join(dir, filepath.Base(abs)), nil
 }
 
-// gitListJSONFiles returns the basenames of *.json files tracked at baseRef under dir,
-// running git from repoDir.
-func gitListJSONFiles(ref, dir, repoDir string) ([]string, error) {
-	// Compute dir relative to the repo root for git ls-tree.
-	realDir, _ := realAbs(dir)
+// gitListRelPaths returns entity JSON paths (relative to headDir) tracked at ref under headDir.
+// Uses git ls-tree -r for recursive traversal. Skips _-prefixed files and realm.json.
+// Returns nil when headDir is absent at ref (all files are new).
+// Returns an error when ref is not a valid git object name.
+func gitListRelPaths(ref, headDir, repoDir string) ([]string, error) {
+	// Compute headDir relative to the repo root for git ls-tree.
+	realDir, _ := realAbs(headDir)
 	realRepo, repoErr := filepath.EvalSymlinks(repoDir)
 	if repoErr != nil {
 		realRepo = repoDir
 	}
-	relDir := dir
+	relDir := headDir
 	if rel, err := filepath.Rel(realRepo, realDir); err == nil {
-		relDir = rel
+		relDir = filepath.ToSlash(rel)
 	}
-	out, err := exec.Command("git", "-C", repoDir, "ls-tree", "--name-only", ref, "--", relDir).Output()
+
+	out, err := exec.Command("git", "-C", repoDir, "ls-tree", "-r", "--name-only", ref, "--", relDir).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if isExitError(err, &exitErr) {
-			// Silently return empty — dir may not exist at base ref (all files are new).
+			stderr := exitErr.Stderr
+			// Invalid ref (typo, unknown commit) — fail fast.
+			if bytes.Contains(stderr, []byte("Not a valid object name")) {
+				return nil, fmt.Errorf("invalid git ref %q: %s", ref, strings.TrimSpace(string(stderr)))
+			}
+			// Path not found at this ref — treat all files as new.
 			return nil, nil
 		}
-		return nil, fmt.Errorf("git ls-tree %s %s: %w", ref, dir, err)
+		return nil, fmt.Errorf("git ls-tree %s %s: %w", ref, headDir, err)
 	}
+
+	// git ls-tree returns paths relative to repoDir. Strip the headDir prefix
+	// to get paths relative to headDir.
+	prefix := relDir + "/"
 	var files []string
 	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
-		name := filepath.Base(strings.TrimSpace(line))
-		if name != "" && strings.HasSuffix(name, ".json") {
-			files = append(files, name)
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
 		}
+		rel := line
+		if strings.HasPrefix(line, prefix) {
+			rel = line[len(prefix):]
+		}
+		rel = filepath.FromSlash(rel)
+		base := filepath.Base(rel)
+		if !strings.HasSuffix(base, ".json") || base == "realm.json" || strings.HasPrefix(base, "_") {
+			continue
+		}
+		files = append(files, rel)
 	}
 	return files, nil
 }
 
 // prBaseSHA returns the base commit SHA for a GitHub PR using the gh CLI.
-func prBaseSHA(prNum int) (string, error) {
-	out, err := exec.Command("gh", "pr", "view", strconv.Itoa(prNum),
-		"--json", "baseRefSha", "--jq", ".baseRefSha").Output()
+// repoDir is used as the working directory so gh infers the correct repository.
+func prBaseSHA(prNum int, repoDir string) (string, error) {
+	cmd := exec.Command("gh", "pr", "view", strconv.Itoa(prNum),
+		"--json", "baseRefSha", "--jq", ".baseRefSha")
+	cmd.Dir = repoDir
+	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("resolving PR #%d base SHA (requires gh CLI): %w", prNum, err)
 	}
