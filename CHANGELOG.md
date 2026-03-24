@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.11.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.10.0...v1.11.0) (2026-03-24)
+
+
+### Features
+
+* **diff:** add strspc diff command — wrap rulediff (CLI[#15](https://github.com/SteerSpec/strspc-CLI/issues/15)) ([687b81f](https://github.com/SteerSpec/strspc-CLI/commit/687b81f5b32bcc2b91b846c377ee4c61d18e23a7))
+* **diff:** add strspc diff command — wrap rulediff (CLI[#15](https://github.com/SteerSpec/strspc-CLI/issues/15)) ([6bfa85d](https://github.com/SteerSpec/strspc-CLI/commit/6bfa85d995da110b79e4df30d5a5d509356a328a))
+
+
+### Bug Fixes
+
+* **diff:** address PR review comments ([501be09](https://github.com/SteerSpec/strspc-CLI/commit/501be095dba4362e94fa79679131eaf2a722d22b))
+* **diff:** address second round of PR review comments ([758f50b](https://github.com/SteerSpec/strspc-CLI/commit/758f50b0827668e45953d0f5f9377009602652f4))
+* **diff:** surface gh/git stderr and guard empty dir (PR review round 3) ([81047c2](https://github.com/SteerSpec/strspc-CLI/commit/81047c24fccd83fa991fee4ecb0d6dcc8fc023ce))
+
 ## [1.10.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.9.0...v1.10.0) (2026-03-24)
 
 
