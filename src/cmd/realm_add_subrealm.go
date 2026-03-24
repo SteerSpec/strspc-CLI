@@ -22,9 +22,11 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:           "add-subrealm",
-		Short:         "Scaffold a sub-realm inside an existing Realm",
-		Long:          "Create a sub-realm directory with realm.json and schemas copied from the parent Realm.",
+		Use:   "add-subrealm",
+		Short: "Scaffold a sub-realm inside an existing Realm, inheriting schemas and dependencies",
+		Long: "Create a sub-realm directory with realm.json, schema files, and dependencies based on the parent Realm.\n\n" +
+			"Schemas are copied from the parent realm's _schema/ when available; missing files or an absent _schema/ directory fall back to fetching from the remote source.\n\n" +
+			"By default, the sub-realm inherits dependencies from the parent realm. Use --no-inherit-deps to disable.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -158,7 +160,8 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 	return cmd
 }
 
-// copySchemas copies all schema files from srcDir to dstDir.
+// copySchemas copies schema files from srcDir to dstDir, falling back to a
+// network fetch for any file not present in srcDir.
 func copySchemas(srcDir, dstDir string) error {
 	for _, sf := range schemaFiles {
 		src := filepath.Join(srcDir, sf.local)
