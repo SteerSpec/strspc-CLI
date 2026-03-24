@@ -257,6 +257,36 @@ func TestRealmAddSubrealmInvalidID(t *testing.T) {
 	testutil.AssertContains(t, err.Error(), "invalid realm ID")
 }
 
+func TestRealmAddSubrealmIDNotChildOfParent(t *testing.T) {
+	parentDir := makeParentRealm(t, "com.test.parent", nil)
+	childDir := filepath.Join(t.TempDir(), "child")
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "add-subrealm",
+		"--id", "com.other.unrelated",
+		"--dir", childDir,
+		"--parent-dir", parentDir,
+	)
+	if err == nil {
+		t.Fatal("expected error for non-child realm ID, got nil")
+	}
+	testutil.AssertContains(t, err.Error(), "must be a child of parent realm ID")
+}
+
+func TestRealmAddSubrealmSameDirAsParent(t *testing.T) {
+	parentDir := makeParentRealm(t, "com.test.parent", nil)
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "add-subrealm",
+		"--id", "com.test.parent.child",
+		"--dir", parentDir,
+		"--parent-dir", parentDir,
+		"--force",
+	)
+	if err == nil {
+		t.Fatal("expected error when target and parent are the same directory, got nil")
+	}
+	testutil.AssertContains(t, err.Error(), "must differ from parent directory")
+}
+
 func TestRealmAddSubrealmErrorWhenParentSchemaIsFile(t *testing.T) {
 	parentDir := makeParentRealm(t, "com.test.parent", nil)
 

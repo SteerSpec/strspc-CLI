@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/spf13/cobra"
@@ -27,13 +28,26 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Guard: target and parent must not be the same directory.
+			absDir, err := filepath.Abs(filepath.Clean(dir))
+			if err != nil {
+				return fmt.Errorf("resolving target directory: %w", err)
+			}
+			absParentDir, err := filepath.Abs(filepath.Clean(parentDir))
+			if err != nil {
+				return fmt.Errorf("resolving parent directory: %w", err)
+			}
+			if absDir == absParentDir {
+				return fmt.Errorf("target directory must differ from parent directory")
+			}
+
 			// Validate parent has realm.json.
 			parentRealmPath, err := checkRealmJSON(parentDir)
 			if err != nil {
 				return fmt.Errorf("parent realm: %w", err)
 			}
 
-			// Validate sub-realm ID.
+			// Validate sub-realm ID format.
 			if !realmIDPattern.MatchString(realmID) {
 				return fmt.Errorf("invalid realm ID %q: must be lowercase alphanumeric with dots and hyphens (e.g. com.acme.myproject.sub)", realmID)
 			}
@@ -46,10 +60,16 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 				}
 			}
 
-			// Load parent to get dependencies.
+			// Load parent to get ID and dependencies.
 			parentRealm, err := entity.LoadRealm(parentRealmPath)
 			if err != nil {
 				return fmt.Errorf("loading parent realm.json: %w", err)
+			}
+
+			// Validate sub-realm ID is a child of the parent ID.
+			parentPrefix := parentRealm.Realm.ID + "."
+			if !strings.HasPrefix(realmID, parentPrefix) {
+				return fmt.Errorf("sub-realm ID %q must be a child of parent realm ID %q (expected prefix %q)", realmID, parentRealm.Realm.ID, parentPrefix)
 			}
 
 			// Determine dependencies.
