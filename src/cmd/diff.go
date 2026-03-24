@@ -212,6 +212,16 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		}
 	}
 
+	if len(headRelPaths) == 0 && len(baseRelPaths) == 0 {
+		res.Add(result.Diagnostic{
+			Module:   "rule-diff",
+			Code:     "RD000",
+			Severity: result.Error,
+			Message:  fmt.Sprintf("no entity JSON files found in %s", headDir),
+			Path:     headDir,
+		})
+	}
+
 	return res, nil
 }
 
@@ -339,8 +349,12 @@ func prBaseSHA(prNum int, repoDir string) (string, error) {
 	cmd := exec.Command("gh", "pr", "view", strconv.Itoa(prNum),
 		"--json", "baseRefSha", "--jq", ".baseRefSha")
 	cmd.Dir = repoDir
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return "", fmt.Errorf("resolving PR #%d base SHA (requires gh CLI): %s", prNum, msg)
+		}
 		return "", fmt.Errorf("resolving PR #%d base SHA (requires gh CLI): %w", prNum, err)
 	}
 	sha := strings.TrimSpace(string(out))
@@ -366,6 +380,12 @@ type gitShowError struct {
 }
 
 func (e *gitShowError) Error() string {
+	var exitErr *exec.ExitError
+	if isExitError(e.cause, &exitErr) {
+		if msg := strings.TrimSpace(string(exitErr.Stderr)); msg != "" {
+			return fmt.Sprintf("git show %s:%s: %s", e.ref, e.path, msg)
+		}
+	}
 	return fmt.Sprintf("git show %s:%s: %s", e.ref, e.path, e.cause)
 }
 
