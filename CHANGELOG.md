@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.10.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.9.0...v1.10.0) (2026-03-24)
+
+
+### Features
+
+* **realm:** add realm add-subrealm command ([a1eb070](https://github.com/SteerSpec/strspc-CLI/commit/a1eb0704170bb42028015ee5a193fb60e8afb9ea))
+* **realm:** add realm add-subrealm command ([583f456](https://github.com/SteerSpec/strspc-CLI/commit/583f456d1b88ff9703dd3c9618c03948168e20e9)), closes [#43](https://github.com/SteerSpec/strspc-CLI/issues/43)
+
+
+### Bug Fixes
+
+* **realm:** add same-dir guard and parent ID hierarchy check ([eff7935](https://github.com/SteerSpec/strspc-CLI/commit/eff79352c10ca29fa3b1cd1a8e238f4fbd325a47))
+* **realm:** address PR review comments on add-subrealm ([baf11af](https://github.com/SteerSpec/strspc-CLI/commit/baf11af0e90502f1aafc3446ec4992be9ce6984b))
+* **realm:** error when parent _schema/ exists but is not a directory ([31ec2ef](https://github.com/SteerSpec/strspc-CLI/commit/31ec2ef6d22a349c662d6b5aedfded1adb489e1d))
+
+
+### Documentation
+
+* **realm:** update add-subrealm help text and copySchemas comment ([2b9cd46](https://github.com/SteerSpec/strspc-CLI/commit/2b9cd46fec7c93a80ea709909595aeb1dbdcc3e5))
+
 ## [1.9.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.8.1...v1.9.0) (2026-03-23)
 
 
