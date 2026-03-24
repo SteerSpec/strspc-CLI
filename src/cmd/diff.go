@@ -109,13 +109,27 @@ func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, e
 
 	opts := diffOpts(strict)
 	baseData, err := gitShow(baseRef, headPath, repoDir)
+
+	var res *result.Result
 	if err != nil {
 		if isGitNotFound(err) {
-			return rulediff.CompareNew(headData, opts...), nil
+			res = rulediff.CompareNew(headData, opts...)
+		} else {
+			return nil, err
 		}
-		return nil, err
+	} else {
+		res = rulediff.Compare(baseData, headData, opts...)
 	}
-	return rulediff.Compare(baseData, headData, opts...), nil
+
+	// Attach file path context to each diagnostic (matching lintDirPerFile pattern).
+	for i := range res.Diagnostics {
+		if res.Diagnostics[i].Path == "" {
+			res.Diagnostics[i].Path = headPath
+		} else {
+			res.Diagnostics[i].Path = headPath + ": " + res.Diagnostics[i].Path
+		}
+	}
+	return res, nil
 }
 
 // diffDir compares entity JSON files in headDir against their versions at baseRef.
@@ -160,14 +174,20 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		if showErr == nil && bytes.Equal(baseData, headData) {
 			return nil // file unchanged — nothing to validate
 		}
+		addWithPath := func(diags []result.Diagnostic) {
+			for _, diag := range diags {
+				if diag.Path == "" {
+					diag.Path = path
+				} else {
+					diag.Path = path + ": " + diag.Path
+				}
+				res.Add(diag)
+			}
+		}
 		if showErr == nil {
-			for _, diag := range rulediff.Compare(baseData, headData, opts...).Diagnostics {
-				res.Add(diag)
-			}
+			addWithPath(rulediff.Compare(baseData, headData, opts...).Diagnostics)
 		} else {
-			for _, diag := range rulediff.CompareNew(headData, opts...).Diagnostics {
-				res.Add(diag)
-			}
+			addWithPath(rulediff.CompareNew(headData, opts...).Diagnostics)
 		}
 		return nil
 	})
@@ -294,7 +314,18 @@ func gitListRelPaths(ref, headDir, repoDir string) ([]string, error) {
 		}
 		rel = filepath.FromSlash(rel)
 		base := filepath.Base(rel)
-		if !strings.HasSuffix(base, ".json") || base == "realm.json" || strings.HasPrefix(base, "_") {
+		if !strings.HasSuffix(base, ".json") || base == "realm.json" {
+			continue
+		}
+		// Skip paths where any segment starts with _ (mirrors WalkDir SkipDir logic).
+		skip := false
+		for _, seg := range strings.Split(filepath.ToSlash(rel), "/") {
+			if strings.HasPrefix(seg, "_") {
+				skip = true
+				break
+			}
+		}
+		if skip {
 			continue
 		}
 		files = append(files, rel)
