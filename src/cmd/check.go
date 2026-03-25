@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -18,7 +17,6 @@ func newCheckCmd() *cobra.Command {
 		base       string
 		prNumber   int
 		provider   string
-		model      string
 		staticOnly bool
 		jsonOut    bool
 	)
@@ -84,33 +82,20 @@ func newCheckCmd() *cobra.Command {
 				inputs = append(inputs, ruleeval.RuleInputsFromFile(rf.File)...)
 			}
 
+			effectiveProvider := cfg.Evaluator.Provider
+			if provider != "" {
+				effectiveProvider = provider
+			}
 			effectiveStatic := staticOnly ||
-				strings.EqualFold(provider, "static") ||
-				cfg.Evaluator.Provider == "" ||
-				strings.EqualFold(cfg.Evaluator.Provider, "null")
+				effectiveProvider == "" ||
+				strings.EqualFold(effectiveProvider, "null") ||
+				strings.EqualFold(effectiveProvider, "static")
 
-			var diff string
 			if !effectiveStatic {
-				repoDir, gitErr := gitRoot(cwd)
-				if gitErr != nil {
-					return gitErr
-				}
-				baseRef := base
-				if prNumber > 0 {
-					sha, prErr := prBaseSHA(prNumber, repoDir)
-					if prErr != nil {
-						return prErr
-					}
-					baseRef = sha
-				}
-				out, diffErr := exec.Command("git", "-C", repoDir, "diff", baseRef).Output()
-				if diffErr != nil {
-					return fmt.Errorf("getting git diff against %q: %w", baseRef, diffErr)
-				}
-				diff = string(out)
+				return fmt.Errorf("AI evaluation not yet available — use --static-only or set evaluator.provider: null in config")
 			}
 
-			evalOpts := []ruleeval.Option{ruleeval.WithStaticOnly(effectiveStatic)}
+			evalOpts := []ruleeval.Option{ruleeval.WithStaticOnly(true)}
 			if len(cfg.FailOn) > 0 {
 				evalOpts = append(evalOpts, ruleeval.WithFailOn(normalizeStateCodes(cfg.FailOn)))
 			}
@@ -120,7 +105,7 @@ func newCheckCmd() *cobra.Command {
 				return fmt.Errorf("initializing evaluator: %w", err)
 			}
 
-			res := evaluator.Evaluate(cmd.Context(), inputs, diff)
+			res := evaluator.Evaluate(cmd.Context(), inputs, "")
 
 			if jsonOut {
 				if writeErr := writeJSON(w, res); writeErr != nil {
@@ -148,7 +133,6 @@ func newCheckCmd() *cobra.Command {
 	cmd.Flags().StringVar(&base, "base", "HEAD", "base git ref for diff")
 	cmd.Flags().IntVar(&prNumber, "pr", 0, "GitHub PR number (resolves base SHA via gh CLI; requires gh)")
 	cmd.Flags().StringVar(&provider, "provider", "", "AI provider: claude|openai|ollama|static (overrides config)")
-	cmd.Flags().StringVar(&model, "model", "", "model name override for provider")
 	cmd.Flags().BoolVar(&staticOnly, "static-only", false, "skip AI evaluation; structural checks only")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output diagnostics as JSON")
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/result"
 )
 
 // checkEntityJSON is a minimal entity file with one draft rule.
@@ -95,7 +96,7 @@ func TestCheckJSON(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	var diags []map[string]any
+	var diags []result.Diagnostic
 	if jsonErr := json.Unmarshal([]byte(output), &diags); jsonErr != nil {
 		t.Fatalf("output is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
@@ -103,8 +104,8 @@ func TestCheckJSON(t *testing.T) {
 	if len(diags) != 1 {
 		t.Errorf("expected 1 diagnostic, got %d", len(diags))
 	}
-	if code, _ := diags[0]["Code"].(string); code != "RE003" {
-		t.Errorf("expected RE003 diagnostic, got %q", code)
+	if diags[0].Code != "RE003" {
+		t.Errorf("expected RE003 diagnostic, got %q", diags[0].Code)
 	}
 }
 
