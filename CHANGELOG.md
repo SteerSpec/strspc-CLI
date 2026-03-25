@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.13.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.12.0...v1.13.0) (2026-03-25)
+
+
+### Features
+
+* **check:** add strspc check command — wrap ruleeval (CLI[#17](https://github.com/SteerSpec/strspc-CLI/issues/17)) ([d61a3cb](https://github.com/SteerSpec/strspc-CLI/commit/d61a3cbd82b2a2357ed2471b18f6ffb46943a2c1))
+* **check:** add strspc check command — wrap ruleeval (CLI[#17](https://github.com/SteerSpec/strspc-CLI/issues/17)) ([30eac5d](https://github.com/SteerSpec/strspc-CLI/commit/30eac5d96aeaa4eebbefa163b524e0b46401d337))
+
+
+### Bug Fixes
+
+* **check:** address PR review comments (round 1) ([38e55fb](https://github.com/SteerSpec/strspc-CLI/commit/38e55fb6adf3a4335e1ee366a73aa5e70756a0fc))
+* **check:** address round-2 PR review comments ([42f4fc9](https://github.com/SteerSpec/strspc-CLI/commit/42f4fc91c2fdd7114324cd569763ec1d1e1d6263))
+* **ci:** use repo root for strspc check (not rules/ subdir) ([a93674e](https://github.com/SteerSpec/strspc-CLI/commit/a93674e3e571e43efc0a928ad2be782792f28920))
+
+
+### Refactoring
+
+* **check:** simplify via shared config helpers and remove no-op strict flag ([70a3876](https://github.com/SteerSpec/strspc-CLI/commit/70a38766dda536c5607715f68b6a4dfaaed7b5c2))
+
 ## [1.12.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.11.0...v1.12.0) (2026-03-25)
 
 
