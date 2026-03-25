@@ -3,27 +3,14 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 
 	"github.com/SteerSpec/strspc-manager/src/result"
 	"github.com/SteerSpec/strspc-manager/src/ruleresolve"
 )
-
-// syncConfig mirrors the relevant fields from .strspc/config.yaml.
-type syncConfig struct {
-	Rules []struct {
-		Source string `yaml:"source"`
-		Scope  string `yaml:"scope"`
-	} `yaml:"rules"`
-	Cache struct {
-		TTL string `yaml:"ttl"`
-	} `yaml:"cache"`
-}
 
 // syncOutput is the JSON representation of a sync result.
 type syncOutput struct {
@@ -59,40 +46,14 @@ func newSyncCmd() *cobra.Command {
 				cwd = args[0]
 			}
 
-			configPath := filepath.Join(cwd, ".strspc", "config.yaml")
-			if _, err := os.Stat(configPath); err != nil {
-				if os.IsNotExist(err) {
-					return fmt.Errorf("no .strspc/config.yaml found — run strspc init first")
-				}
-				return fmt.Errorf("accessing %s: %w", configPath, err)
-			}
-
-			data, err := os.ReadFile(configPath)
+			cfg, err := loadStrspcConfig(cwd)
 			if err != nil {
-				return fmt.Errorf("reading config.yaml: %w", err)
+				return err
 			}
 
-			var cfg syncConfig
-			if err := yaml.Unmarshal(data, &cfg); err != nil {
-				return fmt.Errorf("parsing config.yaml: %w", err)
-			}
-
-			entries := make([]ruleresolve.SourceEntry, 0, len(cfg.Rules))
-			for _, r := range cfg.Rules {
-				var scope ruleresolve.Scope
-				switch r.Scope {
-				case string(ruleresolve.ScopeLocal):
-					scope = ruleresolve.ScopeLocal
-				case string(ruleresolve.ScopeGlobal):
-					scope = ruleresolve.ScopeGlobal
-				default:
-					return fmt.Errorf("invalid scope %q for source %q: must be %q or %q",
-						r.Scope, r.Source, ruleresolve.ScopeLocal, ruleresolve.ScopeGlobal)
-				}
-				entries = append(entries, ruleresolve.SourceEntry{
-					Source: r.Source,
-					Scope:  scope,
-				})
+			entries, err := buildSourceEntries(cfg)
+			if err != nil {
+				return err
 			}
 
 			var ttl time.Duration
