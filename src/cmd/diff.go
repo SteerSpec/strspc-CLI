@@ -347,7 +347,7 @@ func gitListRelPaths(ref, headDir, repoDir string) ([]string, error) {
 // repoDir is used as the working directory so gh infers the correct repository.
 func prBaseSHA(prNum int, repoDir string) (string, error) {
 	cmd := exec.Command("gh", "pr", "view", strconv.Itoa(prNum),
-		"--json", "baseRefSha", "--jq", ".baseRefSha")
+		"--json", "baseRefOid", "--jq", ".baseRefOid")
 	cmd.Dir = repoDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

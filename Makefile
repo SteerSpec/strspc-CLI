@@ -1,4 +1,4 @@
-.PHONY: build test lint fmt install-hooks clean
+.PHONY: build test lint fmt install-hooks clean strspc-lint
 
 VERSION ?= dev
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -25,6 +25,9 @@ fmt:
 install-hooks:
 	cp scripts/commit-msg .git/hooks/commit-msg
 	chmod +x .git/hooks/commit-msg
+
+strspc-lint: build
+	./strspc lint rules/
 
 clean:
 	rm -f strspc coverage.out
