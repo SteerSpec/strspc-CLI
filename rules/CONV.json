@@ -1,0 +1,33 @@
+{
+  "$schema": "./_schema/entity.v1.schema.json",
+  "entity": {
+    "id": "CONV",
+    "title": "Conventions"
+  },
+  "rule_set": {
+    "version": "0.1.2",
+    "timestamp": "2026-03-25T10:01:25Z",
+    "hash": "blake3:84e771bd3eaefa23f117132451c004a79cc41dff05894967e230d1f5217719a6"
+  },
+  "rules": [
+    {
+      "id": "CONV-001",
+      "revision": 0,
+      "state": "D",
+      "body": "MUST use Conventional Commits format for all commits (type(scope): description). Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.",
+      "added_by": "@pleberre",
+      "added_at": "2026-03-25",
+      "supersedes": null
+    },
+    {
+      "id": "CONV-002",
+      "revision": 0,
+      "state": "D",
+      "body": "MUST format all Go source files with gofumpt before committing.",
+      "added_by": "@pleberre",
+      "added_at": "2026-03-25",
+      "supersedes": null
+    }
+  ],
+  "notes": []
+}

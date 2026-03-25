@@ -1,0 +1,30 @@
+# SteerSpec configuration
+# Docs: https://steerspec.dev/docs/config
+
+# Rule sources — where to fetch rules from
+rules:
+  # Core rules from the SteerSpec specification (github:// not yet supported — coming soon)
+  # - source: github://SteerSpec/strspc-rules@latest/rules/core
+  #   scope: global
+
+  # Local CLI-specific rules (dev.steerspec.cli realm)
+  - source: ./rules/
+    scope: local
+
+# AI evaluator settings
+# Requires an LLM provider for behavioral rule evaluation.
+# Without this, only structural checks (schema validation) run.
+evaluator:
+  provider: null          # claude, openai, ollama, or null (structural checks only)
+  # endpoint: null        # custom endpoint (defaults per provider)
+  # model: null           # model override
+
+# Local cache settings
+cache:
+  ttl: 24h                # how long cached evaluations stay valid
+
+# Which rule states cause a failure
+# Rules in these states will block merges if violated
+fail_on:
+  - implemented           # I-state rules are enforced
+  # - published           # uncomment to also enforce P-state rules

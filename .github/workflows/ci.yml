@@ -31,6 +31,31 @@ jobs:
         with:
           version: v2.11.3
 
+  strspc:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Build strspc
+        run: go build -o strspc ./src
+      - name: Lint rules
+        run: ./strspc lint rules/
+      - name: Diff rules (pull_request)
+        if: github.event_name == 'pull_request'
+        run: ./strspc diff rules/ --pr ${{ github.event.pull_request.number }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Diff rules (push)
+        if: github.event_name == 'push'
+        run: ./strspc diff rules/ --base HEAD~1
+
   commits:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
