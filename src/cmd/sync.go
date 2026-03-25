@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -61,8 +60,11 @@ func newSyncCmd() *cobra.Command {
 			}
 
 			configPath := filepath.Join(cwd, ".strspc", "config.yaml")
-			if _, err := os.Stat(configPath); os.IsNotExist(err) {
-				return fmt.Errorf("no .strspc/config.yaml found — run strspc init first")
+			if _, err := os.Stat(configPath); err != nil {
+				if os.IsNotExist(err) {
+					return fmt.Errorf("no .strspc/config.yaml found — run strspc init first")
+				}
+				return fmt.Errorf("accessing %s: %w", configPath, err)
 			}
 
 			data, err := os.ReadFile(configPath)
@@ -77,9 +79,15 @@ func newSyncCmd() *cobra.Command {
 
 			entries := make([]ruleresolve.SourceEntry, 0, len(cfg.Rules))
 			for _, r := range cfg.Rules {
-				scope := ruleresolve.ScopeLocal
-				if r.Scope == string(ruleresolve.ScopeGlobal) {
+				var scope ruleresolve.Scope
+				switch r.Scope {
+				case string(ruleresolve.ScopeLocal):
+					scope = ruleresolve.ScopeLocal
+				case string(ruleresolve.ScopeGlobal):
 					scope = ruleresolve.ScopeGlobal
+				default:
+					return fmt.Errorf("invalid scope %q for source %q: must be %q or %q",
+						r.Scope, r.Source, ruleresolve.ScopeLocal, ruleresolve.ScopeGlobal)
 				}
 				entries = append(entries, ruleresolve.SourceEntry{
 					Source: r.Source,
@@ -109,21 +117,22 @@ func newSyncCmd() *cobra.Command {
 				return fmt.Errorf("initializing resolver: %w", err)
 			}
 
-			resolved, res := resolver.Resolve(context.Background())
+			resolved, res := resolver.Resolve(cmd.Context())
 
 			w := cmd.OutOrStdout()
 
 			if jsonOut {
 				counts := make(map[string]int)
 				for _, rf := range resolved {
-					counts[rf.Origin.Source]++
+					key := rf.Origin.Source + "\x00" + string(rf.Origin.Scope)
+					counts[key]++
 				}
 				sources := make([]sourceSummary, 0, len(entries))
 				for _, e := range entries {
 					sources = append(sources, sourceSummary{
 						Source:    e.Source,
 						Scope:     string(e.Scope),
-						RuleCount: counts[e.Source],
+						RuleCount: counts[e.Source+"\x00"+string(e.Scope)],
 					})
 				}
 				diags := res.Diagnostics
