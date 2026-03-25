@@ -9,23 +9,22 @@ import (
 	"strings"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
-	"github.com/SteerSpec/strspc-manager/src/entityops"
 )
 
 // stateLabel returns a human-readable label for a rule state code.
 func stateLabel(state string) string {
 	switch state {
-	case entityops.StateDraft:
+	case entity.StateDraft:
 		return "Draft"
-	case entityops.StatePublished:
+	case entity.StatePublished:
 		return "Published"
-	case entityops.StateImplemented:
+	case entity.StateImplemented:
 		return "Implemented"
-	case entityops.StateRetired:
+	case entity.StateRetired:
 		return "Retired"
-	case entityops.StateTerminated:
+	case entity.StateTerminated:
 		return "Terminated"
-	case entityops.StateAbandoned:
+	case entity.StateAbandoned:
 		return "Abandoned"
 	default:
 		return state

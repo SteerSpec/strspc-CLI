@@ -68,7 +68,7 @@ Examples:
 			if jsonOut {
 				return writeJSONOutput(w, map[string]any{
 					"rule_id":     newRuleID,
-					"state":       entityops.StateDraft,
+					"state":       entity.StateDraft,
 					"revision":    0,
 					"supersedes":  ruleID,
 					"version":     version,
