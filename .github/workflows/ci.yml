@@ -54,7 +54,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Diff rules (push)
         if: github.event_name == 'push'
-        run: ./strspc diff rules/ --base HEAD~1
+        run: ./strspc diff rules/ --base ${{ github.event.before }}
 
   commits:
     if: github.event_name == 'pull_request'
