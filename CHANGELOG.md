@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.12.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.11.0...v1.12.0) (2026-03-25)
+
+
+### Features
+
+* MVP self-hosting — manager v1.9.0 upgrade, strspc sync, and CLI bootstrap ([52e712d](https://github.com/SteerSpec/strspc-CLI/commit/52e712d0e45cd68968d51f618f1e4683683d0bd1))
+* **sync:** add strspc sync command — wrap ruleresolve (CLI[#16](https://github.com/SteerSpec/strspc-CLI/issues/16)) ([210a543](https://github.com/SteerSpec/strspc-CLI/commit/210a5431b086581d9a92dbc385ae7e5bd0fb065b))
+
+
+### Bug Fixes
+
+* **diff:** use baseRefOid instead of baseRefSha for gh pr view --json ([6c32e86](https://github.com/SteerSpec/strspc-CLI/commit/6c32e86ef24b75aef2e87456319079fb6e76e1d4))
+* **sync:** address PR review comments ([35807ab](https://github.com/SteerSpec/strspc-CLI/commit/35807ab85ce3c7ea65f658ce311ff5e22dffae55))
+* **sync:** address second round of PR review comments ([270311b](https://github.com/SteerSpec/strspc-CLI/commit/270311b58a0463991f95fb21afac510c76eb8462))
+* **sync:** address third round of PR review comments ([f9a524a](https://github.com/SteerSpec/strspc-CLI/commit/f9a524a5ac240edccc1c76f600ca1d4cf274bc58))
+
 ## [1.11.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.10.0...v1.11.0) (2026-03-24)
 
 
