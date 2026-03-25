@@ -10,7 +10,7 @@ import (
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 )
 
-// validEntityJSON is a minimal entity file accepted by ruleresolve's LocalSource.
+// syncEntityJSON is a minimal entity file accepted by ruleresolve's LocalSource.
 const syncEntityJSON = `{
   "$schema": "./_schema/entity.v1.schema.json",
   "entity": {

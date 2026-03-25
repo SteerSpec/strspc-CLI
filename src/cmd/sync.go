@@ -97,7 +97,7 @@ func newSyncCmd() *cobra.Command {
 
 			opts := []ruleresolve.Option{
 				ruleresolve.WithBaseDir(cwd),
-				ruleresolve.WithCacheDir(filepath.Join(cwd, ".strspc", "cache")),
+				ruleresolve.WithCacheDir(filepath.Join(cwd, ".strspc")),
 				ruleresolve.WithForceSync(force),
 			}
 			if ttl > 0 {
@@ -147,7 +147,9 @@ func newSyncCmd() *cobra.Command {
 				return nil
 			}
 
-			outputText(w, res)
+			if len(res.Diagnostics) > 0 {
+				outputText(w, res)
+			}
 
 			if !res.OK() {
 				return fmt.Errorf("sync found %d error(s)", len(res.Errors()))
