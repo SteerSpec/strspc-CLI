@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.11.0...v1.12.0) (2026-03-25)
+
+
+### Features
+
+* **sync:** add strspc sync command — wrap ruleresolve (CLI[#16](https://github.com/SteerSpec/strspc-CLI/issues/16)) ([210a543](https://github.com/SteerSpec/strspc-CLI/commit/210a5431b086581d9a92dbc385ae7e5bd0fb065b))
+
 ## [1.11.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.10.0...v1.11.0) (2026-03-24)
 
 
