@@ -25,12 +25,12 @@ const checkEntityJSON = `{
   },
   "rules": [
     {
-      "id": "TST.R001",
+      "id": "TST-001",
       "revision": 0,
       "state": "D",
       "body": "All code must be tested.",
       "added_by": "@test",
-      "added_at": "2026-01-01T00:00:00Z",
+      "added_at": "2026-01-01",
       "supersedes": null
     }
   ],

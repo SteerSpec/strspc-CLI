@@ -14,8 +14,6 @@ import (
 
 func newCheckCmd() *cobra.Command {
 	var (
-		base       string
-		prNumber   int
 		provider   string
 		staticOnly bool
 		jsonOut    bool
@@ -24,10 +22,9 @@ func newCheckCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check [path]",
 		Short: "Evaluate code changes against resolved rules",
-		Long: "Evaluate a code diff against the rule set declared in .strspc/config.yaml. " +
+		Long: "Evaluate rule compliance for the rule set declared in .strspc/config.yaml. " +
 			"Defaults to the current directory.\n\n" +
-			"Use --static-only to skip AI evaluation and run structural checks only. " +
-			"Use --pr or --base to control which diff is evaluated.",
+			"Use --static-only to skip AI evaluation and run structural checks only.",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -71,7 +68,9 @@ func newCheckCmd() *cobra.Command {
 			resolved, resolveRes := resolver.Resolve(cmd.Context())
 			w := cmd.OutOrStdout()
 			if !resolveRes.OK() {
-				if len(resolveRes.Diagnostics) > 0 {
+				if jsonOut {
+					_ = writeJSON(w, resolveRes)
+				} else if len(resolveRes.Diagnostics) > 0 {
 					outputText(w, resolveRes)
 				}
 				return fmt.Errorf("check: rule resolution failed with %d error(s)", len(resolveRes.Errors()))
@@ -130,8 +129,6 @@ func newCheckCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&base, "base", "HEAD", "base git ref for diff")
-	cmd.Flags().IntVar(&prNumber, "pr", 0, "GitHub PR number (resolves base SHA via gh CLI; requires gh)")
 	cmd.Flags().StringVar(&provider, "provider", "", "AI provider: claude|openai|ollama|static (overrides config)")
 	cmd.Flags().BoolVar(&staticOnly, "static-only", false, "skip AI evaluation; structural checks only")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output diagnostics as JSON")
@@ -155,6 +152,8 @@ func normalizeStateCodes(states []string) []string {
 	for i, s := range states {
 		if code, ok := nameToCode[strings.ToLower(s)]; ok {
 			out[i] = code
+		} else if len(s) == 1 {
+			out[i] = strings.ToUpper(s)
 		} else {
 			out[i] = s
 		}
