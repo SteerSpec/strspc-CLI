@@ -55,6 +55,8 @@ jobs:
       - name: Diff rules (push)
         if: github.event_name == 'push'
         run: ./strspc diff rules/ --base ${{ github.event.before }}
+      - name: Check rules (static)
+        run: ./strspc check rules/ --static-only
 
   commits:
     if: github.event_name == 'pull_request'

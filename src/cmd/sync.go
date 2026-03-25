@@ -14,17 +14,6 @@ import (
 	"github.com/SteerSpec/strspc-manager/src/ruleresolve"
 )
 
-// syncConfig mirrors the relevant fields from .strspc/config.yaml.
-type syncConfig struct {
-	Rules []struct {
-		Source string `yaml:"source"`
-		Scope  string `yaml:"scope"`
-	} `yaml:"rules"`
-	Cache struct {
-		TTL string `yaml:"ttl"`
-	} `yaml:"cache"`
-}
-
 // syncOutput is the JSON representation of a sync result.
 type syncOutput struct {
 	OK          bool                `json:"ok"`
@@ -72,7 +61,7 @@ func newSyncCmd() *cobra.Command {
 				return fmt.Errorf("reading config.yaml: %w", err)
 			}
 
-			var cfg syncConfig
+			var cfg strspcConfig
 			if err := yaml.Unmarshal(data, &cfg); err != nil {
 				return fmt.Errorf("parsing config.yaml: %w", err)
 			}
