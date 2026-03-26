@@ -9,6 +9,7 @@ import (
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/realmlint"
 	"github.com/SteerSpec/strspc-manager/src/result"
+	"github.com/SteerSpec/strspc-manager/src/rulelint"
 )
 
 // setupRealmValidateTest overrides newRealmValidator to skip schema validation
@@ -17,8 +18,16 @@ import (
 func setupRealmValidateTest(t *testing.T) {
 	t.Helper()
 	original := newRealmValidator
-	newRealmValidator = func(strict bool) *realmlint.RealmLinter {
-		return realmlint.New(realmlint.WithStrict(strict))
+	newRealmValidator = func(strict, recursive bool) *realmValidatorSet {
+		rl := rulelint.New(rulelint.WithStrict(strict))
+		realmOpts := []realmlint.Option{realmlint.WithStrict(strict)}
+		if !recursive {
+			realmOpts = append(realmOpts, realmlint.WithRuleLinter(rl))
+		}
+		return &realmValidatorSet{
+			realmLinter: realmlint.New(realmOpts...),
+			ruleLinter:  rl,
+		}
 	}
 	t.Cleanup(func() { newRealmValidator = original })
 }
@@ -44,6 +53,17 @@ const invalidRealmIDJSON = `{
   "dependencies": []
 }`
 
+const validRealmWithSubsJSON = `{
+  "$schema": "./_schema/realm.v1.schema.json",
+  "realm": {
+    "id": "dev.steerspec.test",
+    "title": "Test Realm",
+    "version": "0.1.0"
+  },
+  "dependencies": [],
+  "sub_realms": ["auth"]
+}`
+
 // setupValidRealm creates a minimal valid realm directory structure.
 func setupValidRealm(t *testing.T, dir string) {
 	t.Helper()
@@ -54,6 +74,47 @@ func setupValidRealm(t *testing.T, dir string) {
 		t.Fatal(err)
 	}
 	// Minimal entity schema stub.
+	if err := os.WriteFile(filepath.Join(dir, "_schema", "entity.v1.schema.json"), []byte(`{"$id": "entity-v1"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// setupValidRealmWithSubs creates a realm with a sub-realm declared.
+func setupValidRealmWithSubs(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, "_schema"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(validRealmWithSubsJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "_schema", "entity.v1.schema.json"), []byte(`{"$id": "entity-v1"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	setupSubRealm(t, dir, "auth", "dev.steerspec.test")
+}
+
+// setupSubRealm creates a sub-realm directory inside a parent realm.
+func setupSubRealm(t *testing.T, parentDir, name, parentID string) {
+	t.Helper()
+	dir := filepath.Join(parentDir, name)
+	if err := os.MkdirAll(filepath.Join(dir, "_schema"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	realmJSON := `{
+  "$schema": "./_schema/realm.v1.schema.json",
+  "realm": {
+    "id": "` + parentID + `.` + name + `",
+    "title": "Sub Realm ` + name + `",
+    "version": "0.1.0"
+  },
+  "dependencies": []
+}`
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(realmJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(dir, "_schema", "entity.v1.schema.json"), []byte(`{"$id": "entity-v1"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -239,4 +300,66 @@ func TestRealmValidateHelp(t *testing.T) {
 	}
 	testutil.AssertContains(t, output, "--json")
 	testutil.AssertContains(t, output, "--strict")
+	testutil.AssertContains(t, output, "--recursive")
+}
+
+func TestRealmValidateRecursiveValid(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	setupValidRealmWithSubs(t, dir)
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir, "--recursive")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, output, "No errors or warnings")
+}
+
+func TestRealmValidateRecursiveNoSubRealms(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir, "--recursive")
+	if err != nil {
+		t.Fatalf("unexpected error with --recursive on realm without sub-realms: %v", err)
+	}
+	testutil.AssertContains(t, output, "No errors or warnings")
+}
+
+func TestRealmValidateRecursiveJSON(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	// Missing sub-realm directory → RM008 error.
+	if err := os.MkdirAll(filepath.Join(dir, "_schema"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(validRealmWithSubsJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "_schema", "entity.v1.schema.json"), []byte(`{"$id": "entity-v1"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Don't create the "auth" sub-realm dir — should trigger RM008.
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir, "--recursive", "--json")
+	if err == nil {
+		t.Fatal("expected error for missing sub-realm directory, got nil")
+	}
+
+	var diags []result.Diagnostic
+	if jsonErr := json.Unmarshal([]byte(output), &diags); jsonErr != nil {
+		t.Fatalf("output is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+
+	found := false
+	for _, d := range diags {
+		if d.Code == "RM008" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected RM008 diagnostic for missing sub-realm dir, got: %v", diags)
+	}
 }
