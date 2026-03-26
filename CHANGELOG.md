@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.14.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.13.0...v1.14.0) (2026-03-26)
+
+
+### Features
+
+* **realm:** add --recursive flag to realm validate ([b51b2fb](https://github.com/SteerSpec/strspc-CLI/commit/b51b2fbf44a11b3f5a7e73819fa93d5a269cb2ff))
+* **realm:** add --recursive flag to realm validate ([5ffaef4](https://github.com/SteerSpec/strspc-CLI/commit/5ffaef406cc45463b0a3ab481edc166c2c77d76d)), closes [#44](https://github.com/SteerSpec/strspc-CLI/issues/44)
+
+
+### Bug Fixes
+
+* **realm:** address PR [#68](https://github.com/SteerSpec/strspc-CLI/issues/68) review comments ([c413b21](https://github.com/SteerSpec/strspc-CLI/commit/c413b21286f3ff598284b8e7703bb666d69852ae))
+* **realm:** address PR [#68](https://github.com/SteerSpec/strspc-CLI/issues/68) round-2 review comments ([d52ff84](https://github.com/SteerSpec/strspc-CLI/commit/d52ff842e9cfdf0eb0bc846b1e6b7c3bb070e8d6))
+* **realm:** assert err==nil in RL012 cross-ref test ([fb47a66](https://github.com/SteerSpec/strspc-CLI/commit/fb47a66edac7d0793ed8c3a7960f1f9c6f8c62e7))
+
 ## [1.13.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.12.0...v1.13.0) (2026-03-25)
 
 
