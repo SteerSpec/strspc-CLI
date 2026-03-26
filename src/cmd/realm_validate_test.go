@@ -393,9 +393,10 @@ func TestRealmValidateRecursiveCrossRef(t *testing.T) {
 
 	// With --recursive: LintRealm scans across sub-realms and catches RL012.
 	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir, "--recursive")
-	// RL012 is a warning by default, not an error — command may still succeed.
-	// Check the output for the RL012 diagnostic.
-	_ = err
+	// RL012 is a warning by default, not an error — the command should still succeed.
+	if err != nil {
+		t.Fatalf("expected realm validate to succeed despite RL012 warning, got error: %v", err)
+	}
 	testutil.AssertContains(t, output, "RL012")
 	testutil.AssertContains(t, output, "MISSING-999")
 }
