@@ -109,17 +109,25 @@ func newRealmValidateCmd() *cobra.Command {
 	return cmd
 }
 
+// diagKey identifies a diagnostic for deduplication.
+type diagKey struct {
+	Code     string
+	Path     string
+	Severity result.Severity
+	Message  string
+}
+
 // mergeDiagnostics appends diagnostics from extra into base, skipping duplicates.
 func mergeDiagnostics(base, extra *result.Result) {
-	seen := make(map[string]bool, len(base.Diagnostics))
+	seen := make(map[diagKey]bool, len(base.Diagnostics))
 	for _, d := range base.Diagnostics {
-		seen[d.Code+"|"+d.Path+"|"+d.Message] = true
+		seen[diagKey{d.Code, d.Path, d.Severity, d.Message}] = true
 	}
 	for _, d := range extra.Diagnostics {
-		key := d.Code + "|" + d.Path + "|" + d.Message
-		if !seen[key] {
+		k := diagKey{d.Code, d.Path, d.Severity, d.Message}
+		if !seen[k] {
 			base.Add(d)
-			seen[key] = true
+			seen[k] = true
 		}
 	}
 }
@@ -144,9 +152,21 @@ func outputGroupedText(w io.Writer, res *result.Result, dir string) {
 		subGroups[sr] = &group{label: fmt.Sprintf("Sub-realm %q", sr)}
 	}
 
-	absDir, _ := filepath.Abs(dir)
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		outputText(w, res)
+		return
+	}
 	for _, d := range res.Diagnostics {
-		absPath, _ := filepath.Abs(d.Path)
+		if d.Path == "" {
+			rootGroup.diags = append(rootGroup.diags, d)
+			continue
+		}
+		absPath, err := filepath.Abs(d.Path)
+		if err != nil {
+			rootGroup.diags = append(rootGroup.diags, d)
+			continue
+		}
 		matched := false
 		for _, sr := range rf.SubRealms {
 			srPrefix := filepath.Join(absDir, sr)
