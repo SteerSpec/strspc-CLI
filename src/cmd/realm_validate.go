@@ -162,7 +162,13 @@ func outputGroupedText(w io.Writer, res *result.Result, dir string) {
 			rootGroup.diags = append(rootGroup.diags, d)
 			continue
 		}
-		absPath, err := filepath.Abs(d.Path)
+		// Diagnostic paths may have a ": <location>" suffix (e.g.
+		// "file.json: rules[0].id"). Strip it before resolving.
+		filePath := d.Path
+		if idx := strings.Index(filePath, ": "); idx > 0 {
+			filePath = filePath[:idx]
+		}
+		absPath, err := filepath.Abs(filePath)
 		if err != nil {
 			rootGroup.diags = append(rootGroup.diags, d)
 			continue

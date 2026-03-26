@@ -363,3 +363,65 @@ func TestRealmValidateRecursiveJSON(t *testing.T) {
 		t.Errorf("expected RM008 diagnostic for missing sub-realm dir, got: %v", diags)
 	}
 }
+
+func TestRealmValidateRecursiveCrossRef(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	setupValidRealmWithSubs(t, dir)
+
+	// Add entity in sub-realm with a supersedes reference to a non-existent rule.
+	// LintRealm should catch this as RL012.
+	entityJSON := `{
+  "entity": {"id": "SUB", "title": "Sub Entity"},
+  "rule_set": {"version": "1.0.0", "timestamp": "2026-01-01T00:00:00Z", "hash": null},
+  "rules": [
+    {
+      "id": "SUB-001",
+      "revision": 0,
+      "state": "D",
+      "body": "A rule that supersedes a missing rule.",
+      "added_by": "@test",
+      "added_at": "2026-01-01",
+      "supersedes": "MISSING-999"
+    }
+  ],
+  "notes": []
+}`
+	if err := os.WriteFile(filepath.Join(dir, "auth", "SUB.json"), []byte(entityJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// With --recursive: LintRealm scans across sub-realms and catches RL012.
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir, "--recursive")
+	// RL012 is a warning by default, not an error — command may still succeed.
+	// Check the output for the RL012 diagnostic.
+	_ = err
+	testutil.AssertContains(t, output, "RL012")
+	testutil.AssertContains(t, output, "MISSING-999")
+}
+
+func TestRealmValidateRecursiveGroupedOutput(t *testing.T) {
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	setupValidRealmWithSubs(t, dir)
+
+	// Add duplicate EUIDs within the sub-realm to force an RM006 error
+	// scoped to the sub-realm path.
+	entityJSON := `{
+  "entity": {"id": "DUP", "title": "Duplicate"},
+  "rule_set": {"version": "1.0.0", "timestamp": "2026-01-01T00:00:00Z", "hash": null},
+  "rules": [],
+  "notes": []
+}`
+	subDir := filepath.Join(dir, "auth")
+	if err := os.WriteFile(filepath.Join(subDir, "DUP1.json"), []byte(entityJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(subDir, "DUP2.json"), []byte(entityJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	output, _ := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir, "--recursive")
+	// Grouped output should include section headers.
+	testutil.AssertContains(t, output, `Sub-realm "auth"`)
+}
