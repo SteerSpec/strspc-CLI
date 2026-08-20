@@ -20,6 +20,18 @@ builds:
 
 archives:
   - formats: [tar.gz]
+    # Listing `files` REPLACES goreleaser's defaults
+    # (license*/LICENSE*/readme*/README*/changelog*/CHANGELOG*) rather than
+    # adding to them, so the defaults worth keeping are repeated here.
+    # NOTICE is the reason this block exists: it is not in the defaults, and
+    # Apache 2.0 section 4(d) requires redistributions of a work that has a
+    # NOTICE file to carry its attribution notices. Release tarballs are
+    # redistribution.
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
+      - CHANGELOG.md
 
 changelog:
   sort: asc
