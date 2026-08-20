@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.14.2](https://github.com/SteerSpec/strspc-CLI/compare/v1.14.1...v1.14.2) (2026-08-20)
+
+
+### Documentation
+
+* add the LICENSE the README already advertises ([#76](https://github.com/SteerSpec/strspc-CLI/issues/76)) ([e194b6c](https://github.com/SteerSpec/strspc-CLI/commit/e194b6c997353cdb0ab5ce242beae6b773ab3220))
+
 ## [1.14.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.14.0...v1.14.1) (2026-03-28)
 
 
