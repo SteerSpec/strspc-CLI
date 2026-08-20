@@ -1,7 +1,17 @@
 name: PR Auto-Approve (Copilot)
 
-# Copy this file to .github/workflows/pr-auto-approve.yml in your repository.
-# Then set the required variables/secrets (see comments below).
+# This IS the live workflow for this repo -- not a template to copy anywhere.
+#
+# It was generated from templates/pr-auto-approve.yml in SteerSpec/strspc-pr-review
+# (v1.4.0) with only the per-repo values changed: bot-login as a literal,
+# secrets.BOT_TOKEN, the base branch, the workflow_run list, and the Copilot
+# wait. The comments below are inherited from that template and kept
+# deliberately: each documents something that silently broke in production, and
+# a wrong value here produces no error at all, just a PR that is never approved.
+#
+# When the action changes, the pr-caller-sync skill finds callers like this one
+# and proposes the matching edit -- which works only while the diff against the
+# template stays small. Prefer changing the template upstream over diverging here.
 
 on:
   # SECURITY: pull_request_target, NOT pull_request. For a same-repo PR the
