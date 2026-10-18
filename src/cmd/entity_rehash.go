@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -25,15 +26,20 @@ type rehashResult struct {
 }
 
 // rehashEntity compares the stored rule_set.hash with the blake3 hash of the
-// file's raw bytes (what lint RL011 verifies). When they differ, or the hash is
-// null, it refreshes timestamp and hash via entityops.UpdateMeta and rewrites
-// the file. Fresh files are left untouched.
+// file's raw bytes (what lint RL011 verifies), and each sub-entity's hash with
+// the hash of its own JSON (what entityops stamps on sub-entity operations).
+// When any differ, or are null, it refreshes timestamp and hash via
+// entityops.UpdateMeta and rewrites the file. Fresh files are left untouched.
 func rehashEntity(path string, data []byte, ef *entity.File) (*rehashChange, error) {
+	subsChanged, err := rehashSubEntities(ef)
+	if err != nil {
+		return nil, fmt.Errorf("rehashing sub-entities of %s: %w", path, err)
+	}
 	computed, err := entity.ComputeHash(data)
 	if err != nil {
 		return nil, fmt.Errorf("computing hash for %s: %w", path, err)
 	}
-	if ef.RuleSet.Hash != nil && *ef.RuleSet.Hash == computed {
+	if !subsChanged && ef.RuleSet.Hash != nil && *ef.RuleSet.Hash == computed {
 		return nil, nil
 	}
 
@@ -46,6 +52,35 @@ func rehashEntity(path string, data []byte, ef *entity.File) (*rehashChange, err
 	}
 	change.NewHash = *ef.RuleSet.Hash
 	return change, nil
+}
+
+// rehashSubEntities refreshes the hash of every sub-entity (recursively) whose
+// stored hash is null or stale. It reports whether anything changed.
+func rehashSubEntities(ef *entity.File) (bool, error) {
+	changed := false
+	for i := range ef.SubEntities {
+		sub := &ef.SubEntities[i]
+		nestedChanged, err := rehashSubEntities(sub)
+		if err != nil {
+			return false, err
+		}
+		data, err := json.Marshal(sub)
+		if err != nil {
+			return false, fmt.Errorf("marshaling %s: %w", sub.Entity.ID, err)
+		}
+		computed, err := entity.ComputeHash(data)
+		if err != nil {
+			return false, fmt.Errorf("computing hash for %s: %w", sub.Entity.ID, err)
+		}
+		if !nestedChanged && sub.RuleSet.Hash != nil && *sub.RuleSet.Hash == computed {
+			continue
+		}
+		if err := entityops.UpdateMeta(sub); err != nil {
+			return false, fmt.Errorf("updating metadata for %s: %w", sub.Entity.ID, err)
+		}
+		changed = true
+	}
+	return changed, nil
 }
 
 func newEntityRehashCmd() *cobra.Command {

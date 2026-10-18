@@ -155,3 +155,38 @@ func TestEntityRehashHelp(t *testing.T) {
 	testutil.AssertContains(t, out, "--all")
 	testutil.AssertContains(t, out, "--dir")
 }
+
+func TestEntityRehashFillsSubEntityHashes(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Rule", "@alice"))
+	// Null the sub-entity hash by hand, as a bulk import would leave it.
+	f := loadEntityFile(t, dir, "TST")
+	f.SubEntities[0].RuleSet.Hash = nil
+	if err := saveEntity(resolveEntityPath(dir, "TST"), f); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "TST", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, out, "Rehashed TST")
+
+	f = loadEntityFile(t, dir, "TST")
+	sub := f.SubEntities[0]
+	if sub.RuleSet.Hash == nil {
+		t.Fatal("sub-entity hash should be filled")
+	}
+	data, err := json.Marshal(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := entity.ComputeHash(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *sub.RuleSet.Hash != want {
+		t.Errorf("sub-entity hash = %s, want %s", *sub.RuleSet.Hash, want)
+	}
+	assertFileHashFresh(t, dir, "TST")
+}
