@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/entity"
 )
 
 func TestRuleAddSubEntityAutoDetect(t *testing.T) {
@@ -188,4 +189,40 @@ func TestRuleAddHelp(t *testing.T) {
 	}
 	testutil.AssertContains(t, out, "--sub-entity")
 	testutil.AssertContains(t, out, "--body")
+}
+
+func TestRulePromoteNestedSubEntityRefreshesAllAncestors(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFileWithSub(t, dir, "TST", "SUB")
+	// Nest a second level under SUB by hand.
+	f := loadEntityFile(t, dir, "TST")
+	leaf := entity.File{
+		Schema:  "./_schema/entity.v1.schema.json",
+		Entity:  entity.Entity{ID: "LEAF", Title: "Leaf", Parent: "SUB"},
+		RuleSet: entity.RuleSet{Version: "0.1.0", Timestamp: "2026-01-01T00:00:00Z"},
+		Rules:   []entity.Rule{makeRule("LEAF-001", "D", "Rule", "@alice")},
+		Notes:   []entity.Note{},
+	}
+	f.SubEntities[0].SubEntities = append(f.SubEntities[0].SubEntities, leaf)
+	if err := saveEntity(resolveEntityPath(dir, "TST"), f); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "promote", "LEAF-001", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	f = loadEntityFile(t, dir, "TST")
+	sub := f.SubEntities[0]
+	got := sub.SubEntities[0]
+	if got.Rules[0].State != "P" || got.RuleSet.Version != "0.2.0" {
+		t.Errorf("leaf not promoted/bumped: state=%s version=%s", got.Rules[0].State, got.RuleSet.Version)
+	}
+	if sub.RuleSet.Version != "0.1.1" || sub.RuleSet.Timestamp == "2026-01-01T00:00:00Z" || sub.RuleSet.Hash == nil {
+		t.Errorf("intermediate ancestor SUB not refreshed: %+v", sub.RuleSet)
+	}
+	if f.RuleSet.Version != "0.1.1" {
+		t.Errorf("top-level version should bump to 0.1.1, got %s", f.RuleSet.Version)
+	}
+	assertFileHashFresh(t, dir, "TST")
 }

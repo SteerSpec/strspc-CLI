@@ -10,6 +10,7 @@ import (
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/entityops"
 )
 
 // setupEntityFileHash writes an entity file with the given hash pointer (nil = null).
@@ -187,6 +188,39 @@ func TestEntityRehashFillsSubEntityHashes(t *testing.T) {
 	}
 	if *sub.RuleSet.Hash != want {
 		t.Errorf("sub-entity hash = %s, want %s", *sub.RuleSet.Hash, want)
+	}
+	assertFileHashFresh(t, dir, "TST")
+}
+
+func TestEntityRehashFreshParentWithNullChildIsRewritten(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Rule", "@alice"))
+	// Make the parent hash correct while the child hash is null: the
+	// contract is that the file is still rewritten to repair the child.
+	f := loadEntityFile(t, dir, "TST")
+	f.SubEntities[0].RuleSet.Hash = nil
+	if err := entityops.UpdateMeta(f); err != nil {
+		t.Fatal(err)
+	}
+	path := resolveEntityPath(dir, "TST")
+	if err := saveEntity(path, f); err != nil {
+		t.Fatal(err)
+	}
+	assertFileHashFresh(t, dir, "TST")
+	parentVersion := f.RuleSet.Version
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "TST", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, out, "1 entity file(s) updated")
+
+	f = loadEntityFile(t, dir, "TST")
+	if f.SubEntities[0].RuleSet.Hash == nil {
+		t.Error("child hash should be filled")
+	}
+	if f.RuleSet.Version != parentVersion {
+		t.Errorf("rehash must not bump versions: %s → %s", parentVersion, f.RuleSet.Version)
 	}
 	assertFileHashFresh(t, dir, "TST")
 }

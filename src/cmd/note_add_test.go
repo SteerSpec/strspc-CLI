@@ -52,6 +52,14 @@ func TestNoteAddRecordsCurrentRuleRevision(t *testing.T) {
 	if len(f.Notes) != 1 || f.Notes[0].Revision != 2 {
 		t.Fatalf("expected one note at revision 2, got %+v", f.Notes)
 	}
+
+	// --json must report the same revision as the saved note.
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "note", "add", "TST-001",
+		"--type", "clarification", "--body", "Second.", "--added-by", "@alice", "--dir", dir, "--json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, out, `"revision": 2`)
 }
 
 func TestNoteAddIncrementsPerRule(t *testing.T) {

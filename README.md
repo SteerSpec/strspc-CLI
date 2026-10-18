@@ -102,7 +102,7 @@ fail_on:
   - I                       # state codes (D, A, P, I, R, T), not words
 ```
 
-`fail_on` uses rule state codes as defined by `config.v1.schema.json`. It also writes `.strspc/.gitignore` (`cache.db`, `cache/`) so cache artifacts stay out of version control. Note that `github://` sources are not resolvable with the current strspc-manager; add a local `./rules/` source (or wait for remote fetching) before running `check` or `sync`.
+`fail_on` uses rule state codes as defined by `config.v1.schema.json`. It also writes `.strspc/.gitignore` (`cache.db`, `cache/`) so cache artifacts stay out of version control. Until a strspc-manager release ships remote fetching, the resolver rejects any active `github://` entry: replace it with (or comment it out in favour of) a local `./rules/` source before running `check` or `sync`.
 
 ### Author rules
 

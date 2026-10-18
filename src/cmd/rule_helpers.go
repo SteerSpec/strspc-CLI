@@ -124,13 +124,23 @@ type entityTarget struct {
 // findSubEntity returns the sub-entity with the given EUID, searching nested
 // sub_entities recursively, or nil if none matches.
 func findSubEntity(f *entity.File, euid string) *entity.File {
+	chain := findSubEntityChain(f, euid)
+	if chain == nil {
+		return nil
+	}
+	return chain[len(chain)-1]
+}
+
+// findSubEntityChain returns the path from f's first-level sub-entity down to
+// the sub-entity with the given EUID (inclusive), or nil if none matches.
+func findSubEntityChain(f *entity.File, euid string) []*entity.File {
 	for i := range f.SubEntities {
 		sub := &f.SubEntities[i]
 		if sub.Entity.ID == euid {
-			return sub
+			return []*entity.File{sub}
 		}
-		if nested := findSubEntity(sub, euid); nested != nil {
-			return nested
+		if nested := findSubEntityChain(sub, euid); nested != nil {
+			return append([]*entity.File{sub}, nested...)
 		}
 	}
 	return nil
@@ -175,28 +185,34 @@ func resolveEntityTarget(dir, euid string) (entityTarget, error) {
 func modifyEntity(t entityTarget, mutate func(target *entity.File) error) error {
 	return loadModifySaveEntity(t.path, func(f *entity.File) error {
 		target := f
+		var ancestors []*entity.File // innermost first, excluding target
 		if t.subID != "" {
-			target = findSubEntity(f, t.subID)
-			if target == nil {
+			chain := findSubEntityChain(f, t.subID)
+			if chain == nil {
 				return fmt.Errorf("sub-entity %q not found in %s", t.subID, t.path)
 			}
+			target = chain[len(chain)-1]
+			for i := len(chain) - 2; i >= 0; i-- {
+				ancestors = append(ancestors, chain[i])
+			}
+			ancestors = append(ancestors, f)
 		}
 		if err := mutate(target); err != nil {
 			return err
 		}
-		if target != f {
-			// The sub-entity's own version and hash were refreshed by
-			// entityops. The parent file changed too: RD007 requires its
-			// rule_set.version to rise on any change in the file, and its
-			// hash covers the whole file (RL011), so bump a patch and
-			// refresh its metadata.
-			v, err := entityops.BumpPatch(f.RuleSet.Version)
+		// The target's own version and hash were refreshed by entityops.
+		// Every ancestor changed too: each hash covers its whole subtree
+		// (RL011) and the top-level rule_set.version must rise on any
+		// change in the file (RD007), so bump a patch and refresh metadata
+		// from the innermost ancestor outwards.
+		for _, a := range ancestors {
+			v, err := entityops.BumpPatch(a.RuleSet.Version)
 			if err != nil {
-				return fmt.Errorf("bumping parent version: %w", err)
+				return fmt.Errorf("bumping version of %s: %w", a.Entity.ID, err)
 			}
-			f.RuleSet.Version = v
-			if err := entityops.UpdateMeta(f); err != nil {
-				return fmt.Errorf("updating parent metadata: %w", err)
+			a.RuleSet.Version = v
+			if err := entityops.UpdateMeta(a); err != nil {
+				return fmt.Errorf("updating metadata of %s: %w", a.Entity.ID, err)
 			}
 		}
 		return nil

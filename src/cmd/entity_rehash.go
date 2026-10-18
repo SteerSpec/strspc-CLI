@@ -94,8 +94,10 @@ func newEntityRehashCmd() *cobra.Command {
 		Use:   "rehash [EUID]",
 		Short: "Recompute stale or missing rule_set hashes",
 		Long: `Recompute rule_set.hash (and timestamp) for entity files whose stored hash is
-null or does not match the file contents. Files that are already consistent are
-not rewritten. Useful after bulk imports or hand edits.
+null or does not match the file contents. Sub-entities are repaired the same way,
+each over its own JSON, and a file is rewritten when it or any sub-entity was
+stale. Files whose hashes are all consistent are not touched. Versions are never
+bumped. Useful after bulk imports or hand edits.
 
 Examples:
   strspc entity rehash MYE

@@ -128,7 +128,10 @@ Examples:
 				return err
 			}
 
-			var noteID, oldVersion, version string
+			var (
+				noteID, oldVersion, version string
+				revision                    int
+			)
 			err = modifyEntity(target, func(f *entity.File) error {
 				oldVersion = f.RuleSet.Version
 				var addErr error
@@ -137,6 +140,7 @@ Examples:
 					return addErr
 				}
 				version = f.RuleSet.Version
+				revision = f.Notes[len(f.Notes)-1].Revision
 				return nil
 			})
 			if err != nil {
@@ -150,7 +154,7 @@ Examples:
 					"note_id":     noteID,
 					"rule_id":     ruleID,
 					"type":        noteType,
-					"revision":    0,
+					"revision":    revision,
 					"version":     version,
 					"old_version": oldVersion,
 				})
