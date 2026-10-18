@@ -16,3 +16,8 @@ coverage.out
 # Git worktrees
 .claude/worktrees/
 .strspc/cache.db
+
+# Beads / Dolt files (added by bd init)
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
