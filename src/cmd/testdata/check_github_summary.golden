@@ -1,0 +1,11 @@
+## strspc check
+
+**Status:** failed: violations of rules in fail_on states  
+**Rules:** 4 from 1 source(s)  
+**Evaluation:** claude / stub-model  
+**Diff:** diff file <DIFF_FILE>  
+
+| Severity | Code | Message | Location |
+|----------|------|---------|----------|
+| error | RE001 | rule TST-001 violated: Run has no doc comment, see https://example.com/doc:1 | src/main.go:3 |
+| warning | RE001 | rule TST-002 violated: error not wrapped second line | src/main.go:3 |

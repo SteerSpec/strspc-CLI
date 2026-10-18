@@ -36,6 +36,9 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    env:
+      # Job-level so the steps' if: can test it (secrets are not usable in if:).
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,8 +58,17 @@ jobs:
       - name: Diff rules (push)
         if: github.event_name == 'push'
         run: ./strspc diff rules/ --base ${{ github.event.before }}
-      - name: Check rules (static)
+      - name: Check code changes (Claude)
+        if: env.ANTHROPIC_API_KEY != ''
+        run: ./strspc check --base "$BASE" --format github
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && 'origin/main' || github.event.before }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check rules (static fallback)
+        if: env.ANTHROPIC_API_KEY == ''
         run: ./strspc check --static-only
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   commits:
     if: github.event_name == 'pull_request'
