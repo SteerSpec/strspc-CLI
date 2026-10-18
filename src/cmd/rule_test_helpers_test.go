@@ -1,11 +1,14 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/entity"
 )
 
@@ -121,4 +124,56 @@ func assertFileHashFresh(t *testing.T, dir, entityID string) {
 	if *f.RuleSet.Hash != computed {
 		t.Errorf("%s: stored hash %s != computed %s", entityID, *f.RuleSet.Hash, computed)
 	}
+}
+
+func TestSaveEntityDoesNotEscapeHTML(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "TST")
+
+	body := "IS referenced as [<EUID>-NNN] and compared with a < b > c."
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "TST",
+		"--body", body, "--added-by", "@alice", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	path := filepath.Join(dir, "TST.json")
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(first), "[<EUID>-NNN]") {
+		t.Errorf("body should be written verbatim, got:\n%s", first)
+	}
+	// json.Marshal("<") yields the HTML-escaped form (quoted); that sequence must be absent.
+	escapedLT, _ := json.Marshal("<")
+	escapedGT, _ := json.Marshal(">")
+	for _, esc := range [][]byte{escapedLT, escapedGT} {
+		needle := strings.Trim(string(esc), `"`)
+		if strings.HasPrefix(needle, "<") || strings.HasPrefix(needle, ">") {
+			t.Fatalf("test setup: expected json.Marshal to HTML-escape, got %q", needle)
+		}
+		if strings.Contains(string(first), needle) {
+			t.Errorf("file must not contain HTML-escaped %q:\n%s", needle, first)
+		}
+	}
+	if first[len(first)-1] != '\n' {
+		t.Error("file should end with a trailing newline")
+	}
+
+	// Load and save again: byte-identical round trip.
+	f, err := entity.Parse(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Rules[0].Body != body {
+		t.Errorf("body changed on parse: %q", f.Rules[0].Body)
+	}
+	if err := saveEntity(path, f); err != nil {
+		t.Fatal(err)
+	}
+	second, _ := os.ReadFile(path)
+	if !bytes.Equal(first, second) {
+		t.Errorf("round trip not byte-identical:\n--- first\n%s\n--- second\n%s", first, second)
+	}
+	assertFileHashFresh(t, dir, "TST")
 }

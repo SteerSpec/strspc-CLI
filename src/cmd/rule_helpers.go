@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -42,16 +43,27 @@ func findRule(f *entity.File, ruleID string) *entity.Rule {
 	return nil
 }
 
+// marshalJSON renders v as 2-space indented JSON with a trailing newline.
+// Unlike json.MarshalIndent it does not HTML-escape <, > and &, so rule bodies
+// such as "[<EUID>-NNN]" round-trip byte-identical through the CLI.
+func marshalJSON(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 // writeJSONOutput marshals v as indented JSON and writes it to w with a trailing newline.
 func writeJSONOutput(w io.Writer, v any) error {
-	data, err := json.MarshalIndent(v, "", "  ")
+	data, err := marshalJSON(v)
 	if err != nil {
 		return fmt.Errorf("marshaling JSON output: %w", err)
 	}
-	if _, err := w.Write(data); err != nil {
-		return err
-	}
-	_, err = w.Write([]byte{'\n'})
+	_, err = w.Write(data)
 	return err
 }
 
@@ -92,11 +104,10 @@ func loadModifySaveEntity(entityPath string, mutate func(*entity.File) error) er
 
 // saveEntity writes an entity file as indented JSON with a trailing newline.
 func saveEntity(entityPath string, f *entity.File) error {
-	data, err := json.MarshalIndent(f, "", "  ")
+	data, err := marshalJSON(f)
 	if err != nil {
 		return fmt.Errorf("marshaling entity file: %w", err)
 	}
-	data = append(data, '\n')
 	if err := os.WriteFile(entityPath, data, 0o644); err != nil {
 		return fmt.Errorf("writing entity file: %w", err)
 	}

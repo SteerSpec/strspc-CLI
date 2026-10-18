@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -124,12 +123,12 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 				RuleIdentifierFmt: nil,
 			}
 
-			data, err := json.MarshalIndent(realm, "", "  ")
+			data, err := marshalJSON(realm)
 			if err != nil {
 				return fmt.Errorf("marshaling realm.json: %w", err)
 			}
 
-			if err := os.WriteFile(targetRealmPath, append(data, '\n'), 0o644); err != nil {
+			if err := os.WriteFile(targetRealmPath, data, 0o644); err != nil {
 				return fmt.Errorf("writing realm.json: %w", err)
 			}
 

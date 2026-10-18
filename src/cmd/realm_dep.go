@@ -115,12 +115,7 @@ func newRealmDepListCmd() *cobra.Command {
 				if deps == nil {
 					deps = []entity.RealmDep{}
 				}
-				data, marshalErr := json.MarshalIndent(deps, "", "  ")
-				if marshalErr != nil {
-					return fmt.Errorf("marshaling dependencies: %w", marshalErr)
-				}
-				_, writeErr := w.Write(append(data, '\n'))
-				return writeErr
+				return writeJSONOutput(w, deps)
 			}
 
 			if len(rf.Dependencies) == 0 {
