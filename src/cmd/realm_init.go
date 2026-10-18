@@ -187,7 +187,7 @@ func newRealmInitCmd() *cobra.Command {
 			// Suggest linking to .strspc/config.yaml if it exists.
 			printConfigSuggestion(w, cleanDir)
 
-			writeln(w, descStyle.Render("Docs: https://steerspec.dev/docs/realm"))
+			writeln(w, descStyle.Render("Reference: "+readmeURL))
 
 			return nil
 		},
