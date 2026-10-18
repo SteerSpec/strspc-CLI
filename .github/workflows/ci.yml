@@ -36,9 +36,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-    env:
-      # Job-level so the steps' if: can test it (secrets are not usable in if:).
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,14 +55,20 @@ jobs:
       - name: Diff rules (push)
         if: github.event_name == 'push'
         run: ./strspc diff rules/ --base ${{ github.event.before }}
+      # secrets.* cannot be used in if:, and a job-level env would hand the key
+      # to every step; only a boolean leaves this step.
+      - name: Detect evaluator key
+        id: key
+        run: echo "has_key=${{ secrets.ANTHROPIC_API_KEY != '' }}" >> "$GITHUB_OUTPUT"
       - name: Check code changes (Claude)
-        if: env.ANTHROPIC_API_KEY != ''
+        if: steps.key.outputs.has_key == 'true'
         run: ./strspc check --base "$BASE" --format github
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BASE: ${{ github.event_name == 'pull_request' && 'origin/main' || github.event.before }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Check rules (static fallback)
-        if: env.ANTHROPIC_API_KEY == ''
+        if: steps.key.outputs.has_key != 'true'
         run: ./strspc check --static-only
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
