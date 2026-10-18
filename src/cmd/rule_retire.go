@@ -34,12 +34,15 @@ Examples:
 				return err
 			}
 
-			entityPath := resolveEntityPath(dir, entityID)
+			target, err := resolveEntityTarget(dir, entityID)
+			if err != nil {
+				return err
+			}
 
 			var oldVersion, version string
 			var oldState, newState string
 
-			err = loadModifySaveEntity(entityPath, func(f *entity.File) error {
+			err = modifyEntity(target, func(f *entity.File) error {
 				oldVersion = f.RuleSet.Version
 				if r := findRule(f, ruleID); r != nil {
 					oldState = r.State

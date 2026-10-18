@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/entityops"
 )
 
 // stateLabel returns a human-readable label for a rule state code.
@@ -86,15 +87,99 @@ func loadModifySaveEntity(entityPath string, mutate func(*entity.File) error) er
 		return err
 	}
 
+	return saveEntity(entityPath, f)
+}
+
+// saveEntity writes an entity file as indented JSON with a trailing newline.
+func saveEntity(entityPath string, f *entity.File) error {
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshaling entity file: %w", err)
 	}
-
 	data = append(data, '\n')
 	if err := os.WriteFile(entityPath, data, 0o644); err != nil {
 		return fmt.Errorf("writing entity file: %w", err)
 	}
-
 	return nil
+}
+
+// entityTarget identifies the entity file to modify and, when subID is set,
+// the nested sub-entity inside it that the operation applies to.
+type entityTarget struct {
+	path  string
+	subID string
+}
+
+// findSubEntity returns the sub-entity with the given EUID, searching nested
+// sub_entities recursively, or nil if none matches.
+func findSubEntity(f *entity.File, euid string) *entity.File {
+	for i := range f.SubEntities {
+		sub := &f.SubEntities[i]
+		if sub.Entity.ID == euid {
+			return sub
+		}
+		if nested := findSubEntity(sub, euid); nested != nil {
+			return nested
+		}
+	}
+	return nil
+}
+
+// resolveEntityTarget locates the entity with the given EUID under dir.
+// A top-level file <dir>/<euid>.json wins; otherwise every entity file under
+// dir is scanned for a sub-entity with that EUID. Exactly one match is required.
+func resolveEntityTarget(dir, euid string) (entityTarget, error) {
+	topPath := resolveEntityPath(dir, euid)
+	if _, err := os.Stat(topPath); err == nil {
+		return entityTarget{path: topPath}, nil
+	}
+
+	var matches []string
+	walkErr := entity.WalkEntityFiles(dir, func(path string, _ []byte, ef *entity.File, parseErr error) error {
+		if parseErr != nil || ef == nil {
+			return nil // unreadable files are reported by lint, not by authoring commands
+		}
+		if findSubEntity(ef, euid) != nil {
+			matches = append(matches, path)
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return entityTarget{}, fmt.Errorf("scanning %s for sub-entity %q: %w", dir, euid, walkErr)
+	}
+
+	switch len(matches) {
+	case 0:
+		return entityTarget{}, fmt.Errorf("entity %q not found in %s: no %s.json and no sub-entity with that ID", euid, dir, euid)
+	case 1:
+		return entityTarget{path: matches[0], subID: euid}, nil
+	default:
+		return entityTarget{}, fmt.Errorf("sub-entity %q is defined in %d files under %s: %s", euid, len(matches), dir, strings.Join(matches, ", "))
+	}
+}
+
+// modifyEntity loads the target's file, applies mutate to the target entity
+// (the file itself or a nested sub-entity), refreshes the parent's rule_set
+// metadata when a sub-entity changed, and writes the file back.
+func modifyEntity(t entityTarget, mutate func(target *entity.File) error) error {
+	return loadModifySaveEntity(t.path, func(f *entity.File) error {
+		target := f
+		if t.subID != "" {
+			target = findSubEntity(f, t.subID)
+			if target == nil {
+				return fmt.Errorf("sub-entity %q not found in %s", t.subID, t.path)
+			}
+		}
+		if err := mutate(target); err != nil {
+			return err
+		}
+		if target != f {
+			// The sub-entity's own hash was refreshed by entityops; the parent
+			// hash covers the whole file (RL011), so refresh it too.
+			if err := entityops.UpdateMeta(f); err != nil {
+				return fmt.Errorf("updating parent metadata: %w", err)
+			}
+		}
+		return nil
+	})
 }

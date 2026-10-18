@@ -44,12 +44,15 @@ Examples:
 				return err
 			}
 
-			entityPath := resolveEntityPath(dir, entityID)
+			target, err := resolveEntityTarget(dir, entityID)
+			if err != nil {
+				return err
+			}
 
 			var newRuleID string
 			var oldVersion, version string
 
-			err = loadModifySaveEntity(entityPath, func(f *entity.File) error {
+			err = modifyEntity(target, func(f *entity.File) error {
 				oldVersion = f.RuleSet.Version
 				var supersedeErr error
 				newRuleID, supersedeErr = entityops.SupersedeRule(f, ruleID, body, addedBy)
