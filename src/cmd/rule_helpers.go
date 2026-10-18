@@ -179,6 +179,34 @@ func resolveEntityTarget(dir, euid string) (entityTarget, error) {
 	}
 }
 
+// resolveSubEntityOf locates sub-entity subID declared under parentID, which
+// may itself be a top-level entity or a nested sub-entity anywhere under dir.
+func resolveSubEntityOf(dir, parentID, subID string) (entityTarget, error) {
+	parent, err := resolveEntityTarget(dir, parentID)
+	if err != nil {
+		return entityTarget{}, err
+	}
+	data, err := os.ReadFile(parent.path)
+	if err != nil {
+		return entityTarget{}, fmt.Errorf("reading entity file: %w", err)
+	}
+	ef, err := entity.Parse(data)
+	if err != nil {
+		return entityTarget{}, fmt.Errorf("parsing %s: %w", parent.path, err)
+	}
+	scope := ef
+	if parent.subID != "" {
+		scope = findSubEntity(ef, parent.subID)
+		if scope == nil {
+			return entityTarget{}, fmt.Errorf("sub-entity %q not found in %s", parent.subID, parent.path)
+		}
+	}
+	if findSubEntity(scope, subID) == nil {
+		return entityTarget{}, fmt.Errorf("sub-entity %q not found under %q in %s", subID, parentID, parent.path)
+	}
+	return entityTarget{path: parent.path, subID: subID}, nil
+}
+
 // modifyEntity loads the target's file, applies mutate to the target entity
 // (the file itself or a nested sub-entity), refreshes the parent's rule_set
 // metadata when a sub-entity changed, and writes the file back.

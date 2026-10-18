@@ -226,3 +226,40 @@ func TestRulePromoteNestedSubEntityRefreshesAllAncestors(t *testing.T) {
 	}
 	assertFileHashFresh(t, dir, "TST")
 }
+
+func TestRuleAddSubEntityFlagWithNestedParent(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFileWithSub(t, dir, "TST", "SUB")
+	f := loadEntityFile(t, dir, "TST")
+	f.SubEntities[0].SubEntities = append(f.SubEntities[0].SubEntities, entity.File{
+		Schema:  "./_schema/entity.v1.schema.json",
+		Entity:  entity.Entity{ID: "LEAF", Title: "Leaf", Parent: "SUB"},
+		RuleSet: entity.RuleSet{Version: "0.1.0", Timestamp: "2026-01-01T00:00:00Z"},
+		Rules:   []entity.Rule{},
+		Notes:   []entity.Note{},
+	})
+	if err := saveEntity(resolveEntityPath(dir, "TST"), f); err != nil {
+		t.Fatal(err)
+	}
+
+	// The positional parent SUB is itself nested; --sub-entity LEAF must resolve.
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "SUB", "--sub-entity", "LEAF",
+		"--body", "Leaf rule", "--added-by", "@alice", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, out, "LEAF-001")
+
+	f = loadEntityFile(t, dir, "TST")
+	leaf := f.SubEntities[0].SubEntities[0]
+	if len(leaf.Rules) != 1 || leaf.Rules[0].ID != "LEAF-001" {
+		t.Fatalf("expected LEAF-001, got %+v", leaf.Rules)
+	}
+	assertFileHashFresh(t, dir, "TST")
+
+	// A sub-entity that is not under the named parent is rejected.
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "LEAF", "--sub-entity", "SUB",
+		"--body", "x", "--added-by", "@alice", "--dir", dir); err == nil {
+		t.Error("expected an error when --sub-entity is not under the positional parent")
+	}
+}

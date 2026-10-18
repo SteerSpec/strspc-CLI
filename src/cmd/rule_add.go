@@ -44,21 +44,23 @@ Examples:
 				return fmt.Errorf("--added-by is required")
 			}
 
-			var target entityTarget
+			var (
+				target entityTarget
+				err    error
+			)
 			if subEntity != "" {
-				target = entityTarget{path: resolveEntityPath(dir, entityID), subID: subEntity}
+				target, err = resolveSubEntityOf(dir, entityID, subEntity)
 			} else {
-				var err error
 				target, err = resolveEntityTarget(dir, entityID)
-				if err != nil {
-					return err
-				}
+			}
+			if err != nil {
+				return err
 			}
 
 			var newRuleID string
 			var oldVersion, version string
 
-			err := modifyEntity(target, func(f *entity.File) error {
+			err = modifyEntity(target, func(f *entity.File) error {
 				oldVersion = f.RuleSet.Version
 				var addErr error
 				newRuleID, addErr = entityops.AddRule(f, body, addedBy)
