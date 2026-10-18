@@ -1,10 +1,11 @@
 # SteerSpec configuration
-# Docs: https://steerspec.dev/docs/config
+# Reference: https://github.com/SteerSpec/strspc-CLI#readme
 
 # Rule sources — where to fetch rules from
 rules:
-  # Core rules from the SteerSpec specification (github:// not yet supported — coming soon)
-  # - source: github://SteerSpec/strspc-rules@latest/rules/core
+  # Core rules from the SteerSpec specification. github:// sources resolve once
+  # strspc-manager ships remote fetching; until then CI runs against ./rules only.
+  # - source: github://SteerSpec/strspc-rules@v1.6.0/rules/core
   #   scope: global
 
   # Local CLI-specific rules (dev.steerspec.cli realm)
@@ -12,19 +13,16 @@ rules:
     scope: local
 
 # AI evaluator settings
-# Requires an LLM provider for behavioral rule evaluation.
-# Without this, only structural checks (schema validation) run.
 evaluator:
-  provider: null          # claude, openai, ollama, or null (structural checks only)
-  # endpoint: null        # custom endpoint (defaults per provider)
-  # model: null           # model override
+  provider: null          # CI has no ANTHROPIC_API_KEY yet; switch to claude in E8
+  # model: claude-sonnet-5-5
+  # effort: medium
 
 # Local cache settings
 cache:
   ttl: 24h                # how long cached evaluations stay valid
 
-# Which rule states cause a failure
-# Rules in these states will block merges if violated
+# Which rule states cause a failure (state codes: D, A, P, I, R, T)
 fail_on:
-  - implemented           # I-state rules are enforced
-  # - published           # uncomment to also enforce P-state rules
+  - I                     # Implemented rules block merges when violated
+  # - P                   # uncomment to also enforce Published rules
