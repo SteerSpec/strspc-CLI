@@ -32,11 +32,12 @@ var noteTypes = []string{
 // maxNoteNumber is the maximum note number supported by the 2-digit ID format.
 const maxNoteNumber = 99
 
-// addNote appends a note to ruleID in f, bumps the patch version and refreshes
-// rule_set metadata. entityops has no note primitive, so the JSON manipulation
+// addNote appends a note to ruleID in f at the rule's current revision, bumps
+// the patch version and refreshes rule_set metadata. entityops has no note primitive, so the JSON manipulation
 // lives here; the hash/timestamp update is delegated to entityops.UpdateMeta.
 func addNote(f *entity.File, ruleID, noteType, content, addedBy string) (string, error) {
-	if findRule(f, ruleID) == nil {
+	rule := findRule(f, ruleID)
+	if rule == nil {
 		return "", fmt.Errorf("rule %q not found in entity %q", ruleID, f.Entity.ID)
 	}
 
@@ -63,7 +64,7 @@ func addNote(f *entity.File, ruleID, noteType, content, addedBy string) (string,
 		Content:  content,
 		AddedBy:  addedBy,
 		AddedAt:  time.Now().UTC().Format("2006-01-02"),
-		Revision: 0,
+		Revision: rule.Revision,
 	})
 
 	v, err := entityops.BumpPatch(f.RuleSet.Version)

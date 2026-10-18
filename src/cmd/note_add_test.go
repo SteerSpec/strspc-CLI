@@ -37,6 +37,23 @@ func TestNoteAddBasic(t *testing.T) {
 	assertFileHashFresh(t, dir, "TST")
 }
 
+func TestNoteAddRecordsCurrentRuleRevision(t *testing.T) {
+	dir := t.TempDir()
+	rule := makeRule("TST-001", "D", "Rule", "@alice")
+	rule.Revision = 2
+	setupEntityFile(t, dir, "TST", rule)
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "note", "add", "TST-001",
+		"--type", "clarification", "--body", "Documents revision 2.", "--added-by", "@alice", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	f := loadEntityFile(t, dir, "TST")
+	if len(f.Notes) != 1 || f.Notes[0].Revision != 2 {
+		t.Fatalf("expected one note at revision 2, got %+v", f.Notes)
+	}
+}
+
 func TestNoteAddIncrementsPerRule(t *testing.T) {
 	dir := t.TempDir()
 	setupEntityFile(t, dir, "TST",
