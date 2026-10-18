@@ -397,6 +397,99 @@ func TestCheckProviderUnavailableMidRun(t *testing.T) {
 	testutil.AssertNotContains(t, output, "RE002")
 }
 
+func writeCheckConfigEndpoint(t *testing.T, dir, endpoint string) {
+	t.Helper()
+	cfg := "rules:\n  - source: ./rules/\n    scope: local\nevaluator:\n  provider: claude\n  endpoint: " + endpoint + "\nfail_on: [I]\n"
+	if err := os.WriteFile(filepath.Join(dir, ".strspc", "config.yaml"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCheckEndpointFromConfigRefused(t *testing.T) {
+	dir, diff := setupCheckProject(t, "claude", []string{"I"})
+	writeCheckConfigEndpoint(t, dir, "https://evil.example.com/v1")
+	t.Setenv(envEvaluatorEndpoint, "")
+	called := false
+	orig := newEvalProvider
+	newEvalProvider = func(string, providers.Options) (ruleeval.Provider, error) {
+		called = true
+		return &stubProvider{}, nil
+	}
+	t.Cleanup(func() { newEvalProvider = orig })
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, err.Error(), "evil.example.com")
+	testutil.AssertContains(t, err.Error(), "API key would be sent")
+	testutil.AssertContains(t, err.Error(), envEvaluatorEndpoint)
+	if called {
+		t.Error("provider must not be constructed with a refused endpoint")
+	}
+}
+
+func TestCheckEndpointAnthropicHostAllowed(t *testing.T) {
+	dir, diff := setupCheckProject(t, "claude", []string{"I"})
+	writeCheckConfigEndpoint(t, dir, "https://api.anthropic.com/")
+	t.Setenv(envEvaluatorEndpoint, "")
+	opts := stubEvalProvider(t, &stubProvider{}, nil)
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitOK)
+	if opts.Endpoint != "https://api.anthropic.com/" {
+		t.Errorf("endpoint passed to provider = %q", opts.Endpoint)
+	}
+}
+
+func TestCheckEndpointEnvOverridesConfig(t *testing.T) {
+	dir, diff := setupCheckProject(t, "claude", []string{"I"})
+	writeCheckConfigEndpoint(t, dir, "https://evil.example.com/v1")
+	t.Setenv(envEvaluatorEndpoint, "https://proxy.internal:8443")
+	opts := stubEvalProvider(t, &stubProvider{}, nil)
+
+	// Explicit opt-in from the environment wins and is passed through unchanged.
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache", "--endpoint", "https://flag.internal")
+	assertExit(t, err, exitOK)
+	if opts.Endpoint != "https://proxy.internal:8443" {
+		t.Errorf("endpoint passed to provider = %q, want the env value", opts.Endpoint)
+	}
+}
+
+func TestCheckEndpointFlagOptsIn(t *testing.T) {
+	dir, diff := setupCheckProject(t, "claude", []string{"I"})
+	writeCheckConfigEndpoint(t, dir, "https://evil.example.com/v1")
+	t.Setenv(envEvaluatorEndpoint, "")
+	opts := stubEvalProvider(t, &stubProvider{}, nil)
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache", "--endpoint", "https://flag.internal")
+	assertExit(t, err, exitOK)
+	if opts.Endpoint != "https://flag.internal" {
+		t.Errorf("endpoint passed to provider = %q, want the flag value", opts.Endpoint)
+	}
+}
+
+func TestResolveEndpoint(t *testing.T) {
+	cases := []struct {
+		cfg, flag, env, want string
+		wantErr              bool
+	}{
+		{"", "", "", "", false},
+		{"null", "", "", "", false},
+		{"https://api.anthropic.com", "", "", "https://api.anthropic.com", false},
+		{"https://eu.api.anthropic.com/v1", "", "", "https://eu.api.anthropic.com/v1", false},
+		{"https://api.anthropic.com.evil.example", "", "", "", true},
+		{"http://api.anthropic.com", "", "", "", true}, // plain http leaks the key in transit
+		{"https://other.example", "", "", "", true},
+		{"https://other.example", "https://flag", "", "https://flag", false},
+		{"https://other.example", "https://flag", "https://env", "https://env", false},
+	}
+	for _, c := range cases {
+		got, err := resolveEndpoint(c.cfg, c.flag, c.env)
+		if (err != nil) != c.wantErr || got != c.want {
+			t.Errorf("resolveEndpoint(%q,%q,%q) = %q, %v; want %q, err=%v", c.cfg, c.flag, c.env, got, err, c.want, c.wantErr)
+		}
+	}
+}
+
 func TestCheckProviderNotImplemented(t *testing.T) {
 	dir, diff := setupCheckProject(t, "openai", []string{"I"})
 	stubEvalProvider(t, nil, fmt.Errorf("%w: %q", providers.ErrProviderNotImplemented, "openai"))
@@ -610,7 +703,7 @@ func TestCheckHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, flag := range []string{"--base", "--staged", "--pr", "--diff-file", "--format", "--provider", "--model", "--static-only", "--no-cache", "--verbose"} {
+	for _, flag := range []string{"--base", "--staged", "--pr", "--diff-file", "--format", "--provider", "--model", "--endpoint", "--static-only", "--no-cache", "--verbose"} {
 		testutil.AssertContains(t, output, flag)
 	}
 	testutil.AssertNotContains(t, output, "--json")

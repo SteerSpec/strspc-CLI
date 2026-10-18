@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,6 +58,7 @@ type checkOptions struct {
 	format     string
 	provider   string
 	model      string
+	endpoint   string
 	staticOnly bool
 	noCache    bool
 	verbose    bool
@@ -105,6 +107,7 @@ func newCheckCmd() *cobra.Command {
 	f.StringVar(&o.format, "format", formatHuman, "output format: human|json|github")
 	f.StringVar(&o.provider, "provider", "", "AI provider (overrides evaluator.provider): claude|null")
 	f.StringVar(&o.model, "model", "", "model identifier (overrides evaluator.model)")
+	f.StringVar(&o.endpoint, "endpoint", "", "provider endpoint URL; opts in to a non-Anthropic host (also $"+envEvaluatorEndpoint+")")
 	f.BoolVar(&o.staticOnly, "static-only", false, "skip AI evaluation; resolve sources and run structural checks only")
 	f.BoolVar(&o.noCache, "no-cache", false, "do not read or write the evaluation cache (.strspc/cache.db)")
 	f.BoolVar(&o.verbose, "verbose", false, "print resolution, cache and usage details to stderr")
@@ -252,9 +255,14 @@ func (r *checkRun) buildProvider() (int, error) {
 		return exitOK, nil
 	}
 
+	endpoint, err := resolveEndpoint(r.cfg.Evaluator.Endpoint, r.opts.endpoint, os.Getenv(envEvaluatorEndpoint))
+	if err != nil {
+		return exitConfig, err
+	}
+
 	p, err := newEvalProvider(r.providerName, providers.Options{
 		Model:    r.model,
-		Endpoint: r.cfg.Evaluator.Endpoint,
+		Endpoint: endpoint,
 		Effort:   r.cfg.Evaluator.Effort,
 	})
 	switch {
@@ -679,6 +687,43 @@ func normalizeStateCodes(states []string) []string {
 		}
 	}
 	return out
+}
+
+// envEvaluatorEndpoint is the environment variable that opts in to a custom
+// provider endpoint. Precedence: env > --endpoint > evaluator.endpoint.
+const envEvaluatorEndpoint = "STRSPC_EVALUATOR_ENDPOINT"
+
+// anthropicHostSuffix bounds the endpoints a repository config may set on
+// its own.
+const anthropicHostSuffix = "anthropic.com"
+
+// resolveEndpoint picks the provider endpoint. The repository config is
+// untrusted input (a PR can edit .strspc/config.yaml), and the API key is
+// sent to whatever host the endpoint names, so a config endpoint is
+// accepted only on an Anthropic host; anything else needs an explicit
+// opt-in from outside the repo: the environment variable or the flag.
+func resolveEndpoint(fromConfig, fromFlag, fromEnv string) (string, error) {
+	if e := strings.TrimSpace(fromEnv); e != "" {
+		return e, nil
+	}
+	if e := strings.TrimSpace(fromFlag); e != "" {
+		return e, nil
+	}
+	cfg := strings.TrimSpace(fromConfig)
+	if cfg == "" || strings.EqualFold(cfg, "null") {
+		return "", nil
+	}
+	u, err := url.Parse(cfg)
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+		return "", fmt.Errorf("evaluator.endpoint %q is not an https URL", cfg)
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == anthropicHostSuffix || strings.HasSuffix(host, "."+anthropicHostSuffix) {
+		return cfg, nil
+	}
+	return "", fmt.Errorf("evaluator.endpoint %q points outside %s: the API key would be sent to that host; "+
+		"opt in explicitly from outside the repository with %s=<url> or --endpoint <url>",
+		cfg, anthropicHostSuffix, envEvaluatorEndpoint)
 }
 
 func orDefault(s, def string) string {

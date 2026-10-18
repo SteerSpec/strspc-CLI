@@ -111,6 +111,7 @@ strspc check --format github                 # ::error/::warning annotations + $
 | `--diff-file <path>` | Read a unified diff from a file instead of running git |
 | `--format human\|json\|github` | Output style; `github` emits workflow-command annotations and appends a table to `$GITHUB_STEP_SUMMARY` |
 | `--provider`, `--model` | Override `evaluator.provider` / `evaluator.model` |
+| `--endpoint <url>` | Provider endpoint; required (or `STRSPC_EVALUATOR_ENDPOINT`) to opt in to a non-Anthropic host |
 | `--static-only` | Skip AI evaluation (also implied by `evaluator.provider: null`) |
 | `--no-cache` | Ignore `.strspc/cache.db` (verdicts are otherwise cached for `cache.ttl`) |
 | `--verbose` | Print resolution, diff, cache and token-usage details to stderr |
@@ -119,6 +120,13 @@ Diff selection precedence: `--diff-file` > `--staged` > `--pr` > `--base` > `$GI
 (`origin/<ref>`, fetched when missing) > working tree vs HEAD. Files under `.strspc/` and `rules/`
 are never part of the evaluated diff. Rules in states listed in `evaluate_on` (default `D`, `P`, `I`)
 are evaluated; others are skipped. The check only ever writes inside `.strspc/` (`cache/`, `cache.db`).
+
+**Endpoint safety.** `.strspc/config.yaml` is repository content, so a pull request could point
+`evaluator.endpoint` at a host that would receive your `ANTHROPIC_API_KEY`. The check therefore accepts an
+`evaluator.endpoint` from the config only when it is an `https://` URL on `anthropic.com` (for example
+`https://api.anthropic.com`). Any other endpoint (a proxy, a gateway) must be opted in from outside the
+repository: `STRSPC_EVALUATOR_ENDPOINT=<url>` (highest precedence) or `--endpoint <url>`. A non-Anthropic
+endpoint in the config without that opt-in exits 2 with a message naming the host.
 
 | Exit code | Meaning |
 |-----------|---------|
@@ -134,19 +142,21 @@ are evaluated; others are skipped. The check only ever writes inside `.strspc/` 
 jobs:
   check:
     runs-on: ubuntu-latest
-    env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0                     # --base needs the merge base
+      - name: Detect evaluator key          # secrets.* cannot be used in if:
+        id: key
+        run: echo "has_key=${{ secrets.ANTHROPIC_API_KEY != '' }}" >> "$GITHUB_OUTPUT"
       - name: Check code changes (Claude)
-        if: env.ANTHROPIC_API_KEY != ''
+        if: steps.key.outputs.has_key == 'true'
         run: strspc check --base origin/main --format github
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # github:// rule sources
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # this step only
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}             # github:// rule sources
       - name: Check rules (static fallback)
-        if: env.ANTHROPIC_API_KEY == ''
+        if: steps.key.outputs.has_key != 'true'
         run: strspc check --static-only
 ```
 
