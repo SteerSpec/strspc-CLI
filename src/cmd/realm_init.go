@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -95,9 +94,11 @@ func newRealmInitCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "init",
-		Short: "Scaffold a new Realm directory",
-		Long:  "Create a Realm directory with realm.json and vendored schemas for rule authoring.",
+		Use:           "init",
+		Short:         "Scaffold a new Realm directory",
+		Long:          "Create a Realm directory with realm.json and vendored schemas for rule authoring.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			realmPath := filepath.Join(dir, "realm.json")
 
@@ -164,12 +165,12 @@ func newRealmInitCmd() *cobra.Command {
 				RuleIdentifierFmt: nil,
 			}
 
-			data, err := json.MarshalIndent(realm, "", "  ")
+			data, err := marshalJSON(realm)
 			if err != nil {
 				return fmt.Errorf("marshaling realm.json: %w", err)
 			}
 
-			if err := os.WriteFile(realmPath, append(data, '\n'), 0o644); err != nil {
+			if err := os.WriteFile(realmPath, data, 0o644); err != nil {
 				return fmt.Errorf("writing realm.json: %w", err)
 			}
 
