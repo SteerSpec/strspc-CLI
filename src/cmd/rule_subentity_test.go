@@ -31,6 +31,10 @@ func TestRuleAddSubEntityAutoDetect(t *testing.T) {
 	if sub.RuleSet.Hash == nil {
 		t.Error("sub-entity hash should be set")
 	}
+	// RD007: the parent file changed, so its own version must rise too.
+	if f.RuleSet.Version != "0.1.1" {
+		t.Errorf("parent version should bump to 0.1.1, got %s", f.RuleSet.Version)
+	}
 	assertFileHashFresh(t, dir, "TST")
 }
 

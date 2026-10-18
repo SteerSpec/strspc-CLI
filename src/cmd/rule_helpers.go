@@ -185,8 +185,16 @@ func modifyEntity(t entityTarget, mutate func(target *entity.File) error) error 
 			return err
 		}
 		if target != f {
-			// The sub-entity's own hash was refreshed by entityops; the parent
-			// hash covers the whole file (RL011), so refresh it too.
+			// The sub-entity's own version and hash were refreshed by
+			// entityops. The parent file changed too: RD007 requires its
+			// rule_set.version to rise on any change in the file, and its
+			// hash covers the whole file (RL011), so bump a patch and
+			// refresh its metadata.
+			v, err := entityops.BumpPatch(f.RuleSet.Version)
+			if err != nil {
+				return fmt.Errorf("bumping parent version: %w", err)
+			}
+			f.RuleSet.Version = v
 			if err := entityops.UpdateMeta(f); err != nil {
 				return fmt.Errorf("updating parent metadata: %w", err)
 			}
