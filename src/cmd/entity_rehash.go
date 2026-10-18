@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -23,7 +24,24 @@ type rehashChange struct {
 type rehashResult struct {
 	Updated   []rehashChange `json:"updated"`
 	Unchanged int            `json:"unchanged"`
+	// Skipped lists .json files under --dir that are not entity files (no valid
+	// entity.id). They are never rewritten.
+	Skipped []string `json:"skipped"`
 }
+
+// notEntityError reports a JSON file that parsed but carries no valid entity.id.
+// entity.Parse only unmarshals, so an unrelated file such as metadata.json would
+// otherwise be rewritten as an empty entity.
+type notEntityError struct {
+	path string
+	err  error
+}
+
+func (e *notEntityError) Error() string {
+	return fmt.Sprintf("%s is not an entity file: %v", e.path, e.err)
+}
+
+func (e *notEntityError) Unwrap() error { return e.err }
 
 // rehashEntity compares the stored rule_set.hash with the blake3 hash of the
 // file's raw bytes (what lint RL011 verifies), and each sub-entity's hash with
@@ -31,6 +49,9 @@ type rehashResult struct {
 // When any differ, or are null, it refreshes timestamp and hash via
 // entityops.UpdateMeta and rewrites the file. Fresh files are left untouched.
 func rehashEntity(path string, data []byte, ef *entity.File) (*rehashChange, error) {
+	if err := entityops.ValidateEUID(ef.Entity.ID); err != nil {
+		return nil, &notEntityError{path: path, err: err}
+	}
 	subsChanged, err := rehashSubEntities(ef)
 	if err != nil {
 		return nil, fmt.Errorf("rehashing sub-entities of %s: %w", path, err)
@@ -97,7 +118,9 @@ func newEntityRehashCmd() *cobra.Command {
 null or does not match the file contents. Sub-entities are repaired the same way,
 each over its own JSON, and a file is rewritten when it or any sub-entity was
 stale. Files whose hashes are all consistent are not touched. Versions are never
-bumped. Useful after bulk imports or hand edits.
+bumped. A .json file without a valid entity.id is never rewritten: --all reports
+it as skipped and the single-file form fails. Useful after bulk imports or hand
+edits.
 
 Examples:
   strspc entity rehash MYE
@@ -118,6 +141,11 @@ Examples:
 						return fmt.Errorf("reading %s: %w", path, parseErr)
 					}
 					change, err := rehashEntity(path, data, ef)
+					var notEntity *notEntityError
+					if errors.As(err, &notEntity) {
+						res.Skipped = append(res.Skipped, path)
+						return nil
+					}
 					if err != nil {
 						return err
 					}
@@ -158,6 +186,9 @@ Examples:
 				if res.Updated == nil {
 					res.Updated = []rehashChange{}
 				}
+				if res.Skipped == nil {
+					res.Skipped = []string{}
+				}
 				return writeJSONOutput(w, res)
 			}
 
@@ -169,7 +200,10 @@ Examples:
 				writeln(w, brandStyle.Render(fmt.Sprintf("Rehashed %s", c.Entity))+descStyle.Render(fmt.Sprintf(" (%s)", c.Path)))
 				writeln(w, descStyle.Render(fmt.Sprintf("  %s → %s", old, c.NewHash)))
 			}
-			writeln(w, descStyle.Render(fmt.Sprintf("%d entity file(s) updated, %d unchanged", len(res.Updated), res.Unchanged)))
+			for _, p := range res.Skipped {
+				writeln(w, descStyle.Render(fmt.Sprintf("Skipped %s (not an entity file)", p)))
+			}
+			writeln(w, descStyle.Render(fmt.Sprintf("%d entity file(s) updated, %d unchanged, %d skipped", len(res.Updated), res.Unchanged, len(res.Skipped))))
 
 			return nil
 		},

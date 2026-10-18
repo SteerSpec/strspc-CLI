@@ -224,3 +224,65 @@ func TestEntityRehashFreshParentWithNullChildIsRewritten(t *testing.T) {
 	}
 	assertFileHashFresh(t, dir, "TST")
 }
+
+// TestEntityRehashAllSkipsNonEntityJSON guards against rewriting unrelated JSON:
+// entity.Parse only unmarshals, so a file without entity.id would otherwise be
+// saved back as an empty entity.
+func TestEntityRehashAllSkipsNonEntityJSON(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFileHash(t, dir, "AAA", nil)
+	unrelated := filepath.Join(dir, "metadata.json")
+	original := []byte(`{"name":"preserve-me"}` + "\n")
+	if err := os.WriteFile(unrelated, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "--all", "--dir", dir, "--json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var result struct {
+		Updated []struct {
+			Entity string `json:"entity"`
+		} `json:"updated"`
+		Skipped []string `json:"skipped"`
+	}
+	if err := json.Unmarshal([]byte(out), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if len(result.Updated) != 1 || result.Updated[0].Entity != "AAA" {
+		t.Errorf("unexpected updated list: %+v", result.Updated)
+	}
+	if len(result.Skipped) != 1 || result.Skipped[0] != unrelated {
+		t.Errorf("expected skipped [%s], got %v", unrelated, result.Skipped)
+	}
+	after, err := os.ReadFile(unrelated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, original) {
+		t.Errorf("unrelated JSON was rewritten:\n%s", after)
+	}
+	assertFileHashFresh(t, dir, "AAA")
+}
+
+func TestEntityRehashRejectsNonEntityJSON(t *testing.T) {
+	dir := t.TempDir()
+	unrelated := filepath.Join(dir, "metadata.json")
+	original := []byte(`{"name":"preserve-me"}` + "\n")
+	if err := os.WriteFile(unrelated, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "metadata", "--dir", dir)
+	if err == nil || !strings.Contains(err.Error(), "not an entity file") {
+		t.Fatalf("expected 'not an entity file' error, got %v", err)
+	}
+	after, err := os.ReadFile(unrelated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, original) {
+		t.Errorf("unrelated JSON was rewritten:\n%s", after)
+	}
+}
