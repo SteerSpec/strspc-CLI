@@ -66,7 +66,8 @@ func newSyncCmd() *cobra.Command {
 
 			opts := []ruleresolve.Option{
 				ruleresolve.WithBaseDir(cwd),
-				ruleresolve.WithCacheDir(filepath.Join(cwd, ".strspc")),
+				// Same cache as `strspc check` (SPEC §6.3): remote sources land under .strspc/cache/github/.
+				ruleresolve.WithCacheDir(filepath.Join(cwd, ".strspc", "cache")),
 				ruleresolve.WithForceSync(force),
 			}
 			if ttl > 0 {
