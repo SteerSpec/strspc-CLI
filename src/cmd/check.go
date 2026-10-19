@@ -682,7 +682,7 @@ type checkObserver struct {
 	hits        int
 	misses      int
 	calls       int
-	failed      int   // provider calls that returned an error (cancellations excluded)
+	failed      int   // provider calls that returned an error (cancellation excluded)
 	firstErr    error // the first such error, for the exit message
 	skipped     int
 	unavailable error
@@ -701,7 +701,10 @@ func (o *checkObserver) Observe(ev ruleeval.Event) { //nolint:gocritic // signat
 		o.skipped++
 	case ruleeval.EventProviderCall:
 		o.calls++
-		if ev.Err != nil && !errors.Is(ev.Err, context.Canceled) && !errors.Is(ev.Err, context.DeadlineExceeded) {
+		// Only a cancellation is excluded: the observer itself cancels the
+		// run after a first unavailable error. A deadline is a real failure,
+		// since a per-request timeout can expire while the run continues.
+		if ev.Err != nil && !errors.Is(ev.Err, context.Canceled) {
 			o.failed++
 			if o.firstErr == nil {
 				o.firstErr = ev.Err

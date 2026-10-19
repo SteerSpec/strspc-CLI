@@ -420,14 +420,24 @@ func TestCheckProviderUnavailableMidRun(t *testing.T) {
 // (an HTTP 400 on each batch, say) must not pass as a green check with one
 // RE002 warning per rule.
 func TestCheckEveryProviderCallFailed(t *testing.T) {
-	dir, diff := setupCheckProject(t, "claude", []string{"I"})
-	p := &stubProvider{err: errors.New("claude: HTTP 400 invalid_request_error: schema rejected")}
-	stubEvalProvider(t, p, nil)
+	cases := map[string]error{
+		"http 400": errors.New("claude: HTTP 400 invalid_request_error: schema rejected"),
+		// A per-request timeout wraps DeadlineExceeded while the run's own
+		// context is still live; it must count as a failure too.
+		"timeout": fmt.Errorf("claude: request failed: %w", context.DeadlineExceeded),
+	}
+	for name, perr := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir, diff := setupCheckProject(t, "claude", []string{"I"})
+			p := &stubProvider{err: perr}
+			stubEvalProvider(t, p, nil)
 
-	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
-	assertExit(t, err, exitUnavailable)
-	testutil.AssertContains(t, err.Error(), "failed every request")
-	testutil.AssertContains(t, err.Error(), "HTTP 400")
+			_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+			assertExit(t, err, exitUnavailable)
+			testutil.AssertContains(t, err.Error(), "failed every request")
+			testutil.AssertContains(t, err.Error(), perr.Error())
+		})
+	}
 }
 
 func writeCheckConfigEndpoint(t *testing.T, dir, endpoint string) {
