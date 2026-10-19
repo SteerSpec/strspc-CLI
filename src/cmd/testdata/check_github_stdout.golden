@@ -1,0 +1,3 @@
+::error file=src/main.go,line=3,title=rule-eval RE001::rule TST-001 violated: Run has no doc comment, see https://example.com/doc:1
+::warning file=src/main.go,line=3,title=rule-eval RE001::rule TST-002 violated: error not wrapped%0Asecond line
+Checked 4 rule(s) from 1 source(s) with claude/stub-model against diff file <DIFF_FILE>

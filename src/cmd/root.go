@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -44,8 +45,13 @@ func NewRootCmd() *cobra.Command {
 	return cmd
 }
 
+// Execute runs the root command. Errors are printed once to stderr; the
+// process exits with the code carried by an exitError, or 1 otherwise.
 func Execute() {
-	cobra.CheckErr(NewRootCmd().Execute())
+	if err := NewRootCmd().Execute(); err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(exitCodeOf(err))
+	}
 }
 
 func customHelp(cmd *cobra.Command, _ []string) {
@@ -105,6 +111,9 @@ func writeln(w io.Writer, a ...any) {
 func renderFlags(flags *pflag.FlagSet) []string {
 	var lines []string
 	flags.VisitAll(func(f *pflag.Flag) {
+		if f.Hidden {
+			return
+		}
 		short := ""
 		if f.Shorthand != "" {
 			short = "-" + f.Shorthand + ", "

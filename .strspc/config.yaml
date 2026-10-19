@@ -1,26 +1,32 @@
 # SteerSpec configuration
-# Reference: https://github.com/SteerSpec/strspc-CLI#readme
+# Docs: https://steerspec.dev/docs/config
 
 # Rule sources — where to fetch rules from
 rules:
-  # Core rules from the SteerSpec specification. github:// sources resolve once
-  # strspc-manager ships remote fetching; until then CI runs against ./rules only.
-  # - source: github://SteerSpec/strspc-rules@v1.6.0/rules/core
-  #   scope: global
+  # Core rules from the SteerSpec specification (cached under .strspc/cache/).
+  # Pinned to the latest published tag; bump to @v1.6.0 once strspc-rules tags it.
+  - source: github://SteerSpec/strspc-rules@v1.5.2/rules/core
+    scope: global
 
   # Local CLI-specific rules (dev.steerspec.cli realm)
   - source: ./rules/
     scope: local
 
 # AI evaluator settings
+# `strspc check` sends the diff to this provider; without ANTHROPIC_API_KEY it
+# exits 3, and `--static-only` skips AI evaluation entirely.
 evaluator:
-  provider: null          # CI has no ANTHROPIC_API_KEY yet; switch to claude in E8
+  provider: claude        # claude | null (structural checks only)
+  # endpoint: null        # custom endpoint (defaults per provider)
   # model: claude-sonnet-5-5
-  # effort: medium
+  # effort: medium        # low | medium | high | xhigh | max
 
 # Local cache settings
 cache:
   ttl: 24h                # how long cached evaluations stay valid
+
+# Which rule states are evaluated (default D, P, I)
+# evaluate_on: [D, P, I]
 
 # Which rule states cause a failure (state codes: D, A, P, I, R, T)
 fail_on:

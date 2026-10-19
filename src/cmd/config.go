@@ -23,8 +23,10 @@ type strspcConfig struct {
 		Provider string `yaml:"provider"`
 		Endpoint string `yaml:"endpoint"`
 		Model    string `yaml:"model"`
+		Effort   string `yaml:"effort"`
 	} `yaml:"evaluator"`
-	FailOn []string `yaml:"fail_on"`
+	EvaluateOn []string `yaml:"evaluate_on"`
+	FailOn     []string `yaml:"fail_on"`
 }
 
 // loadStrspcConfig reads and parses .strspc/config.yaml under cwd.

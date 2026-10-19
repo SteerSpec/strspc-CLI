@@ -158,16 +158,18 @@ func TestSyncInvalidSource(t *testing.T) {
 	if err := os.MkdirAll(strspcDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := "rules:\n  - source: github://SteerSpec/strspc-rules@latest/rules/core\n    scope: global\n"
+	// github:// is supported since strspc-manager v1.15.0; an unknown scheme
+	// is still rejected at resolver construction, offline.
+	cfg := "rules:\n  - source: s3://bucket/rules\n    scope: global\n"
 	if err := os.WriteFile(filepath.Join(strspcDir, "config.yaml"), []byte(cfg), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "sync", dir)
 	if err == nil {
-		t.Fatal("expected error for github:// source (not yet implemented)")
+		t.Fatal("expected error for unsupported source scheme")
 	}
-	testutil.AssertContains(t, err.Error(), "not yet implemented")
+	testutil.AssertContains(t, err.Error(), "unsupported source scheme")
 }
 
 func TestSyncHelp(t *testing.T) {
