@@ -35,7 +35,7 @@ jobs:
   # evaluates the change through the org-wide reusable workflows
   # (SteerSpec/.github). Without ANTHROPIC_API_KEY the check is static-only.
   rules:
-    uses: SteerSpec/.github/.github/workflows/strspc-lint.yml@ci/reusable-strspc-workflows
+    uses: SteerSpec/.github/.github/workflows/strspc-lint.yml@main
     # A called workflow cannot hold more permissions than the caller grants;
     # pull-requests: read lets `strspc diff --pr` resolve the base.
     permissions:
@@ -45,7 +45,7 @@ jobs:
       path: rules/
 
   check:
-    uses: SteerSpec/.github/.github/workflows/strspc-check.yml@ci/reusable-strspc-workflows
+    uses: SteerSpec/.github/.github/workflows/strspc-check.yml@main
     permissions:
       contents: read
       pull-requests: read
