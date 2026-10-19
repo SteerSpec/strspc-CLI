@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,11 +96,13 @@ type stubProvider struct {
 	verdicts map[string]*ruleeval.EvalResponse
 	err      error // returned by every Evaluate call when set
 	calls    int
+	lastDiff string // diff of the most recent Evaluate call
 }
 
 func (s *stubProvider) Evaluate(_ context.Context, req ruleeval.EvalRequest) (*ruleeval.EvalResponse, error) { //nolint:gocritic // ruleeval.Provider signature
 	s.mu.Lock()
 	s.calls++
+	s.lastDiff = req.Diff
 	s.mu.Unlock()
 	if s.err != nil {
 		return nil, s.err
@@ -112,6 +116,12 @@ func (s *stubProvider) Evaluate(_ context.Context, req ruleeval.EvalRequest) (*r
 func (s *stubProvider) Model() string { return "stub-model" }
 
 func (s *stubProvider) PromptVersion() string { return "test/v1" }
+
+func (s *stubProvider) seenDiff() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastDiff
+}
 
 func (s *stubProvider) callCount() int {
 	s.mu.Lock()
@@ -730,5 +740,153 @@ func TestExitCodeOf(t *testing.T) {
 	}
 	if withExitCode(2, nil) != nil {
 		t.Error("withExitCode(nil) must be nil")
+	}
+}
+
+// Copilot round on #80 (2026-10-18): fatal JSON output must carry the cause.
+func TestCheckJSONFatalIncludesError(t *testing.T) {
+	dir := t.TempDir()
+	writeCheckConfig(t, dir, "./missing-rules/", "claude", []string{"I"}, nil)
+	stubEvalProvider(t, &stubProvider{}, nil)
+
+	output, err := runCheckCmd(t, dir, "--diff-file", filepath.Join(dir, "none.diff"), "--format", "json")
+	assertExit(t, err, exitConfig)
+	var out struct {
+		OK    bool   `json:"ok"`
+		Error string `json:"error"`
+	}
+	if jerr := json.Unmarshal([]byte(output), &out); jerr != nil {
+		t.Fatalf("invalid JSON: %v\n%s", jerr, output)
+	}
+	if out.OK || !strings.Contains(out.Error, "rule resolution failed") {
+		t.Errorf("JSON envelope = %+v, want error with the fatal cause", out)
+	}
+}
+
+func TestCheckExplicitEmptyEvaluateOnEvaluatesNothing(t *testing.T) {
+	dir, diff := setupCheckProject(t, "claude", []string{"I"})
+	cfg := "rules:\n  - source: ./rules/\n    scope: local\nevaluator:\n  provider: claude\nfail_on: [I]\nevaluate_on: []\n"
+	if err := os.WriteFile(filepath.Join(dir, ".strspc", "config.yaml"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := &stubProvider{verdicts: map[string]*ruleeval.EvalResponse{"TST-001": violatedResponse("must not be asked")}}
+	stubEvalProvider(t, p, nil)
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitOK)
+	if p.callCount() != 0 {
+		t.Errorf("provider calls = %d, want 0 for an explicit empty evaluate_on", p.callCount())
+	}
+}
+
+func TestCheckSubRealmDependenciesValidated(t *testing.T) {
+	dir, diff := setupCheckProject(t, "null", []string{"I"})
+	rules := filepath.Join(dir, "rules")
+	parent := `{"realm":{"id":"test","title":"t","version":"0.1.0"},"sub_realms":["child"]}`
+	child := `{"realm":{"id":"test.child","title":"c","version":"0.1.0"},` +
+		`"dependencies":[{"realm_id":"dev.missing","version":"1.0.0","source":"../../nowhere/"}]}`
+	if err := os.WriteFile(filepath.Join(rules, "realm.json"), []byte(parent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(rules, "child"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rules, "child", "realm.json"), []byte(child), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := runCheckCmd(t, dir, "--diff-file", diff, "--static-only")
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, err.Error(), "rule resolution failed")
+	testutil.AssertContains(t, output, "dev.missing")
+}
+
+func TestCheckModelWithLineBreakRejected(t *testing.T) {
+	dir, diff := setupCheckProject(t, "claude", []string{"I"})
+	called := false
+	orig := newEvalProvider
+	newEvalProvider = func(string, providers.Options) (ruleeval.Provider, error) {
+		called = true
+		return &stubProvider{}, nil
+	}
+	t.Cleanup(func() { newEvalProvider = orig })
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache", "--model", "claude-x\n::stop-commands::")
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, err.Error(), "control character")
+	if called {
+		t.Error("provider must not be constructed with a rejected model")
+	}
+}
+
+func TestCheckTransportErrorExits3(t *testing.T) {
+	dir, diff := setupCheckProject(t, "claude", []string{"I"})
+	transport := &url.Error{Op: "Post", URL: "https://api.anthropic.com/v1/messages", Err: &net.OpError{Op: "dial", Err: errors.New("connection refused")}}
+	p := &stubProvider{err: fmt.Errorf("claude: request failed: %w", transport)}
+	stubEvalProvider(t, p, nil)
+
+	output, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitUnavailable)
+	testutil.AssertContains(t, err.Error(), "connection refused")
+	testutil.AssertNotContains(t, output, "RE002")
+}
+
+func TestIsUnavailable(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"sentinel", fmt.Errorf("x: %w", ruleeval.ErrUnavailable), true},
+		{"url error", &url.Error{Op: "Post", Err: errors.New("dial tcp: connection refused")}, true},
+		{"dns", &net.DNSError{Err: "no such host", Name: "api.example"}, true},
+		{"cancelled", fmt.Errorf("claude: request failed: %w", context.Canceled), false},
+		{"deadline", &url.Error{Op: "Post", Err: context.DeadlineExceeded}, false},
+		{"provider refusal", errors.New("claude: refused"), false},
+	}
+	for _, tc := range cases {
+		if got := isUnavailable(tc.err); got != tc.want {
+			t.Errorf("%s: isUnavailable = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestCheckNullProviderIgnoresConfigEndpoint(t *testing.T) {
+	dir, diff := setupCheckProject(t, "claude", []string{"I"})
+	writeCheckConfigEndpoint(t, dir, "https://evil.example.com/v1")
+	t.Setenv(envEvaluatorEndpoint, "")
+	stubEvalProvider(t, &stubProvider{}, nil)
+
+	output, err := runCheckCmd(t, dir, "--diff-file", diff, "--provider", "null")
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, output, "static-only")
+}
+
+func TestIsStaticProviderNameMatchesFactory(t *testing.T) {
+	for _, name := range []string{"", "null", " Static-Only ", "static", "claude", "openai", "bogus"} {
+		_, err := providers.New(name, providers.Options{})
+		if got, want := isStaticProviderName(name), errors.Is(err, providers.ErrStatic); got != want {
+			t.Errorf("isStaticProviderName(%q) = %v, factory says %v", name, got, want)
+		}
+	}
+}
+
+func TestCheckDiffFileExcludesRulesAndConfig(t *testing.T) {
+	dir, _ := setupCheckProject(t, "claude", []string{"I"})
+	mixed := checkDiff +
+		"diff --git a/.strspc/config.yaml b/.strspc/config.yaml\n--- a/.strspc/config.yaml\n+++ b/.strspc/config.yaml\n@@ -1 +1 @@\n-x\n+y\n" +
+		"diff --git a/rules/TST.json b/rules/TST.json\n--- a/rules/TST.json\n+++ b/rules/TST.json\n@@ -1 +1 @@\n-{}\n+{ }\n"
+	diff := filepath.Join(dir, "mixed.diff")
+	if err := os.WriteFile(diff, []byte(mixed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := &stubProvider{}
+	stubEvalProvider(t, p, nil)
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitOK)
+	seen := p.seenDiff()
+	if !strings.Contains(seen, "src/main.go") || strings.Contains(seen, ".strspc/") || strings.Contains(seen, "rules/TST.json") {
+		t.Errorf("provider saw an unfiltered diff:\n%s", seen)
 	}
 }

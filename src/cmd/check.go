@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -50,6 +51,9 @@ type checkOutput struct {
 	Diff        string              `json:"diff,omitempty"`
 	Usage       *ruleeval.Usage     `json:"usage,omitempty"`
 	Diagnostics []result.Diagnostic `json:"diagnostics"`
+	// Error carries the fatal cause (configuration, resolution, provider) so
+	// JSON consumers do not have to parse stderr.
+	Error string `json:"error,omitempty"`
 }
 
 // checkOptions collects the flags of `strspc check`.
@@ -183,11 +187,13 @@ func (r *checkRun) fail(code int, err error, diags ...result.Diagnostic) error {
 	switch r.opts.format {
 	case formatJSON:
 		out := r.output(code, diags)
+		out.Error = err.Error()
 		_ = r.writeJSONOutput(&out)
 	case formatGitHub:
 		writeGitHubAnnotations(r.out, diags)
 		writeln(r.out, githubErrorAnnotation(err))
 		out := r.output(code, diags)
+		out.Error = err.Error()
 		_ = appendGitHubStepSummary(os.Getenv("GITHUB_STEP_SUMMARY"), &out)
 	default:
 		if len(diags) > 0 {
@@ -230,7 +236,9 @@ func (r *checkRun) loadConfig() error {
 	}
 
 	r.failOn = normalizeStateCodes(cfg.FailOn)
-	if len(cfg.EvaluateOn) > 0 {
+	if cfg.EvaluateOn != nil {
+		// An explicit `evaluate_on: []` means "evaluate nothing"; only an
+		// absent key falls back to the ruleeval default.
 		r.evaluateOn = normalizeStateCodes(cfg.EvaluateOn)
 	}
 	return nil
@@ -250,9 +258,17 @@ func (r *checkRun) buildProvider() (int, error) {
 		r.model = r.opts.model
 	}
 
-	if r.opts.staticOnly {
+	if r.opts.staticOnly || isStaticProviderName(r.providerName) {
+		// No provider will be built, so a custom endpoint left in the config
+		// is irrelevant and must not fail the static modes.
 		r.static = true
 		return exitOK, nil
+	}
+	if err := rejectControlChars("evaluator.provider", r.providerName); err != nil {
+		return exitConfig, err
+	}
+	if err := rejectControlChars("evaluator.model", r.model); err != nil {
+		return exitConfig, err
 	}
 
 	endpoint, err := resolveEndpoint(r.cfg.Evaluator.Endpoint, r.opts.endpoint, os.Getenv(envEvaluatorEndpoint))
@@ -270,6 +286,9 @@ func (r *checkRun) buildProvider() (int, error) {
 		r.provider = p
 		if d, ok := p.(ruleeval.Describer); ok && d.Model() != "" {
 			r.model = d.Model()
+		}
+		if err := rejectControlChars("evaluator.model", r.model); err != nil {
+			return exitConfig, err
 		}
 		return exitOK, nil
 	case errors.Is(err, providers.ErrStatic):
@@ -356,8 +375,8 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 			})
 			continue
 		}
-		if len(rf.Dependencies) == 0 {
-			continue
+		if len(rf.Dependencies) == 0 && len(rf.SubRealms) == 0 {
+			continue // sub-realms may declare dependencies of their own
 		}
 		rr := realmresolve.New(
 			realmresolve.WithCacheDir(cacheDir),
@@ -503,8 +522,12 @@ func (r *checkRun) evaluate() error {
 	}
 
 	if !r.static {
-		r.verbosef("evaluator: %s model=%s effort=%s fail_on=%v evaluate_on=%v",
-			r.providerName, r.model, orDefault(r.cfg.Evaluator.Effort, "default"), r.failOn, orDefault(fmt.Sprint(r.evaluateOn), fmt.Sprint(ruleeval.DefaultEvaluateStates)))
+		evaluateOn := fmt.Sprint(ruleeval.DefaultEvaluateStates) + " (default)"
+		if r.evaluateOn != nil {
+			evaluateOn = fmt.Sprint(r.evaluateOn)
+		}
+		r.verbosef("evaluator: %s model=%s effort=%s fail_on=%v evaluate_on=%s",
+			r.providerName, r.model, orDefault(r.cfg.Evaluator.Effort, "default"), r.failOn, evaluateOn)
 	}
 
 	res := evaluator.Evaluate(ctx, r.inputs, r.diff)
@@ -640,7 +663,7 @@ func (o *checkObserver) Observe(ev ruleeval.Event) { //nolint:gocritic // signat
 		o.skipped++
 	case ruleeval.EventProviderCall:
 		o.calls++
-		if ev.Err != nil && errors.Is(ev.Err, ruleeval.ErrUnavailable) && o.unavailable == nil {
+		if ev.Err != nil && isUnavailable(ev.Err) && o.unavailable == nil {
 			o.unavailable = ev.Err
 			if o.cancel != nil {
 				o.cancel() // no point sending the remaining groups
@@ -649,6 +672,44 @@ func (o *checkObserver) Observe(ev ruleeval.Event) { //nolint:gocritic // signat
 	case ruleeval.EventCacheError:
 		// surfaced through verbose counts only; the evaluator continues
 	}
+}
+
+// isUnavailable reports whether a provider error means the endpoint cannot
+// be used at all: an explicit ruleeval.ErrUnavailable, or a transport
+// failure (connection refused, DNS, timeout) that the Claude provider wraps
+// without that sentinel. Cancellations are excluded: the observer itself
+// cancels the context once a first failure is recorded.
+func isUnavailable(err error) bool {
+	if errors.Is(err, ruleeval.ErrUnavailable) {
+		return true
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	var urlErr *url.Error
+	var netErr net.Error
+	return errors.As(err, &urlErr) || errors.As(err, &netErr)
+}
+
+// isStaticProviderName mirrors the aliases providers.New maps to ErrStatic.
+func isStaticProviderName(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", "null", "static", "static-only":
+		return true
+	}
+	return false
+}
+
+// rejectControlChars refuses repository-controlled identifiers that could
+// smuggle a line break into stdout, where GitHub parses `::` workflow
+// commands.
+func rejectControlChars(field, value string) error {
+	for _, c := range value {
+		if c < 0x20 || c == 0x7f {
+			return fmt.Errorf("%s contains a control character (%q); use a plain identifier", field, value)
+		}
+	}
+	return nil
 }
 
 func (o *checkObserver) unavailableErr() error {

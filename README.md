@@ -162,7 +162,7 @@ strspc check --format github                 # ::error/::warning annotations + $
 | `--base <ref>` | Diff the working tree against the merge base of `<ref>` and HEAD |
 | `--staged` | Diff the index against HEAD |
 | `--pr <n>` | Diff against the base of GitHub PR `n` (needs the `gh` CLI) |
-| `--diff-file <path>` | Read a unified diff from a file instead of running git |
+| `--diff-file <path>` | Read a unified diff from a file instead of running git (paths repository-relative, as `git diff` prints them; the same exclusions apply) |
 | `--format human\|json\|github` | Output style; `github` emits workflow-command annotations and appends a table to `$GITHUB_STEP_SUMMARY` |
 | `--provider`, `--model` | Override `evaluator.provider` / `evaluator.model` |
 | `--endpoint <url>` | Provider endpoint; required (or `STRSPC_EVALUATOR_ENDPOINT`) to opt in to a non-Anthropic host |
