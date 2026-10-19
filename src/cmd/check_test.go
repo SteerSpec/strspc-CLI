@@ -94,7 +94,8 @@ index 0000000..1111111 100644
 type stubProvider struct {
 	mu       sync.Mutex
 	verdicts map[string]*ruleeval.EvalResponse
-	err      error // returned by every Evaluate call when set
+	err      error            // returned by every Evaluate call when set
+	errFor   map[string]error // returned for these rule ids only
 	calls    int
 	lastDiff string // diff of the most recent Evaluate call
 }
@@ -106,6 +107,9 @@ func (s *stubProvider) Evaluate(_ context.Context, req ruleeval.EvalRequest) (*r
 	s.mu.Unlock()
 	if s.err != nil {
 		return nil, s.err
+	}
+	if e, ok := s.errFor[req.Rule.ID]; ok {
+		return nil, e
 	}
 	if v, ok := s.verdicts[req.Rule.ID]; ok {
 		return v, nil
@@ -372,14 +376,19 @@ func TestCheckNotApplicableAndEvaluateOn(t *testing.T) {
 	}
 }
 
+// A failure on some rules while others were evaluated is a warning per
+// rule, not a failed check.
 func TestCheckProviderErrorIsWarning(t *testing.T) {
 	dir, diff := setupCheckProject(t, "claude", []string{"I"})
-	p := &stubProvider{err: errors.New("model overloaded")}
+	p := &stubProvider{errFor: map[string]error{"TST-001": errors.New("model overloaded")}}
 	stubEvalProvider(t, p, nil)
 
 	output, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
 	assertExit(t, err, exitOK)
 	testutil.AssertContains(t, output, "[warning] RE002: evaluation failed for rule TST-001: model overloaded")
+	if p.callCount() < 2 {
+		t.Fatalf("provider calls = %d, want the other rules evaluated too", p.callCount())
+	}
 }
 
 func TestCheckProviderUnavailableAtConstruction(t *testing.T) {
@@ -405,6 +414,20 @@ func TestCheckProviderUnavailableMidRun(t *testing.T) {
 	assertExit(t, err, exitUnavailable)
 	testutil.AssertContains(t, err.Error(), "HTTP 401")
 	testutil.AssertNotContains(t, output, "RE002")
+}
+
+// A provider whose every request fails without the ErrUnavailable sentinel
+// (an HTTP 400 on each batch, say) must not pass as a green check with one
+// RE002 warning per rule.
+func TestCheckEveryProviderCallFailed(t *testing.T) {
+	dir, diff := setupCheckProject(t, "claude", []string{"I"})
+	p := &stubProvider{err: errors.New("claude: HTTP 400 invalid_request_error: schema rejected")}
+	stubEvalProvider(t, p, nil)
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitUnavailable)
+	testutil.AssertContains(t, err.Error(), "failed every request")
+	testutil.AssertContains(t, err.Error(), "HTTP 400")
 }
 
 func writeCheckConfigEndpoint(t *testing.T, dir, endpoint string) {

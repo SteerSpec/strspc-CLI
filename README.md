@@ -199,7 +199,7 @@ endpoint in the config without that opt-in exits 2 with a message naming the hos
 | `0` | No violation of a rule in a `fail_on` state (warnings may have been reported) |
 | `1` | At least one rule in a `fail_on` state was violated |
 | `2` | Configuration, rule resolution or diff collection failed |
-| `3` | AI provider unavailable: no `ANTHROPIC_API_KEY`, rejected credentials (401/403), unreachable endpoint |
+| `3` | AI provider unavailable: no `ANTHROPIC_API_KEY`, rejected credentials (401/403), unreachable endpoint, or every request failed (a key without workspace scope, a rejected schema) |
 
 ### CI usage
 
