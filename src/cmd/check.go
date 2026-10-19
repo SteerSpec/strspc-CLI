@@ -505,6 +505,13 @@ func (r *checkRun) evaluate() error {
 				}
 			}()
 			r.notices = append(r.notices, store.Diagnostics().Diagnostics...)
+			// Get treats expired entries as misses but keeps them; prune so
+			// cache.db does not grow with every distinct diff.
+			if pruned, perr := store.Prune(); perr != nil {
+				r.verbosef("cache: prune: %v", perr)
+			} else if pruned > 0 {
+				r.verbosef("cache: pruned %d expired entry(ies)", pruned)
+			}
 			evalOpts = append(evalOpts, ruleeval.WithCache(store))
 			r.verbosef("cache: %s (ttl %s)", filepath.Join(r.cwd, ".strspc", "cache.db"), r.ttl)
 		case errors.Is(err, evalcache.ErrLocked):

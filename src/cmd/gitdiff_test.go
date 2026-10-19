@@ -337,6 +337,18 @@ func TestFilterDiff(t *testing.T) {
 			t.Errorf("space-containing config path was evaluated:\n%s", got)
 		}
 	})
+	t.Run("deletions are dropped like --diff-filter=ACMR", func(t *testing.T) {
+		del := func(p string) string {
+			return "diff --git a/" + p + " b/" + p + "\ndeleted file mode 100644\nindex 1..0\n--- a/" + p + "\n+++ /dev/null\n@@ -1 +0,0 @@\n-secret\n"
+		}
+		in := del("rules/R.json") + del(".strspc/config.yaml") + del("other/x.go") + del("src/gone.go") + section("src/a.go")
+		if got := filterDiff(in, "."); got != section("src/a.go") {
+			t.Errorf("deleted sections reached the diff:\n%s", got)
+		}
+		if got := filterDiff(del("svc/x.go")+section("svc/a.go"), "svc"); got != section("svc/a.go") {
+			t.Errorf("deletion inside the project kept:\n%s", got)
+		}
+	})
 	t.Run("unparseable header is kept", func(t *testing.T) {
 		in := "garbage\n" + section("rules/R.json")
 		if got := filterDiff(in, "."); got != "garbage\n" {

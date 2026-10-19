@@ -193,6 +193,9 @@ func filterDiff(diff, subDir string) string {
 	}
 	var b strings.Builder
 	for _, sec := range sections {
+		if isDeletionSection(sec) {
+			continue // git-generated diffs use --diff-filter=ACMR: deletions are never evaluated
+		}
 		p, ok := diffHeaderPath(sec)
 		if ok && excludedFromDiff(p, subDir) {
 			continue
@@ -200,6 +203,21 @@ func filterDiff(diff, subDir string) string {
 		b.WriteString(sec)
 	}
 	return b.String()
+}
+
+// isDeletionSection reports whether a section removes a file: it carries a
+// `deleted file mode` header or its post-image is /dev/null. Only the header
+// lines before the first hunk are inspected.
+func isDeletionSection(section string) bool {
+	for _, line := range strings.Split(section, "\n") {
+		if strings.HasPrefix(line, "@@") {
+			return false
+		}
+		if strings.HasPrefix(line, "deleted file mode ") || strings.TrimSpace(line) == "+++ /dev/null" {
+			return true
+		}
+	}
+	return false
 }
 
 // splitDiffSections splits a unified diff at every `diff --git ` line. Text
