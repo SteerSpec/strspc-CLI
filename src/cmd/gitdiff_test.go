@@ -313,6 +313,30 @@ func TestFilterDiff(t *testing.T) {
 			t.Errorf("ambiguous header must be kept, got %q", got)
 		}
 	})
+	t.Run("embedded quotes and spaces follow git quoting rules", func(t *testing.T) {
+		// .strspc/a"b.yaml is quoted by git with an escaped quote.
+		escaped := "diff --git \"a/.strspc/a\\\"b.yaml\" \"b/.strspc/a\\\"b.yaml\"\n--- \"a/.strspc/a\\\"b.yaml\"\n+++ \"b/.strspc/a\\\"b.yaml\"\n@@ -1 +1 @@\n-a\n+b\n"
+		if got := filterDiff(escaped, "."); got != "" {
+			t.Errorf("escaped-quote config path was evaluated:\n%s", got)
+		}
+		escapedHeaderOnly := "diff --git \"a/.strspc/a\\\"b.yaml\" \"b/.strspc/a\\\"b.yaml\"\nBinary files differ\n"
+		if got := filterDiff(escapedHeaderOnly, "."); got != "" {
+			t.Errorf("escaped-quote header-only section was evaluated:\n%s", got)
+		}
+		// svc/a b/c.go is a real change inside the sub-project; spaces are not quoted by git.
+		spaced := section("svc/a b/c.go")
+		if got := filterDiff(spaced+section("other/x.go"), "svc"); got != spaced {
+			t.Errorf("space-containing path inside the project was dropped:\n%s", got)
+		}
+		spacedHeaderOnly := "diff --git a/svc/a b/c.go b/svc/a b/c.go\nBinary files differ\n"
+		if got := filterDiff(spacedHeaderOnly, "svc"); got != spacedHeaderOnly {
+			t.Errorf("space-containing header-only section was dropped:\n%s", got)
+		}
+		// .strspc/a b/config.yaml must keep its excluded prefix.
+		if got := filterDiff(section(".strspc/a b/config.yaml"), "."); got != "" {
+			t.Errorf("space-containing config path was evaluated:\n%s", got)
+		}
+	})
 	t.Run("unparseable header is kept", func(t *testing.T) {
 		in := "garbage\n" + section("rules/R.json")
 		if got := filterDiff(in, "."); got != "garbage\n" {
