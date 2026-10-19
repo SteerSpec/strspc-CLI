@@ -265,6 +265,45 @@ func TestRepoRelative(t *testing.T) {
 	if _, err := repoRelative(dir, t.TempDir()); err == nil {
 		t.Error("outside dir must error")
 	}
+	dotdot := filepath.Join(dir, "..service")
+	if err := os.MkdirAll(dotdot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if rel, err := repoRelative(dir, dotdot); err != nil || rel != "..service" {
+		t.Errorf("..service dir: %q, %v (must not be mistaken for a parent path)", rel, err)
+	}
+}
+
+func TestFilterDiff(t *testing.T) {
+	section := func(p string) string {
+		return "diff --git a/" + p + " b/" + p + "\n--- a/" + p + "\n+++ b/" + p + "\n@@ -1 +1 @@\n-a\n+b\n"
+	}
+	quoted := "diff --git \"a/sp ace/f\\303\\251.go\" \"b/sp ace/f\\303\\251.go\"\n--- x\n+++ y\n@@ -1 +1 @@\n-a\n+b\n"
+	rulesQuoted := "diff --git \"a/rules/w x.json\" \"b/rules/w x.json\"\n--- x\n+++ y\n@@ -1 +1 @@\n-a\n+b\n"
+
+	t.Run("root project drops excludes, keeps the rest intact", func(t *testing.T) {
+		in := section("src/a.go") + section(".strspc/config.yaml") + section("rules/R.json") + quoted + rulesQuoted + section("svc/rules/R.json")
+		got := filterDiff(in, ".")
+		want := section("src/a.go") + quoted + section("svc/rules/R.json")
+		if got != want {
+			t.Errorf("got:\n%s\nwant:\n%s", got, want)
+		}
+	})
+	t.Run("sub-project drops outside paths and both exclude forms", func(t *testing.T) {
+		in := section("svc/a.go") + section("other/b.go") + section("svc/rules/R.json") + section("rules/R.json") + section(".strspc/x")
+		if got, want := filterDiff(in, "svc"), section("svc/a.go"); got != want {
+			t.Errorf("got:\n%s\nwant:\n%s", got, want)
+		}
+	})
+	t.Run("unparseable header is kept", func(t *testing.T) {
+		in := "garbage\n" + section("rules/R.json")
+		if got := filterDiff(in, "."); got != "garbage\n" {
+			t.Errorf("got %q", got)
+		}
+		if got := filterDiff("", "."); got != "" {
+			t.Errorf("empty diff changed: %q", got)
+		}
+	})
 }
 
 func TestCheckUsesGitWhenNoDiffFile(t *testing.T) {

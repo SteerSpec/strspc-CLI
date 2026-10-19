@@ -97,7 +97,7 @@ func collectDiff(ctx context.Context, repoDir, subDir string, src diffSource) (s
 		if err != nil {
 			return "", fmt.Errorf("reading diff file: %w", err)
 		}
-		return string(data), nil
+		return filterDiff(string(data), subDir), nil
 
 	case diffFromStaged:
 		return runGitDiff(ctx, repoDir, subDir, "--cached")
@@ -177,6 +177,116 @@ func gitDiffArgs(subDir string, rangeArgs ...string) []string {
 	return args
 }
 
+// filterDiff applies to a file-backed diff the restrictions git enforces for
+// the generated ones: sections touching the excluded paths are dropped, and
+// when the project is a sub-directory of the repository, sections outside it
+// are dropped too. Paths are read from the `diff --git a/X b/Y` header (the
+// b/ side, quoted when git had to escape it); a section whose header cannot
+// be parsed is kept so that nothing is silently lost. Sections stay intact.
+func filterDiff(diff, subDir string) string {
+	if subDir == "" {
+		subDir = "."
+	}
+	sections := splitDiffSections(diff)
+	if len(sections) == 0 {
+		return diff
+	}
+	var b strings.Builder
+	for _, sec := range sections {
+		p, ok := diffHeaderPath(sec)
+		if ok && excludedFromDiff(p, subDir) {
+			continue
+		}
+		b.WriteString(sec)
+	}
+	return b.String()
+}
+
+// splitDiffSections splits a unified diff at every `diff --git ` line. Text
+// before the first header forms a section of its own (and is always kept).
+func splitDiffSections(diff string) []string {
+	var sections []string
+	start := 0
+	for i := 0; i < len(diff); {
+		next := strings.Index(diff[i:], "\ndiff --git ")
+		if next < 0 {
+			break
+		}
+		cut := i + next + 1
+		sections = append(sections, diff[start:cut])
+		start = cut
+		i = cut + len("diff --git ")
+	}
+	if start < len(diff) {
+		sections = append(sections, diff[start:])
+	}
+	return sections
+}
+
+// diffHeaderPath extracts the post-image path from a section's
+// `diff --git a/X b/Y` header.
+func diffHeaderPath(section string) (string, bool) {
+	line, _, _ := strings.Cut(section, "\n")
+	rest, ok := strings.CutPrefix(line, "diff --git ")
+	if !ok {
+		return "", false
+	}
+	rest = strings.TrimSpace(rest)
+	var bSide string
+	if strings.HasSuffix(rest, "\"") {
+		// quoted post-image: `... "b/path with spaces"`
+		q := strings.LastIndex(rest[:len(rest)-1], "\"")
+		if q < 0 {
+			return "", false
+		}
+		unq, err := strconv.Unquote(rest[q:])
+		if err != nil {
+			return "", false
+		}
+		bSide = unq
+	} else {
+		sp := strings.LastIndex(rest, " b/")
+		if sp < 0 {
+			return "", false
+		}
+		bSide = rest[sp+1:]
+	}
+	p, ok := strings.CutPrefix(bSide, "b/")
+	if !ok {
+		return "", false
+	}
+	return path.Clean(filepath.ToSlash(p)), true
+}
+
+// excludedFromDiff reports whether a repository-relative path must not be
+// evaluated: it lies outside subDir (paths in a diff file are expected to be
+// repository-relative, as `git diff` prints them from the root), or under one
+// of diffExcludes, matched both relative to subDir and bare so that a diff
+// generated from the project directory itself is filtered too.
+func excludedFromDiff(p, subDir string) bool {
+	if subDir != "." && !strings.HasPrefix(p, subDir+"/") {
+		return true
+	}
+	return underAnyExclude(p, subDir)
+}
+
+// underAnyExclude reports whether p lies under one of diffExcludes rooted at
+// subDir (or at the repository root when subDir is ".").
+func underAnyExclude(p, subDir string) bool {
+	for _, ex := range diffExcludes {
+		dir := strings.TrimSuffix(ex, "/**")
+		if subDir != "." {
+			if strings.HasPrefix(p, path.Join(subDir, dir)+"/") {
+				return true
+			}
+		}
+		if strings.HasPrefix(p, dir+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 func runGitDiff(ctx context.Context, repoDir, subDir string, rangeArgs ...string) (string, error) {
 	out, err := git(ctx, repoDir, gitDiffArgs(subDir, rangeArgs...)...)
 	if err != nil {
@@ -223,7 +333,7 @@ func repoRelative(repoDir, dir string) (string, error) {
 	if rel == "." || rel == "" {
 		return ".", nil
 	}
-	if strings.HasPrefix(rel, "..") {
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("%s is outside the git repository %s", dir, repoDir)
 	}
 	return filepath.ToSlash(rel), nil
