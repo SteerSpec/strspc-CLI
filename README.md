@@ -203,6 +203,22 @@ endpoint in the config without that opt-in exits 2 with a message naming the hos
 
 ### CI usage
 
+SteerSpec repositories call the reusable workflows in
+[SteerSpec/.github](https://github.com/SteerSpec/.github) instead of
+scripting the steps below:
+
+```yaml
+jobs:
+  rules:
+    uses: SteerSpec/.github/.github/workflows/strspc-lint.yml@main
+    with:
+      path: rules/
+  check:
+    uses: SteerSpec/.github/.github/workflows/strspc-check.yml@main
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
 ```yaml
 - run: strspc lint rules/ --strict
 - run: strspc realm validate rules/ --recursive
