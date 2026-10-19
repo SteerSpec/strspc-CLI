@@ -619,10 +619,24 @@ func (r *checkRun) writeJSONOutput(out *checkOutput) error {
 	return nil
 }
 
+// verbosef writes a diagnostic line to stderr. Values may come from the
+// repository config (effort, fail_on, model…) and the runner parses stderr
+// for `::` workflow commands too, so control characters are neutralised.
 func (r *checkRun) verbosef(format string, args ...any) {
 	if r.opts.verbose {
-		_, _ = fmt.Fprintf(r.errOut, "strspc check: "+format+"\n", args...)
+		_, _ = fmt.Fprintf(r.errOut, "strspc check: %s\n", sanitizeLine(fmt.Sprintf(format, args...)))
 	}
+}
+
+// sanitizeLine replaces control characters (including CR/LF) with spaces so
+// the result stays a single log line.
+func sanitizeLine(s string) string {
+	return strings.Map(func(c rune) rune {
+		if c < 0x20 || c == 0x7f {
+			return ' '
+		}
+		return c
+	}, s)
 }
 
 // withLineInPath copies diags, folding Line into Path ("file:line") so the

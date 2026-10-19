@@ -890,3 +890,9 @@ func TestCheckDiffFileExcludesRulesAndConfig(t *testing.T) {
 		t.Errorf("provider saw an unfiltered diff:\n%s", seen)
 	}
 }
+
+func TestSanitizeLine(t *testing.T) {
+	if got := sanitizeLine("effort=low\n::stop-commands::x\r\x7f"); got != "effort=low ::stop-commands::x  " {
+		t.Errorf("sanitizeLine = %q", got)
+	}
+}

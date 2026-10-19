@@ -223,36 +223,68 @@ func splitDiffSections(diff string) []string {
 	return sections
 }
 
-// diffHeaderPath extracts the post-image path from a section's
-// `diff --git a/X b/Y` header.
+// diffHeaderPath extracts the post-image path of a section. The `+++ b/P`
+// line is authoritative when present (new and modified files). Otherwise the
+// `diff --git a/P b/P` header is accepted only when both sides are the same
+// path, split at the midpoint, so a file name containing " b/" cannot steer
+// the parse. Quoted paths (git escapes control and non-ASCII characters) are
+// unquoted. Anything ambiguous reports false and the section is kept.
 func diffHeaderPath(section string) (string, bool) {
-	line, _, _ := strings.Cut(section, "\n")
-	rest, ok := strings.CutPrefix(line, "diff --git ")
+	header, rest, _ := strings.Cut(section, "\n")
+	for _, line := range strings.Split(rest, "\n") {
+		if strings.HasPrefix(line, "@@") {
+			break // hunks start: no more headers
+		}
+		target, ok := strings.CutPrefix(line, "+++ ")
+		if !ok {
+			continue
+		}
+		if p, ok := stripBSide(strings.TrimSpace(target)); ok {
+			return p, true
+		}
+		return "", false // +++ /dev/null or an unexpected form
+	}
+	hdr, ok := strings.CutPrefix(header, "diff --git ")
 	if !ok {
 		return "", false
 	}
-	rest = strings.TrimSpace(rest)
-	var bSide string
-	if strings.HasSuffix(rest, "\"") {
-		// quoted post-image: `... "b/path with spaces"`
-		q := strings.LastIndex(rest[:len(rest)-1], "\"")
-		if q < 0 {
+	hdr = strings.TrimSpace(hdr)
+	if strings.HasPrefix(hdr, "\"") || strings.HasSuffix(hdr, "\"") {
+		// `"a/P" "b/P"`: both sides quoted and identical.
+		mid := strings.Index(hdr, "\" \"")
+		if mid < 0 {
 			return "", false
 		}
-		unq, err := strconv.Unquote(rest[q:])
+		a, errA := strconv.Unquote(hdr[:mid+1])
+		b, errB := strconv.Unquote(hdr[mid+2:])
+		if errA != nil || errB != nil || strings.TrimPrefix(a, "a/") != strings.TrimPrefix(b, "b/") {
+			return "", false
+		}
+		return stripBSide(b)
+	}
+	// `a/P b/P`: len = 2*len(P) + 5, and the two halves must agree.
+	if (len(hdr)-5)%2 != 0 {
+		return "", false
+	}
+	n := (len(hdr) - 5) / 2
+	a, b := hdr[:n+2], hdr[n+3:]
+	if hdr[n+2] != ' ' || !strings.HasPrefix(a, "a/") || !strings.HasPrefix(b, "b/") || a[2:] != b[2:] {
+		return "", false
+	}
+	return stripBSide(b)
+}
+
+// stripBSide turns `b/P` or `"b/P"` into the cleaned slash path P.
+func stripBSide(target string) (string, bool) {
+	if strings.HasPrefix(target, "\"") {
+		unq, err := strconv.Unquote(target)
 		if err != nil {
 			return "", false
 		}
-		bSide = unq
-	} else {
-		sp := strings.LastIndex(rest, " b/")
-		if sp < 0 {
-			return "", false
-		}
-		bSide = rest[sp+1:]
+		target = unq
 	}
-	p, ok := strings.CutPrefix(bSide, "b/")
-	if !ok {
+	p, ok := strings.CutPrefix(target, "b/")
+	if !ok || p == "" {
 		return "", false
 	}
 	return path.Clean(filepath.ToSlash(p)), true

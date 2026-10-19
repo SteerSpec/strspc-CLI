@@ -278,11 +278,13 @@ func TestFilterDiff(t *testing.T) {
 	section := func(p string) string {
 		return "diff --git a/" + p + " b/" + p + "\n--- a/" + p + "\n+++ b/" + p + "\n@@ -1 +1 @@\n-a\n+b\n"
 	}
-	quoted := "diff --git \"a/sp ace/f\\303\\251.go\" \"b/sp ace/f\\303\\251.go\"\n--- x\n+++ y\n@@ -1 +1 @@\n-a\n+b\n"
-	rulesQuoted := "diff --git \"a/rules/w x.json\" \"b/rules/w x.json\"\n--- x\n+++ y\n@@ -1 +1 @@\n-a\n+b\n"
+	quoted := "diff --git \"a/sp ace/f\\303\\251.go\" \"b/sp ace/f\\303\\251.go\"\n--- \"a/sp ace/f\\303\\251.go\"\n+++ \"b/sp ace/f\\303\\251.go\"\n@@ -1 +1 @@\n-a\n+b\n"
+	rulesQuoted := "diff --git \"a/rules/w x.json\" \"b/rules/w x.json\"\n--- \"a/rules/w x.json\"\n+++ \"b/rules/w x.json\"\n@@ -1 +1 @@\n-a\n+b\n"
+	// Header-only (binary) sections fall back to the quoted header itself.
+	rulesQuotedBinary := "diff --git \"a/rules/w\\ty.bin\" \"b/rules/w\\ty.bin\"\nBinary files differ\n"
 
 	t.Run("root project drops excludes, keeps the rest intact", func(t *testing.T) {
-		in := section("src/a.go") + section(".strspc/config.yaml") + section("rules/R.json") + quoted + rulesQuoted + section("svc/rules/R.json")
+		in := section("src/a.go") + section(".strspc/config.yaml") + section("rules/R.json") + quoted + rulesQuoted + rulesQuotedBinary + section("svc/rules/R.json")
 		got := filterDiff(in, ".")
 		want := section("src/a.go") + quoted + section("svc/rules/R.json")
 		if got != want {
@@ -293,6 +295,22 @@ func TestFilterDiff(t *testing.T) {
 		in := section("svc/a.go") + section("other/b.go") + section("svc/rules/R.json") + section("rules/R.json") + section(".strspc/x")
 		if got, want := filterDiff(in, "svc"), section("svc/a.go"); got != want {
 			t.Errorf("got:\n%s\nwant:\n%s", got, want)
+		}
+	})
+	t.Run("file name containing b/ cannot escape the exclusion", func(t *testing.T) {
+		// A file literally named "rules/evil b/src/ok.go": the header's last
+		// " b/" points at src/ok.go, the midpoint split and +++ line do not.
+		tricky := "diff --git a/rules/evil b/src/ok.go b/rules/evil b/src/ok.go\n--- a/rules/evil b/src/ok.go\n+++ b/rules/evil b/src/ok.go\n@@ -1 +1 @@\n-a\n+b\n"
+		if got := filterDiff(tricky+section("src/a.go"), "."); got != section("src/a.go") {
+			t.Errorf("tricky name was evaluated:\n%s", got)
+		}
+		noPlus := "diff --git a/rules/evil b/src/ok.go b/rules/evil b/src/ok.go\nindex 1..2 100644\n"
+		if got := filterDiff(noPlus, "."); got != "" {
+			t.Errorf("midpoint split failed to exclude:\n%s", got)
+		}
+		disagree := "diff --git a/rules/x.json b/src/ok.go\nindex 1..2 100644\n"
+		if got := filterDiff(disagree, "."); got != disagree {
+			t.Errorf("ambiguous header must be kept, got %q", got)
 		}
 	})
 	t.Run("unparseable header is kept", func(t *testing.T) {
