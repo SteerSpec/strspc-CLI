@@ -1,0 +1,89 @@
+name: Setup strspc
+description: >
+  Install the strspc CLI from a GitHub release with checksum verification.
+  Fails if the download, the checksum or the version check fails.
+
+inputs:
+  version:
+    description: >
+      strspc release to install: bare semver without leading "v"
+      (e.g. "1.15.0") or "latest".
+    required: false
+    default: "latest"
+  token:
+    description: >
+      Token for the GitHub API (release lookup) and asset download. The
+      default is enough for public releases; pass a token to avoid rate
+      limits on busy runners.
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  version:
+    description: The installed strspc version (bare semver).
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install strspc
+      id: install
+      shell: bash
+      # Inputs enter through env, never inline in the script: an input is
+      # untrusted text once a caller can set it from an expression.
+      env:
+        REQUESTED: ${{ inputs.version }}
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: SteerSpec/strspc-CLI
+      run: |
+        set -euo pipefail
+
+        if [ "$REQUESTED" = "latest" ]; then
+          TAG="$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO}/releases/latest" \
+            | grep -oE '"tag_name": *"[^"]+"' | head -n1 | sed 's/.*"\(v[^"]*\)"/\1/')"
+          VERSION="${TAG#v}"
+        else
+          VERSION="${REQUESTED#v}"
+        fi
+        if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::invalid strspc version '${REQUESTED}' (expected X.Y.Z or latest)" >&2
+          exit 1
+        fi
+
+        case "${RUNNER_OS}" in
+          Linux) OS=linux ;;
+          macOS) OS=darwin ;;
+          *) echo "::error::unsupported runner OS '${RUNNER_OS}'" >&2; exit 1 ;;
+        esac
+        case "${RUNNER_ARCH}" in
+          X64) ARCH=amd64 ;;
+          ARM64) ARCH=arm64 ;;
+          *) echo "::error::unsupported runner architecture '${RUNNER_ARCH}'" >&2; exit 1 ;;
+        esac
+
+        # Asset names come from .goreleaser.yml (project name strspc-CLI).
+        ARCHIVE="strspc-CLI_${VERSION}_${OS}_${ARCH}.tar.gz"
+        BASE_URL="https://github.com/${REPO}/releases/download/v${VERSION}"
+
+        TMP="$(mktemp -d)"
+        curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "${BASE_URL}/${ARCHIVE}" -o "${TMP}/${ARCHIVE}"
+        curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "${BASE_URL}/strspc-CLI_${VERSION}_checksums.txt" -o "${TMP}/checksums.txt"
+
+        EXPECTED="$(grep "  ${ARCHIVE}$" "${TMP}/checksums.txt" | cut -d' ' -f1 || true)"
+        if [ -z "$EXPECTED" ]; then
+          echo "::error::checksum entry not found for ${ARCHIVE}" >&2
+          exit 1
+        fi
+        echo "${EXPECTED}  ${TMP}/${ARCHIVE}" | sha256sum -c -
+
+        BIN="${RUNNER_TEMP}/strspc-bin"
+        mkdir -p "$BIN"
+        tar -xzf "${TMP}/${ARCHIVE}" -C "$BIN" strspc
+        chmod +x "${BIN}/strspc"
+        echo "$BIN" >> "$GITHUB_PATH"
+        rm -rf "$TMP"
+
+        "${BIN}/strspc" version
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
