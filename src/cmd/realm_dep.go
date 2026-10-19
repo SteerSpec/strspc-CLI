@@ -95,6 +95,7 @@ func newRealmDepListCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "list",
 		Short:         "List Realm dependencies",
+		Long:          "List the dependencies declared in realm.json with their versions and sources.",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
