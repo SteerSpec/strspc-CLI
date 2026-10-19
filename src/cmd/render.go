@@ -25,10 +25,12 @@ func newRenderCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "render [path]",
-		Short: "Render entity JSON to Markdown or JSON",
-		Long:  "Convert SteerSpec entity JSON files to Markdown or normalized JSON. Accepts a single file or a directory.",
-		Args:  cobra.ExactArgs(1),
+		Use:           "render [path]",
+		Short:         "Render entity JSON to Markdown or JSON",
+		Long:          "Convert SteerSpec entity JSON files to Markdown or normalized JSON. Accepts a single file or a directory.",
+		Args:          cobra.ExactArgs(1),
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if jsonOutput && (cmd.Flags().Changed("format") || templatePath != "") {
 				return fmt.Errorf("--json cannot be combined with --format or --template")

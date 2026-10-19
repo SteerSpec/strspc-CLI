@@ -1,5 +1,5 @@
 # SteerSpec configuration
-# Docs: https://steerspec.dev/docs/config
+# Reference: https://github.com/SteerSpec/strspc-CLI#readme
 
 # Rule sources — where to fetch rules from
 rules:

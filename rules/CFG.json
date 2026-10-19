@@ -6,15 +6,15 @@
     "description": "Behaviour of strspc init and the .strspc/config.yaml it writes."
   },
   "rule_set": {
-    "version": "0.1.4",
-    "timestamp": "2026-10-18T11:13:56Z",
-    "hash": "blake3:917a4c1d8cee399166a70b6d7fd3c80c64c56f3f97ed51df7556b2812aefdbb6"
+    "version": "0.3.0",
+    "timestamp": "2026-10-19T19:22:35Z",
+    "hash": "blake3:b5e8289097e87e23092352b201e78238019fb6b1a5bc0cddce83874eb66a4a79"
   },
   "rules": [
     {
       "id": "CFG-001",
       "revision": 0,
-      "state": "D",
+      "state": "P",
       "body": "MUST write a `.strspc/config.yaml` that declares at least one rule source.",
       "added_by": "@pleberre",
       "added_at": "2026-10-18",
@@ -23,7 +23,7 @@
     {
       "id": "CFG-002",
       "revision": 0,
-      "state": "D",
+      "state": "P",
       "body": "MUST NOT print URLs that do not resolve.",
       "added_by": "@pleberre",
       "added_at": "2026-10-18",

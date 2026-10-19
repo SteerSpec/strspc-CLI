@@ -5,9 +5,9 @@
     "title": "Conventions"
   },
   "rule_set": {
-    "version": "0.1.2",
-    "timestamp": "2026-03-25T10:01:25Z",
-    "hash": "blake3:84e771bd3eaefa23f117132451c004a79cc41dff05894967e230d1f5217719a6"
+    "version": "0.1.4",
+    "timestamp": "2026-10-19T19:22:35Z",
+    "hash": "blake3:0e842e9003719a8b25b3cbe9cd2630f6814a8025f6e1aae5e7abb219e66dbb5f"
   },
   "rules": [
     {
@@ -26,6 +26,24 @@
       "body": "MUST format all Go source files with gofumpt before committing.",
       "added_by": "@pleberre",
       "added_at": "2026-03-25",
+      "supersedes": null
+    },
+    {
+      "id": "CONV-003",
+      "revision": 0,
+      "state": "D",
+      "body": "MUST pass golangci-lint v2 with the linters configured in .golangci.yml (errcheck, gocritic, govet, ineffassign, staticcheck).",
+      "added_by": "@pleberre",
+      "added_at": "2026-10-19",
+      "supersedes": null
+    },
+    {
+      "id": "CONV-004",
+      "revision": 0,
+      "state": "D",
+      "body": "MUST wrap an underlying error with %w when returning it so callers can inspect the cause with errors.Is and errors.As.",
+      "added_by": "@pleberre",
+      "added_at": "2026-10-19",
       "supersedes": null
     }
   ],
