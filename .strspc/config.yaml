@@ -1,5 +1,5 @@
 # SteerSpec configuration
-# Docs: https://steerspec.dev/docs/config
+# Reference: https://github.com/SteerSpec/strspc-CLI#readme
 
 # Rule sources — where to fetch rules from
 rules:
@@ -8,9 +8,11 @@ rules:
   - source: github://SteerSpec/strspc-rules@v1.6.0/rules/core
     scope: global
 
-  # Local CLI-specific rules (dev.steerspec.cli realm)
+  # Local CLI-specific rules (dev.steerspec.cli realm). They govern the Go
+  # sources, so the scope is global: "local" would limit them to files
+  # under rules/ itself.
   - source: ./rules/
-    scope: local
+    scope: global
 
 # AI evaluator settings
 # `strspc check` sends the diff to this provider; without ANTHROPIC_API_KEY it

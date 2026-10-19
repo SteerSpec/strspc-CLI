@@ -8,6 +8,7 @@ func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Show version information",
+		Long:  "Print the strspc version, build time, commit and branch the binary was built from.",
 		Run: func(cmd *cobra.Command, _ []string) {
 			w := cmd.OutOrStdout()
 

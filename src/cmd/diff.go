@@ -234,7 +234,7 @@ func gitRoot(path string) (string, error) {
 	cmd := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("not a git repository: %s (git error: %v, output: %s)",
+		return "", fmt.Errorf("not a git repository: %s (git error: %w, output: %s)",
 			path, err, strings.TrimSpace(string(out)))
 	}
 	return strings.TrimSpace(string(out)), nil

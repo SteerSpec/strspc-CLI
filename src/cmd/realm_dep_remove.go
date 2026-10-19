@@ -14,6 +14,7 @@ func newRealmDepRemoveCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "remove <realm_id>",
 		Short:         "Remove a dependency from a Realm",
+		Long:          "Remove the dependency declared for <realm_id> from realm.json.",
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
