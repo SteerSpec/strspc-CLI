@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.15.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.14.2...v1.15.0) (2026-10-19)
+
+
+### Features
+
+* **check:** evaluate diffs against resolved rules with Claude ([#80](https://github.com/SteerSpec/strspc-CLI/issues/80)) ([756dea2](https://github.com/SteerSpec/strspc-CLI/commit/756dea209bd01506765f1647aff6ff0381e91ede))
+* **cli:** valid init defaults, note add, entity rehash, sub-entity rule ops ([#79](https://github.com/SteerSpec/strspc-CLI/issues/79)) ([502c389](https://github.com/SteerSpec/strspc-CLI/commit/502c389c389574d88dd4cf73c5ed93acf6b9c7b5))
+
+
+### Bug Fixes
+
+* **check:** resolve sibling dependencies of remote realms through realmresolve origin ([#82](https://github.com/SteerSpec/strspc-CLI/issues/82)) ([16a623e](https://github.com/SteerSpec/strspc-CLI/commit/16a623e0142614c8639b1a87afc58e5f1f917658))
+
 ## [1.14.2](https://github.com/SteerSpec/strspc-CLI/compare/v1.14.1...v1.14.2) (2026-08-20)
 
 
