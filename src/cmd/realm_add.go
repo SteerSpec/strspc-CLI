@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -71,7 +70,7 @@ func newRealmAddCmd() *cobra.Command {
 				Notes: []entity.Note{},
 			}
 
-			data, marshalErr := json.MarshalIndent(f, "", "  ")
+			data, marshalErr := marshalJSON(f)
 			if marshalErr != nil {
 				return fmt.Errorf("marshaling entity: %w", marshalErr)
 			}
@@ -85,7 +84,7 @@ func newRealmAddCmd() *cobra.Command {
 				}
 				return fmt.Errorf("creating %s: %w", entityPath, createErr)
 			}
-			_, writeErr := out.Write(append(data, '\n'))
+			_, writeErr := out.Write(data)
 			closeErr := out.Close()
 			if writeErr != nil {
 				return fmt.Errorf("writing %s: %w", entityPath, writeErr)

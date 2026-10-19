@@ -176,11 +176,14 @@ func TestRealmInitSchemaFetchError(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "rules")
 
-	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target)
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target)
 	if err == nil {
 		t.Fatal("expected error for schema fetch failure, got nil")
 	}
 	testutil.AssertContains(t, err.Error(), "fetching schema")
+	// CMD-002: errors must not trigger cobra's usage dump or duplicate error print.
+	testutil.AssertNotContains(t, out, "Usage:")
+	testutil.AssertNotContains(t, out, "Error:")
 }
 
 func TestRealmInitDetectsConfig(t *testing.T) {
