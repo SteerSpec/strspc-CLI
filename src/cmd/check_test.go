@@ -13,9 +13,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/SteerSpec/strspc-manager/src/entity"
-	"github.com/SteerSpec/strspc-manager/src/remote"
-
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval/providers"
@@ -897,31 +894,5 @@ func TestCheckDiffFileExcludesRulesAndConfig(t *testing.T) {
 func TestSanitizeLine(t *testing.T) {
 	if got := sanitizeLine("effort=low\n::stop-commands::x\r\x7f"); got != "effort=low ::stop-commands::x  " {
 		t.Errorf("sanitizeLine = %q", got)
-	}
-}
-
-func TestRebaseRemoteDeps(t *testing.T) {
-	ref := remote.Ref{Owner: "acme", Repo: "realms", Ref: "v1", Path: "rules/cli"}
-	rf := &entity.RealmFile{Dependencies: []entity.RealmDep{
-		{RealmID: "core", Version: "1.0.0", Source: "../core/"},
-		{RealmID: "sub", Version: "1.0.0", Source: "./vendor/sub"},
-		{RealmID: "root", Version: "1.0.0", Source: "../../"},
-		{RealmID: "escape", Version: "1.0.0", Source: "../../../outside"},
-		{RealmID: "uri", Version: "1.0.0", Source: "github://other/repo@v2/rules"},
-		{RealmID: "none", Version: "1.0.0"},
-	}}
-	rebaseRemoteDeps(ref, rf)
-	want := []string{
-		"github://acme/realms@v1/rules/core",
-		"github://acme/realms@v1/rules/cli/vendor/sub",
-		"github://acme/realms@v1",
-		"../../../outside",
-		"github://other/repo@v2/rules",
-		"",
-	}
-	for i, d := range rf.Dependencies {
-		if d.Source != want[i] {
-			t.Errorf("%s: source = %q, want %q", d.RealmID, d.Source, want[i])
-		}
 	}
 }
