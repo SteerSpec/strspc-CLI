@@ -82,9 +82,10 @@ func resolveDiffSource(f diffFlags, getenv func(string) string) diffSource {
 // tests can stub the gh CLI.
 var resolvePRBase = prBaseSHA
 
-// diffExcludes are never evaluated: the Configuration itself and the
-// project's own rule files (lint and diff cover those).
-var diffExcludes = []string{".strspc/**", "rules/**"}
+// diffExcludes are directories that are never evaluated: the Configuration
+// itself and the project's own rule files (lint and diff cover those). A
+// directory pathspec matches everything beneath it.
+var diffExcludes = []string{".strspc", "rules"}
 
 // collectDiff produces the unified diff for src. Git commands run from
 // repoDir so that paths in the diff are repository-relative; subDir (also
@@ -159,20 +160,26 @@ func ensureRemoteBranch(ctx context.Context, repoDir, branch string) (string, er
 
 // gitDiffArgs builds the argument list for the diff command: unified
 // context of 3, no colour or external drivers, only added, copied, modified
-// and renamed files, restricted to subDir minus the excludes.
+// and renamed files, restricted to subDir minus the excludes. Pathspecs are
+// literal so that a project directory such as `svc[1]` is neither read as a
+// glob nor confused with a sibling `svc1`.
 func gitDiffArgs(subDir string, rangeArgs ...string) []string {
 	args := []string{"diff", "--no-color", "--no-ext-diff", "-U3", "--diff-filter=ACMR"}
 	args = append(args, rangeArgs...)
 	if subDir == "" {
 		subDir = "."
 	}
-	args = append(args, "--", subDir)
+	if subDir == "." {
+		args = append(args, "--", ".")
+	} else {
+		args = append(args, "--", ":(literal)"+filepath.ToSlash(subDir))
+	}
 	for _, ex := range diffExcludes {
 		p := ex
 		if subDir != "." {
 			p = path.Join(filepath.ToSlash(subDir), ex)
 		}
-		args = append(args, ":(exclude)"+p)
+		args = append(args, ":(exclude,literal)"+p)
 	}
 	return args
 }
@@ -323,12 +330,9 @@ func excludedFromDiff(p, subDir string) bool {
 // underAnyExclude reports whether p lies under one of diffExcludes rooted at
 // subDir (or at the repository root when subDir is ".").
 func underAnyExclude(p, subDir string) bool {
-	for _, ex := range diffExcludes {
-		dir := strings.TrimSuffix(ex, "/**")
-		if subDir != "." {
-			if strings.HasPrefix(p, path.Join(subDir, dir)+"/") {
-				return true
-			}
+	for _, dir := range diffExcludes {
+		if subDir != "." && strings.HasPrefix(p, path.Join(subDir, dir)+"/") {
+			return true
 		}
 		if strings.HasPrefix(p, dir+"/") {
 			return true

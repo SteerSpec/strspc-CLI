@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -378,6 +379,11 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 		if len(rf.Dependencies) == 0 && len(rf.SubRealms) == 0 {
 			continue // sub-realms may declare dependencies of their own
 		}
+		if strings.HasPrefix(e.Source, remote.Scheme) {
+			if ref, err := remote.ParseGitHub(e.Source); err == nil {
+				rebaseRemoteDeps(ref, rf)
+			}
+		}
 		rr := realmresolve.New(
 			realmresolve.WithCacheDir(cacheDir),
 			realmresolve.WithRemoteFetcher(r.fetcher),
@@ -388,6 +394,30 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 		r.verbosef("realm %s: %d dependency(ies) resolved", rf.Realm.ID, len(out.Dependencies))
 	}
 	return diags
+}
+
+// rebaseRemoteDeps rewrites the relative dependency sources of a remote
+// realm as github:// URIs on the same repository and ref. The fetcher
+// extracts only the requested subtree into the cache, so a sibling such as
+// `../core/` does not exist next to it on disk; in the repository it does.
+// Sources that are already URIs, absolute, or escape the repository root
+// are left for realmresolve to report. Dependencies declared by sub-realms
+// are read by realmresolve itself and are only rebased by the manager.
+func rebaseRemoteDeps(ref remote.Ref, rf *entity.RealmFile) {
+	for i := range rf.Dependencies {
+		src := rf.Dependencies[i].Source
+		if src == "" || strings.Contains(src, "://") || filepath.IsAbs(src) {
+			continue
+		}
+		joined := path.Clean(path.Join(ref.Path, filepath.ToSlash(src)))
+		if joined == ".." || strings.HasPrefix(joined, "../") {
+			continue
+		}
+		if joined == "." {
+			joined = ""
+		}
+		rf.Dependencies[i].Source = remote.Ref{Owner: ref.Owner, Repo: ref.Repo, Ref: ref.Ref, Path: joined}.String()
+	}
 }
 
 // sourceDir returns the local directory holding a source: the path itself

@@ -43,15 +43,30 @@ func TestResolveDiffSourcePrecedence(t *testing.T) {
 
 func TestGitDiffArgs(t *testing.T) {
 	got := strings.Join(gitDiffArgs(".", "HEAD"), " ")
-	want := "diff --no-color --no-ext-diff -U3 --diff-filter=ACMR HEAD -- . :(exclude).strspc/** :(exclude)rules/**"
+	want := "diff --no-color --no-ext-diff -U3 --diff-filter=ACMR HEAD -- . :(exclude,literal).strspc :(exclude,literal)rules"
 	if got != want {
 		t.Errorf("root args:\n got %s\nwant %s", got, want)
 	}
 	got = strings.Join(gitDiffArgs("svc/api", "--cached"), " ")
-	want = "diff --no-color --no-ext-diff -U3 --diff-filter=ACMR --cached -- svc/api :(exclude)svc/api/.strspc/** :(exclude)svc/api/rules/**"
+	want = "diff --no-color --no-ext-diff -U3 --diff-filter=ACMR --cached -- :(literal)svc/api :(exclude,literal)svc/api/.strspc :(exclude,literal)svc/api/rules"
 	if got != want {
 		t.Errorf("subdir args:\n got %s\nwant %s", got, want)
 	}
+}
+
+func TestCollectDiffLiteralProjectName(t *testing.T) {
+	dir := newDiffRepo(t)
+	writeFile(t, dir, "svc[1]/x.go", "package svc\n")
+	writeFile(t, dir, "svc[1]/.strspc/config.yaml", "rules: []\n")
+	writeFile(t, dir, "svc[1]/rules/R.json", "{}\n")
+	writeFile(t, dir, "svc1/y.go", "package sibling\n")
+	writeFile(t, dir, "svc1/.strspc/config.yaml", "rules: []\n")
+	gitRun(t, dir, "add", "-A")
+	diff, err := collectDiff(context.Background(), dir, "svc[1]", diffSource{Kind: diffFromStaged})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFiles(t, diff, "svc[1]/x.go")
 }
 
 // gitRun runs git in dir and fails the test on error.
