@@ -73,6 +73,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  setup-action:
+    # Smoke test for the composite action other repositories install the
+    # released CLI with (SteerSpec/.github reusable workflows, strspc-rules CI).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-strspc
+        id: pinned
+        with:
+          version: "1.15.0"
+      - run: test "${INSTALLED}" = "1.15.0" && strspc version
+        env:
+          INSTALLED: ${{ steps.pinned.outputs.version }}
+
   commits:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

@@ -56,6 +56,18 @@ Download the latest binary for your platform from [Releases](https://github.com/
 
 Available for Linux and macOS (amd64, arm64).
 
+### In GitHub Actions
+
+The repository ships a composite action that downloads a release for the
+runner's OS and architecture and verifies its checksum:
+
+```yaml
+- uses: SteerSpec/strspc-CLI/.github/actions/setup-strspc@main
+  with:
+    version: "1.15.0"       # or "latest" (the default)
+- run: strspc version
+```
+
 ### From source
 
 ```bash
@@ -208,6 +220,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0                     # --base needs the merge base
+      - uses: SteerSpec/strspc-CLI/.github/actions/setup-strspc@main
       - name: Detect evaluator key          # secrets.* cannot be used in if:
         id: key
         run: echo "has_key=${{ secrets.ANTHROPIC_API_KEY != '' }}" >> "$GITHUB_OUTPUT"
