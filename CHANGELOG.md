@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.17.0...v1.17.1) (2026-10-20)
+
+
+### Bug Fixes
+
+* **setup-strspc:** tolerate a release whose assets are still uploading ([#92](https://github.com/SteerSpec/strspc-CLI/issues/92)) ([1ce43e4](https://github.com/SteerSpec/strspc-CLI/commit/1ce43e4484d9451083c0774a9926178889d684f2))
+
 ## [1.17.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.16.0...v1.17.0) (2026-10-20)
 
 
