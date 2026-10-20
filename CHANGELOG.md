@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.2](https://github.com/SteerSpec/strspc-CLI/compare/v1.17.1...v1.17.2) (2026-10-20)
+
+
+### Bug Fixes
+
+* **deps:** bump strspc-manager to v1.16.2 so the evaluator stops failing PRs on fixtures ([e33dc73](https://github.com/SteerSpec/strspc-CLI/commit/e33dc73f0cc40f48d5f4fe7e618cb516f8771948))
+* **deps:** bump strspc-manager to v1.16.2 so the evaluator stops failing PRs on fixtures ([f97a7c2](https://github.com/SteerSpec/strspc-CLI/commit/f97a7c2776768a0ef57cb7defa82733491f55d30))
+
 ## [1.17.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.17.0...v1.17.1) (2026-10-20)
 
 
