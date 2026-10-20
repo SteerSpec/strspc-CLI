@@ -552,6 +552,12 @@ func (r *checkRun) evaluate() error {
 	if unavailable := obs.unavailableErr(); unavailable != nil {
 		return r.fail(exitUnavailable, fmt.Errorf("provider %q unavailable: %w", r.providerName, unavailable))
 	}
+	// A provider that answered nothing at all is as unavailable as one that
+	// refused the connection: the per-rule RE002 warnings would otherwise
+	// leave the check green with no rule evaluated.
+	if calls, failed, first := obs.failures(); calls > 0 && failed == calls {
+		return r.fail(exitUnavailable, fmt.Errorf("provider %q failed every request (%d of %d): %w", r.providerName, failed, calls, first))
+	}
 
 	hits, misses, calls, skipped := obs.counts()
 	if !r.static {
@@ -676,6 +682,8 @@ type checkObserver struct {
 	hits        int
 	misses      int
 	calls       int
+	failed      int   // provider calls that returned an error (cancellation excluded)
+	firstErr    error // the first such error, for the exit message
 	skipped     int
 	unavailable error
 	cancel      context.CancelFunc
@@ -693,6 +701,15 @@ func (o *checkObserver) Observe(ev ruleeval.Event) { //nolint:gocritic // signat
 		o.skipped++
 	case ruleeval.EventProviderCall:
 		o.calls++
+		// Only a cancellation is excluded: the observer itself cancels the
+		// run after a first unavailable error. A deadline is a real failure,
+		// since a per-request timeout can expire while the run continues.
+		if ev.Err != nil && !errors.Is(ev.Err, context.Canceled) {
+			o.failed++
+			if o.firstErr == nil {
+				o.firstErr = ev.Err
+			}
+		}
 		if ev.Err != nil && isUnavailable(ev.Err) && o.unavailable == nil {
 			o.unavailable = ev.Err
 			if o.cancel != nil {
@@ -746,6 +763,14 @@ func (o *checkObserver) unavailableErr() error {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	return o.unavailable
+}
+
+// failures reports how many provider calls were made, how many returned an
+// error, and the first error.
+func (o *checkObserver) failures() (calls, failed int, first error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.calls, o.failed, o.firstErr
 }
 
 func (o *checkObserver) counts() (hits, misses, calls, skipped int) {
