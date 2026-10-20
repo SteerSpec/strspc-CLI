@@ -5,15 +5,15 @@
     "title": "Commands"
   },
   "rule_set": {
-    "version": "0.4.0",
-    "timestamp": "2026-10-19T19:22:35Z",
-    "hash": "blake3:04208cd8a4101ebd8de2e66bdd0946fe780befd46bfc3eca18e55e52ce8e95fe"
+    "version": "0.5.0",
+    "timestamp": "2026-10-20T05:45:07Z",
+    "hash": "blake3:77ba4a160f14b8d37f8fbfd60dc07cfd2c78fc51e8c51fe43eec6492183d4666"
   },
   "rules": [
     {
       "id": "CMD-001",
       "revision": 0,
-      "state": "P",
+      "state": "I",
       "body": "Every command MUST declare both Short and Long descriptions in its cobra.Command definition.",
       "added_by": "@pleberre",
       "added_at": "2026-03-25",
@@ -22,7 +22,7 @@
     {
       "id": "CMD-002",
       "revision": 0,
-      "state": "P",
+      "state": "I",
       "body": "Commands that return errors MUST set SilenceUsage: true and SilenceErrors: true to suppress cobra's default error printing.",
       "added_by": "@pleberre",
       "added_at": "2026-03-25",
