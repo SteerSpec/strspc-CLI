@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.16.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.15.0...v1.16.0) (2026-10-20)
+
+
+### Features
+
+* **rules:** core dependency, new conventions, publish command and config rules ([#86](https://github.com/SteerSpec/strspc-CLI/issues/86)) ([4e1c0ab](https://github.com/SteerSpec/strspc-CLI/commit/4e1c0abd515ddf2dc24333ea40da02aeb9d8cc79))
+
+
+### Bug Fixes
+
+* **check:** exit 3 when every provider request failed ([#88](https://github.com/SteerSpec/strspc-CLI/issues/88)) ([5ab6953](https://github.com/SteerSpec/strspc-CLI/commit/5ab6953d1f5ec956de106704c814e85261305c74))
+
 ## [1.15.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.14.2...v1.15.0) (2026-10-19)
 
 
