@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.16.0...v1.17.0) (2026-10-20)
+
+
+### Features
+
+* **rules:** promote CMD-001 and CMD-002 to Implemented ([#90](https://github.com/SteerSpec/strspc-CLI/issues/90)) ([a5713d5](https://github.com/SteerSpec/strspc-CLI/commit/a5713d5f8ac5eda757ffa541a6d28cd53274cfd8))
+
 ## [1.16.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.15.0...v1.16.0) (2026-10-20)
 
 
