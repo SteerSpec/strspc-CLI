@@ -505,7 +505,7 @@ func (r *checkRun) evaluate() error {
 	evalOpts = append(evalOpts, ruleeval.WithObserver(obs))
 
 	if !r.static && !r.opts.noCache {
-		store, err := evalcache.Open(filepath.Join(r.cwd, ".strspc", "cache.db"), evalcache.WithTTL(r.ttl))
+		store, err := evalcache.Open(ctx, filepath.Join(r.cwd, ".strspc", "cache.db"), evalcache.WithTTL(r.ttl))
 		switch {
 		case err == nil:
 			defer func() {
