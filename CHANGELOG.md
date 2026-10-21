@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.18.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.18.0...v1.18.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **deps:** bump strspc-manager to v1.18.0 and pass the check context to evalcache.Open ([d5081e4](https://github.com/SteerSpec/strspc-CLI/commit/d5081e42065837657cde7831bea8cb5e946a3123))
+* **deps:** bump strspc-manager to v1.18.0 and pass the check context to evalcache.Open ([34d3f7f](https://github.com/SteerSpec/strspc-CLI/commit/34d3f7fc468a7a24e11f714b6acb5b05f146ecf0))
+
 ## [1.18.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.17.3...v1.18.0) (2026-10-21)
 
 
