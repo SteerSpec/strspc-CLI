@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.17.3](https://github.com/SteerSpec/strspc-CLI/compare/v1.17.2...v1.17.3) (2026-10-21)
+
+
+### Bug Fixes
+
+* **deps:** bump strspc-manager to v1.16.5 for the corrupt-cache recovery fix ([22cb1dd](https://github.com/SteerSpec/strspc-CLI/commit/22cb1ddd32a334250f83602bd022e4c5100cbe93))
+* **deps:** bump strspc-manager to v1.16.5 for the corrupt-cache recovery fix ([4eec04f](https://github.com/SteerSpec/strspc-CLI/commit/4eec04f987b2a42893e0324c0c8ec0df3a21f626))
+
 ## [1.17.2](https://github.com/SteerSpec/strspc-CLI/compare/v1.17.1...v1.17.2) (2026-10-20)
 
 
