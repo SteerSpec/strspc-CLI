@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.18.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.17.3...v1.18.0) (2026-10-21)
+
+
+### Features
+
+* **deps:** bump strspc-manager to v1.17.0 and pass the command context to the linters ([4a36f95](https://github.com/SteerSpec/strspc-CLI/commit/4a36f95be7559eb2724e1782692a0ed0b185a3a2))
+* **deps:** bump strspc-manager to v1.17.0 and pass the command context to the linters ([0bdfb74](https://github.com/SteerSpec/strspc-CLI/commit/0bdfb74372985a01f97babe89ef6729113dcf601))
+
 ## [1.17.3](https://github.com/SteerSpec/strspc-CLI/compare/v1.17.2...v1.17.3) (2026-10-21)
 
 
