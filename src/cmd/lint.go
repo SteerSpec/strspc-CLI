@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -53,16 +54,16 @@ func newLintCmd() *cobra.Command {
 			var res *result.Result
 			if info.IsDir() {
 				if crossRef {
-					res = linter.LintDir(inputPath)
+					res = linter.LintDir(cmd.Context(), inputPath)
 				} else {
-					res = lintDirPerFile(linter, inputPath)
+					res = lintDirPerFile(cmd.Context(), linter, inputPath)
 				}
 			} else {
 				data, readErr := os.ReadFile(inputPath)
 				if readErr != nil {
 					return fmt.Errorf("reading %s: %w", inputPath, readErr)
 				}
-				res = linter.LintBytes(data)
+				res = linter.LintBytes(cmd.Context(), data)
 				// Add file path context to diagnostics.
 				for i := range res.Diagnostics {
 					if res.Diagnostics[i].Path == "" {
@@ -107,7 +108,7 @@ func newLintCmd() *cobra.Command {
 // lintDirPerFile walks a directory tree and lints each entity JSON file
 // individually without cross-file checks. Skips underscore-prefixed
 // directories (e.g. _schema/) and files, as well as realm.json.
-func lintDirPerFile(linter *rulelint.Linter, dir string) *result.Result {
+func lintDirPerFile(ctx context.Context, linter *rulelint.Linter, dir string) *result.Result {
 	res := &result.Result{}
 	seen := 0
 
@@ -148,7 +149,7 @@ func lintDirPerFile(linter *rulelint.Linter, dir string) *result.Result {
 			return nil
 		}
 
-		fileRes := linter.LintBytes(data)
+		fileRes := linter.LintBytes(ctx, data)
 		for _, diag := range fileRes.Diagnostics {
 			if diag.Path == "" {
 				diag.Path = path

@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -47,8 +50,13 @@ func NewRootCmd() *cobra.Command {
 
 // Execute runs the root command. Errors are printed once to stderr; the
 // process exits with the code carried by an exitError, or 1 otherwise.
+// The command context is cancelled on SIGINT or SIGTERM so that network
+// work (schema fetches, remote sources, evaluation) stops promptly.
 func Execute() {
-	if err := NewRootCmd().Execute(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	err := NewRootCmd().ExecuteContext(ctx)
+	stop()
+	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(exitCodeOf(err))
 	}
