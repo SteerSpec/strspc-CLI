@@ -70,10 +70,10 @@ func newRealmValidateCmd() *cobra.Command {
 			}
 
 			vs := newRealmValidator(strict, recursive)
-			res := vs.realmLinter.Lint(dir)
+			res := vs.realmLinter.Lint(cmd.Context(), dir)
 
 			if recursive {
-				realmRes := vs.ruleLinter.LintRealm(dir)
+				realmRes := vs.ruleLinter.LintRealm(cmd.Context(), dir)
 				mergeDiagnostics(res, realmRes)
 			}
 
