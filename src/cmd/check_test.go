@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,8 +13,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/evalcache"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval/providers"
 )
@@ -928,4 +931,42 @@ func TestSanitizeLine(t *testing.T) {
 	if got := sanitizeLine("effort=low\n::stop-commands::x\r\x7f"); got != "effort=low ::stop-commands::x  " {
 		t.Errorf("sanitizeLine = %q", got)
 	}
+}
+
+// TestCheckCancelledContextDoesNotWaitForCacheLock holds the cache file lock
+// from the test and runs check with a context that expires almost at once.
+// check must pass its context to evalcache.Open so the run degrades to "no
+// cache" when the context ends instead of polling for the lock timeout.
+func TestCheckCancelledContextDoesNotWaitForCacheLock(t *testing.T) {
+	dir, diff := setupCheckProject(t, "claude", []string{"I"})
+	p := &batchStubProvider{stubProvider{verdicts: map[string]*ruleeval.EvalResponse{
+		"TST-001": {Verdict: ruleeval.Compliant, Explanation: "documented"},
+	}}}
+	stubEvalProvider(t, p, nil)
+
+	holder, err := evalcache.Open(context.Background(), filepath.Join(dir, ".strspc", "cache.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = holder.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	root := NewRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"check", dir, "--diff-file", diff})
+
+	start := time.Now()
+	_ = root.ExecuteContext(ctx)
+	elapsed := time.Since(start)
+
+	// The default lock timeout is 2s; a run that honours its context
+	// returns as soon as the 50ms deadline passes.
+	if elapsed > 1500*time.Millisecond {
+		t.Errorf("check took %v while the cache was locked; expected it to stop at the context deadline", elapsed)
+	}
+	testutil.AssertContains(t, out.String(), "continuing without cache")
+	testutil.AssertContains(t, out.String(), context.DeadlineExceeded.Error())
 }
