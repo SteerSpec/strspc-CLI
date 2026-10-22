@@ -154,8 +154,11 @@ func TestInitConfigIsValid(t *testing.T) {
 	if len(entries) < 1 {
 		t.Fatal("generated config must declare at least one rule source (SPCFG-004)")
 	}
-	if entries[0].Source != defaultCoreSource {
-		t.Errorf("got source %q, want %q", entries[0].Source, defaultCoreSource)
+	// Spelled out rather than compared with defaultCoreSource so a typo or a
+	// stale tag in the constant fails here (the pin is the point of the default).
+	const wantSource = "github://SteerSpec/strspc-rules@v1.7.0/rules/core"
+	if entries[0].Source != wantSource {
+		t.Errorf("got source %q, want %q", entries[0].Source, wantSource)
 	}
 	if entries[0].Scope != "global" {
 		t.Errorf("got scope %q, want global", entries[0].Scope)
