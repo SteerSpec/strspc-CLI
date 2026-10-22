@@ -95,7 +95,7 @@ strspc init --provider null .    # offline: static checks only, no API key neede
 
 ```yaml
 rules:
-  - source: github://SteerSpec/strspc-rules@v1.6.0/rules/core   # bumped per rules release
+  - source: github://SteerSpec/strspc-rules@v1.7.0/rules/core   # bumped per rules release
     scope: global
 evaluator:
   provider: claude          # requires ANTHROPIC_API_KEY; use "null" to skip AI evaluation
@@ -105,7 +105,7 @@ fail_on:
   - I                       # state codes (D, A, P, I, R, T), not words
 ```
 
-`fail_on` uses rule state codes as defined by `config.v1.schema.json`. It also writes `.strspc/.gitignore` (`cache.db`, `cache/`) so cache artifacts stay out of version control. `github://` sources are fetched through the GitHub tarball API and cached under `.strspc/cache/`; set `GITHUB_TOKEN` for private repositories or to avoid rate limits. The generated config pins `strspc-rules@v1.6.0`.
+`fail_on` uses rule state codes as defined by `config.v1.schema.json`. It also writes `.strspc/.gitignore` (`cache.db`, `cache/`) so cache artifacts stay out of version control. `github://` sources are fetched through the GitHub tarball API and cached under `.strspc/cache/`; set `GITHUB_TOKEN` for private repositories or to avoid rate limits. The generated config pins `strspc-rules@v1.7.0`.
 
 ### Author rules
 
