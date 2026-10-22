@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.18.2](https://github.com/SteerSpec/strspc-CLI/compare/v1.18.1...v1.18.2) (2026-10-22)
+
+
+### Bug Fixes
+
+* **init:** pin the default core source to strspc-rules v1.7.0 ([2d0b5e9](https://github.com/SteerSpec/strspc-CLI/commit/2d0b5e9c5c01209cbd816112a3facd3cbd500164))
+* **init:** pin the default core source to strspc-rules v1.7.0 ([27b835c](https://github.com/SteerSpec/strspc-CLI/commit/27b835c623642d1383e0ea9e78c31dbf4bca3158))
+
 ## [1.18.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.18.0...v1.18.1) (2026-10-21)
 
 
