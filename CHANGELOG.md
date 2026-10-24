@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.19.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.19.0...v1.19.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **deps:** bump strspc-manager to v1.19.0 ([752cfce](https://github.com/SteerSpec/strspc-CLI/commit/752cfce11cacbbcc5d71a30efec4ef0a21c8e84d))
+* **deps:** bump strspc-manager to v1.19.0 ([c81f9e5](https://github.com/SteerSpec/strspc-CLI/commit/c81f9e54a34bf9de5e7172b0c13934b9b7b060c7))
+
 ## [1.19.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.18.2...v1.19.0) (2026-10-24)
 
 
