@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://steerspec.dev/schemas/config/v1.json",
+  "title": "SteerSpec Config Schema",
+  "description": "Schema for .strspc/config.yaml. Generated from SPCFG entity rules by tools/build-schema.py. Do not edit manually.",
+  "type": "object",
+  "required": [
+    "rules"
+  ],
+  "properties": {
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "scope"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "global",
+              "local"
+            ]
+          }
+        }
+      }
+    },
+    "evaluator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider"
+      ],
+      "properties": {
+        "provider": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "endpoint": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {
+          "type": "string"
+        },
+        "effort": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ttl": {
+          "type": "string"
+        }
+      }
+    },
+    "fail_on": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "D",
+          "A",
+          "P",
+          "I",
+          "R",
+          "T"
+        ]
+      }
+    },
+    "evaluate_on": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "D",
+          "A",
+          "P",
+          "I",
+          "R",
+          "T"
+        ]
+      }
+    }
+  },
+  "additionalProperties": false
+}

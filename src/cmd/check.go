@@ -204,9 +204,15 @@ func (r *checkRun) fail(code int, err error, diags ...result.Diagnostic) error {
 }
 
 // loadConfig reads .strspc/config.yaml and normalises the settings used by
-// the check.
+// the check. Structural problems the check cannot work around (no rule
+// source, unknown lifecycle state codes) are configuration errors; a
+// mismatch against the published config.v1 schema is reported as a warning.
 func (r *checkRun) loadConfig() error {
-	cfg, err := loadStrspcConfig(r.cwd)
+	raw, err := readStrspcConfig(r.cwd)
+	if err != nil {
+		return err
+	}
+	cfg, err := parseStrspcConfig(raw)
 	if err != nil {
 		return err
 	}
@@ -217,15 +223,9 @@ func (r *checkRun) loadConfig() error {
 		return err
 	}
 	if len(r.entries) == 0 {
-		// SPCFG-004 wants at least one source, but a freshly initialised
-		// project has none yet: degrade to a warning so `init && check`
-		// keeps working (SPEC §8.4).
-		r.notices = append(r.notices, result.Diagnostic{
-			Module:   "strspc",
-			Code:     "CHK001",
-			Severity: result.Warning,
-			Message:  "no rule sources configured in .strspc/config.yaml (rules: is empty); nothing to check",
-		})
+		// `strspc init` has written a core source since 1.15, so an empty
+		// list is a broken configuration, not a fresh project.
+		return errors.New("no rule sources configured in .strspc/config.yaml: rules: must list at least one source (core rule SPCFG-004)")
 	}
 
 	if cfg.Cache.TTL != "" {
@@ -236,11 +236,19 @@ func (r *checkRun) loadConfig() error {
 	}
 
 	r.failOn = normalizeStateCodes(cfg.FailOn)
+	if err := validateStateCodes("fail_on", r.failOn); err != nil {
+		return err
+	}
 	if cfg.EvaluateOn != nil {
 		// An explicit `evaluate_on: []` means "evaluate nothing"; only an
 		// absent key falls back to the ruleeval default.
 		r.evaluateOn = normalizeStateCodes(cfg.EvaluateOn)
+		if err := validateStateCodes("evaluate_on", r.evaluateOn); err != nil {
+			return err
+		}
 	}
+
+	r.notices = append(r.notices, r.validateConfigSchema(raw)...)
 	return nil
 }
 
@@ -779,22 +787,32 @@ func (o *checkObserver) counts() (hits, misses, calls, skipped int) {
 	return o.hits, o.misses, o.calls, o.skipped
 }
 
+// stateNameToCode maps the long lifecycle state names accepted in fail_on
+// and evaluate_on to their single-letter codes (entity.State*).
+var stateNameToCode = map[string]string{
+	"draft":       entity.StateDraft,
+	"abandoned":   entity.StateAbandoned,
+	"published":   entity.StatePublished,
+	"implemented": entity.StateImplemented,
+	"retired":     entity.StateRetired,
+	"terminated":  entity.StateTerminated,
+}
+
+// allStateCodes and allStateNames list the accepted spellings, in lifecycle
+// order, for error messages.
+var (
+	allStateCodes = []string{entity.StateDraft, entity.StateAbandoned, entity.StatePublished, entity.StateImplemented, entity.StateRetired, entity.StateTerminated}
+	allStateNames = []string{"draft", "abandoned", "published", "implemented", "retired", "terminated"}
+)
+
 // normalizeStateCodes converts human-readable state names (e.g. "implemented")
-// to the single-letter codes expected by ruleeval (e.g. "I"). Short codes are
-// passed through unchanged so both forms are accepted in config.yaml.
+// and lower-case codes to the canonical single-letter codes. Values it does
+// not recognise are passed through unchanged for validateStateCodes to reject.
 func normalizeStateCodes(states []string) []string {
-	nameToCode := map[string]string{
-		"draft":       "D",
-		"abandoned":   "A",
-		"published":   "P",
-		"implemented": "I",
-		"retired":     "R",
-		"terminated":  "T",
-	}
 	out := make([]string, len(states))
 	for i, s := range states {
 		s = strings.TrimSpace(s)
-		if code, ok := nameToCode[strings.ToLower(s)]; ok {
+		if code, ok := stateNameToCode[strings.ToLower(s)]; ok {
 			out[i] = code
 		} else if len(s) == 1 {
 			out[i] = strings.ToUpper(s)
@@ -803,6 +821,19 @@ func normalizeStateCodes(states []string) []string {
 		}
 	}
 	return out
+}
+
+// validateStateCodes rejects lifecycle state codes that entity does not
+// recognise, so a misspelt fail_on or evaluate_on entry is a configuration
+// error (SPCFG-007) rather than a condition that silently never fails.
+func validateStateCodes(field string, codes []string) error {
+	for _, c := range codes {
+		if !entity.IsValidState(c) {
+			return fmt.Errorf("invalid %s state %q in .strspc/config.yaml: allowed codes are %s (or %s)",
+				field, c, strings.Join(allStateCodes, ", "), strings.Join(allStateNames, ", "))
+		}
+	}
+	return nil
 }
 
 // envEvaluatorEndpoint is the environment variable that opts in to a custom

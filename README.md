@@ -187,6 +187,15 @@ Diff selection precedence: `--diff-file` > `--staged` > `--pr` > `--base` > `$GI
 are never part of the evaluated diff. Rules in states listed in `evaluate_on` (default `D`, `P`, `I`)
 are evaluated; others are skipped. The check only ever writes inside `.strspc/` (`cache/`, `cache.db`).
 
+**Configuration validation.** Before any source is resolved, the check rejects a config it cannot work
+with and exits 2: an empty `rules:` list (core rule SPCFG-004 requires at least one source; `strspc init`
+writes one), an unknown lifecycle state in `fail_on` or `evaluate_on` (allowed: `D`, `A`, `P`, `I`, `R`,
+`T`, or the long names `draft` … `terminated`, SPCFG-007), an unknown `evaluator.provider`. The config is
+then validated against the published `config.v1` schema (`https://steerspec.dev/schemas/config/v1.json`,
+cached under `.strspc/cache/schemas/`); each mismatch, such as an unknown key or an `effort` outside
+`low|medium|high`, is reported as warning `CHK002` and never fails the check on its own. When the schema
+cannot be fetched (offline run), the validation is skipped and `--verbose` says so.
+
 **Endpoint safety.** `.strspc/config.yaml` is repository content, so a pull request could point
 `evaluator.endpoint` at a host that would receive your `ANTHROPIC_API_KEY`. The check therefore accepts an
 `evaluator.endpoint` from the config only when it is an `https://` URL on `anthropic.com` (for example
@@ -198,7 +207,7 @@ endpoint in the config without that opt-in exits 2 with a message naming the hos
 |-----------|---------|
 | `0` | No violation of a rule in a `fail_on` state (warnings may have been reported) |
 | `1` | At least one rule in a `fail_on` state was violated |
-| `2` | Configuration, rule resolution or diff collection failed |
+| `2` | Configuration (empty `rules:`, unknown state code or provider, unsafe endpoint), rule resolution or diff collection failed |
 | `3` | AI provider unavailable: no `ANTHROPIC_API_KEY`, rejected credentials (401/403), unreachable endpoint, or every request failed (a key without workspace scope, a rejected schema) |
 
 ### CI usage
