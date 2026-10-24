@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.19.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.18.2...v1.19.0) (2026-10-24)
+
+
+### Features
+
+* **check:** validate config.yaml structure before resolving sources ([e9f035a](https://github.com/SteerSpec/strspc-CLI/commit/e9f035ae93a1c313aef9a2c0a2518ad9006d0192))
+* **check:** validate config.yaml structure before resolving sources ([3207e79](https://github.com/SteerSpec/strspc-CLI/commit/3207e799caf0245c3d5810611a2d37bf10666ce4)), closes [#94](https://github.com/SteerSpec/strspc-CLI/issues/94)
+
 ## [1.18.2](https://github.com/SteerSpec/strspc-CLI/compare/v1.18.1...v1.18.2) (2026-10-22)
 
 
