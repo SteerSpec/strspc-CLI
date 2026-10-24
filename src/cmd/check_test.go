@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -19,7 +21,44 @@ import (
 	"github.com/SteerSpec/strspc-manager/src/evalcache"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval/providers"
+	"github.com/SteerSpec/strspc-manager/src/schema"
 )
+
+// TestMain disables the config schema fetch for the whole package: check
+// would otherwise contact steerspec.dev from every test that gets past the
+// hard configuration checks. Tests that exercise the schema validation
+// install a local server with serveConfigSchema.
+func TestMain(m *testing.M) {
+	newConfigSchemaFetcher = func(string) *schema.Fetcher { return nil }
+	os.Exit(m.Run())
+}
+
+// serveConfigSchema serves src/cmd/testdata/config.v1.schema.json from a
+// local HTTP server and points the check's schema fetcher at it for the
+// duration of the test.
+func serveConfigSchema(t *testing.T) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "config.v1.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/"+configV1SchemaPath, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(data)
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	original := newConfigSchemaFetcher
+	newConfigSchemaFetcher = func(cwd string) *schema.Fetcher {
+		return schema.New(
+			schema.WithBaseURL(server.URL),
+			schema.WithCacheDir(filepath.Join(cwd, ".strspc", "cache", "schemas")),
+		)
+	}
+	t.Cleanup(func() { newConfigSchemaFetcher = original })
+}
 
 // checkEntityJSON is a minimal entity file with rules in several states:
 // TST-001 Implemented (in fail_on), TST-002 Published, TST-003 Draft and
@@ -265,22 +304,131 @@ func TestCheckStaticOnlyFromNullProvider(t *testing.T) {
 	testutil.AssertContains(t, output, "RE003")
 }
 
-func TestCheckNoSourcesWarns(t *testing.T) {
-	dir := t.TempDir()
+// writeRawCheckConfig writes the given content as .strspc/config.yaml under dir.
+func writeRawCheckConfig(t *testing.T, dir, content string) {
+	t.Helper()
 	if err := os.MkdirAll(filepath.Join(dir, ".strspc"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := "rules: []\nevaluator:\n  provider: null\nfail_on: [I]\n"
-	if err := os.WriteFile(filepath.Join(dir, ".strspc", "config.yaml"), []byte(cfg), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".strspc", "config.yaml"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
 
-	// The config `strspc init` wrote before 1.15 has no active source: still exit 0.
+// #94: structural problems in config.yaml are configuration errors (exit 2)
+// reported before any source is resolved. The source directory does not
+// exist on purpose: a resolution failure would also exit 2 but with RSV002.
+func TestCheckConfigValidationExits2(t *testing.T) {
+	cases := []struct {
+		name   string
+		config string
+		want   []string // substrings of the error message
+	}{
+		{
+			name:   "empty rules list",
+			config: "rules: []\nevaluator:\n  provider: null\nfail_on: [I]\n",
+			want:   []string{"no rule sources configured", "SPCFG-004"},
+		},
+		{
+			name:   "unknown fail_on code",
+			config: "rules:\n  - source: ./missing-rules/\n    scope: local\nevaluator:\n  provider: null\nfail_on: [X]\n",
+			want:   []string{"fail_on", `"X"`, "D, A, P, I, R, T", "implemented"},
+		},
+		{
+			name:   "unknown evaluate_on code",
+			config: "rules:\n  - source: ./missing-rules/\n    scope: local\nevaluator:\n  provider: null\nfail_on: [I]\nevaluate_on: [X]\n",
+			want:   []string{"evaluate_on", `"X"`, "D, A, P, I, R, T"},
+		},
+		{
+			name:   "unknown evaluator provider",
+			config: "rules:\n  - source: ./missing-rules/\n    scope: local\nevaluator:\n  provider: bogus\nfail_on: [I]\n",
+			want:   []string{"evaluator.provider", "not a known provider"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeRawCheckConfig(t, dir, tc.config)
+
+			// The real providers.New decides the provider case; no stub.
+			output, err := runCheckCmd(t, dir)
+			assertExit(t, err, exitConfig)
+			for _, want := range tc.want {
+				testutil.AssertContains(t, err.Error(), want)
+			}
+			testutil.AssertNotContains(t, output, "RSV002")
+		})
+	}
+}
+
+// Long state names and lower-case codes stay accepted after validation.
+func TestCheckAcceptsStateNames(t *testing.T) {
+	dir, _ := setupCheckProject(t, "null", []string{"implemented", "p", " D "})
+	writeCheckConfig(t, dir, "./rules/", "null", []string{"Implemented", "p"}, []string{"draft", "P", "i"})
+
 	output, err := runCheckCmd(t, dir)
 	assertExit(t, err, exitOK)
-	testutil.AssertContains(t, output, "[warning] CHK001: no rule sources configured")
-	testutil.AssertContains(t, output, "RE003")
-	testutil.AssertContains(t, output, "Checked 0 rule(s) from 0 source(s)")
+	testutil.AssertContains(t, output, "Checked 4 rule(s) from 1 source(s)")
+}
+
+func TestCheckEmptyRulesJSONCarriesError(t *testing.T) {
+	dir := t.TempDir()
+	writeRawCheckConfig(t, dir, "rules: []\nevaluator:\n  provider: null\n")
+
+	output, err := runCheckCmd(t, dir, "--format", "json")
+	assertExit(t, err, exitConfig)
+	var out checkOutput
+	if jerr := json.Unmarshal([]byte(output), &out); jerr != nil {
+		t.Fatalf("invalid JSON: %v\n%s", jerr, output)
+	}
+	if out.OK || out.ExitCode != exitConfig || !strings.Contains(out.Error, "SPCFG-004") {
+		t.Errorf("JSON envelope = %+v, want exit 2 with the SPCFG-004 cause", out)
+	}
+}
+
+// #94: the loaded config is validated against the config.v1 schema; a
+// mismatch is a CHK002 warning and never fails the check on its own.
+func TestCheckConfigSchemaWarning(t *testing.T) {
+	serveConfigSchema(t)
+	dir, _ := setupCheckProject(t, "null", []string{"I"})
+	writeRawCheckConfig(t, dir, "rules:\n  - source: ./rules/\n    scope: local\nevaluator:\n  provider: null\n  effort: bogus\nfail_on: [I]\nunknown_key: 1\n")
+
+	output, err := runCheckCmd(t, dir)
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, output, "[warning] CHK002")
+	testutil.AssertContains(t, output, "/evaluator/effort")
+	testutil.AssertContains(t, output, "unknown_key")
+	testutil.AssertContains(t, output, "Checked 4 rule(s) from 1 source(s)")
+	if _, serr := os.Stat(filepath.Join(dir, ".strspc", "cache", "schemas")); serr != nil {
+		t.Errorf("schema cache must live under .strspc/cache: %v", serr)
+	}
+}
+
+func TestCheckConfigSchemaValid(t *testing.T) {
+	serveConfigSchema(t)
+	dir, _ := setupCheckProject(t, "null", []string{"I"})
+
+	output, err := runCheckCmd(t, dir)
+	assertExit(t, err, exitOK)
+	testutil.AssertNotContains(t, output, "CHK002")
+}
+
+// An unreachable schema host only shows up in verbose output.
+func TestCheckConfigSchemaUnavailableIsSilent(t *testing.T) {
+	original := newConfigSchemaFetcher
+	newConfigSchemaFetcher = func(cwd string) *schema.Fetcher {
+		return schema.New(
+			schema.WithBaseURL("http://127.0.0.1:1"),
+			schema.WithCacheDir(filepath.Join(cwd, ".strspc", "cache", "schemas")),
+		)
+	}
+	t.Cleanup(func() { newConfigSchemaFetcher = original })
+	dir, _ := setupCheckProject(t, "null", []string{"I"})
+
+	output, err := runCheckCmd(t, dir, "--verbose")
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, output, "config schema: validation skipped")
+	testutil.AssertNotContains(t, output, "CHK002")
 }
 
 func TestCheckStaticOnlyJSON(t *testing.T) {
