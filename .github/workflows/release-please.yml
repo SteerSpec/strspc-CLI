@@ -12,10 +12,25 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
+      - name: Mint a GitHub App token
+        # steerspec-sync App: its PRs trigger CI and auto-approve (unlike GITHUB_TOKEN),
+        # its API commits are GitHub-signed (enterprise required_signatures) and its
+        # author steerspec-sync[bot] is not the approving bot, so auto-approve can act.
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510  # v3.3.0
+        with:
+          app-id: ${{ secrets.STEERSPEC_APP_ID }}
+          private-key: ${{ secrets.STEERSPEC_PRIVATE_KEY }}
+          # Scope the token to this repository (the action's default when
+          # owner/repositories are omitted) and to the two permissions
+          # release-please needs, matching the workflow-level permissions block.
+          permission-contents: write
+          permission-pull-requests: write
+
       - uses: googleapis/release-please-action@v4
         with:
-          # Use a PAT so the created tag triggers the GoReleaser workflow.
-          # Default GITHUB_TOKEN pushes do not trigger other workflows.
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # Not GITHUB_TOKEN: its tag pushes would not trigger the GoReleaser
+          # workflow and its PRs get no CI. Not a PAT either: PAT commits are unsigned.
+          token: ${{ steps.app.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
