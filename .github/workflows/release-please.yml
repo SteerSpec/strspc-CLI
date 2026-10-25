@@ -21,6 +21,11 @@ jobs:
         with:
           app-id: ${{ secrets.STEERSPEC_APP_ID }}
           private-key: ${{ secrets.STEERSPEC_PRIVATE_KEY }}
+          # Scope the token to this repository (the action's default when
+          # owner/repositories are omitted) and to the two permissions
+          # release-please needs, matching the workflow-level permissions block.
+          permission-contents: write
+          permission-pull-requests: write
 
       - uses: googleapis/release-please-action@v4
         with:
