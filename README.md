@@ -51,6 +51,12 @@ Layer 3: strspc-CLI       — this repo: user-facing CLI (Go)
 
 ## Installation
 
+### Homebrew (macOS)
+
+```bash
+brew install --cask SteerSpec/tap/strspc
+```
+
 ### From GitHub Releases
 
 Download the latest binary for your platform from [Releases](https://github.com/SteerSpec/strspc-CLI/releases).
