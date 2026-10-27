@@ -45,6 +45,7 @@ Layer 3: strspc-CLI       — this repo: user-facing CLI (Go)
 | `strspc rule abandon` | Abandon a Draft rule (D→A) |
 | `strspc rule supersede` | Create a Draft rule that supersedes a P/I/R rule |
 | `strspc note add` | Attach a typed note (`rationale`, `example`, ...) to a rule |
+| `strspc entity add` | Add a sub-entity under an existing entity |
 | `strspc entity rehash` | Recompute null or stale `rule_set.hash` values |
 | `strspc version` | Show version, commit, and build info |
 
