@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.20.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.20.0...v1.20.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **release:** stop auto-removing macOS quarantine from cask ([48d5afc](https://github.com/SteerSpec/strspc-CLI/commit/48d5afce3676de9e31e3fdd67d202d4bbe403303))
+* **release:** use install_steps for cask quarantine hook ([c22dfa1](https://github.com/SteerSpec/strspc-CLI/commit/c22dfa1e8d27e5dbbfee0927af48e12c26541a2f))
+
 ## [1.20.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.19.1...v1.20.0) (2026-10-27)
 
 
