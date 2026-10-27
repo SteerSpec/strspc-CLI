@@ -54,8 +54,8 @@ homebrew_casks:
     # Binaries are unsigned; clear the quarantine flag so Gatekeeper doesn't block them.
     hooks:
       post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr",
-                           args: ["-dr", "com.apple.quarantine", "#{staged_path}/strspc"]
+        # install_steps needs GoReleaser >= 2.19 (release.yml uses `latest`).
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/strspc"]
           end
