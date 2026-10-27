@@ -11,6 +11,7 @@ func newEntityCmd() *cobra.Command {
 		Long:  "Commands for maintaining SteerSpec entity files as a whole, such as recomputing rule_set metadata.",
 	}
 
+	cmd.AddCommand(newEntityAddCmd())
 	cmd.AddCommand(newEntityRehashCmd())
 
 	return cmd
