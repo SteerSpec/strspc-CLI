@@ -1,7 +1,8 @@
 version: 2
 
 builds:
-  - main: ./src
+  - id: strspc
+    main: ./src
     binary: strspc
     env:
       - CGO_ENABLED=0
@@ -41,6 +42,22 @@ changelog:
       - "^test:"
       - "^ci:"
 
+# Sign and notarize the macOS binaries. Off until the MACOS_* secrets exist.
+notarize:
+  macos:
+    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      ids:
+        - strspc
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+        timeout: 20m
+
 # Cask, not formula: goreleaser deprecated `brews`.
 homebrew_casks:
   - name: strspc
@@ -50,8 +67,3 @@ homebrew_casks:
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: https://github.com/SteerSpec/strspc-CLI
     description: CLI for SteerSpec
-    # Binaries are unsigned. Quarantine is left intact (no automatic Gatekeeper
-    # bypass); users opt out explicitly via the caveat below.
-    caveats: |
-      strspc is not code-signed. If macOS reports it as damaged or blocks it, run:
-        xattr -dr com.apple.quarantine "$(brew --prefix)/bin/strspc"
