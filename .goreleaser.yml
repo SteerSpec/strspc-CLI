@@ -42,10 +42,11 @@ changelog:
       - "^test:"
       - "^ci:"
 
-# Sign and notarize the macOS binaries. Off until the MACOS_* secrets exist.
+# Sign and notarize the macOS binaries. Off until all five MACOS_* secrets
+# exist; release.yml fails the job if only some of them are set.
 notarize:
   macos:
-    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+    - enabled: '{{ and (isEnvSet "MACOS_SIGN_P12") (isEnvSet "MACOS_SIGN_PASSWORD") (isEnvSet "MACOS_NOTARY_KEY") (isEnvSet "MACOS_NOTARY_KEY_ID") (isEnvSet "MACOS_NOTARY_ISSUER_ID") }}'
       ids:
         - strspc
       sign:
