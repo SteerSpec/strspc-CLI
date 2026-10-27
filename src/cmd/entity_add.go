@@ -44,6 +44,9 @@ Examples:
 			if parent == "" {
 				return fmt.Errorf("--parent is required")
 			}
+			if !euidPattern.MatchString(parent) {
+				return fmt.Errorf("invalid --parent %q: must be 3-18 alphanumeric characters", parent)
+			}
 			title = strings.TrimSpace(title)
 			if title == "" {
 				return fmt.Errorf("--title is required")
@@ -115,7 +118,11 @@ Examples:
 func ensureEUIDUnused(dir, euid string) error {
 	var found string
 	err := entity.WalkEntityFiles(dir, func(path string, _ []byte, ef *entity.File, parseErr error) error {
-		if parseErr != nil || ef == nil || found != "" {
+		// An unreadable file may hold the EUID, so uniqueness can't be proven.
+		if parseErr != nil {
+			return fmt.Errorf("cannot verify EUID uniqueness: %s: %w", path, parseErr)
+		}
+		if ef == nil || found != "" {
 			return nil
 		}
 		if ef.Entity.ID == euid || findSubEntity(ef, euid) != nil {

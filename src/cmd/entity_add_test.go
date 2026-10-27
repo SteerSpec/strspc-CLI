@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
@@ -70,6 +72,7 @@ func TestEntityAddErrors(t *testing.T) {
 		{"duplicate nested", []string{"MIDDLE", "--parent", "OTHER", "--title", "x"}, "already exists"},
 		{"unknown parent", []string{"NEWONE", "--parent", "MISSING", "--title", "x"}, "not found"},
 		{"invalid EUID", []string{"a.b", "--parent", "PARENT", "--title", "x"}, "invalid EUID"},
+		{"path traversal parent", []string{"NEWONE", "--parent", "../OTHER", "--title", "x"}, "invalid --parent"},
 		{"missing parent", []string{"NEWONE", "--title", "x"}, "--parent is required"},
 		{"missing title", []string{"NEWONE", "--parent", "PARENT"}, "--title is required"},
 	}
@@ -83,6 +86,23 @@ func TestEntityAddErrors(t *testing.T) {
 			}
 			testutil.AssertContains(t, err.Error(), tt.want)
 		})
+	}
+}
+
+func TestEntityAddAbortsOnUnparseableEntityFile(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "PARENT")
+	if err := os.WriteFile(filepath.Join(dir, "BROKEN.json"), []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "add", "CHILD", "--parent", "PARENT", "--title", "x", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	testutil.AssertContains(t, err.Error(), "cannot verify EUID uniqueness")
+	if f := loadEntityFile(t, dir, "PARENT"); len(f.SubEntities) != 0 {
+		t.Errorf("parent modified despite failed scan")
 	}
 }
 
