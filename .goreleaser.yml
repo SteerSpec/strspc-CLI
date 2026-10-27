@@ -40,3 +40,22 @@ changelog:
       - "^docs:"
       - "^test:"
       - "^ci:"
+
+# Cask, not formula: goreleaser deprecated `brews`. macOS only; Linux users
+# install from the release tarballs.
+homebrew_casks:
+  - name: strspc
+    repository:
+      owner: SteerSpec
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/SteerSpec/strspc-CLI
+    description: CLI for SteerSpec
+    # Binaries are unsigned; clear the quarantine flag so Gatekeeper doesn't block them.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr",
+                           args: ["-dr", "com.apple.quarantine", "#{staged_path}/strspc"]
+          end
