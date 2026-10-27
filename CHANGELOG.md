@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.2](https://github.com/SteerSpec/strspc-CLI/compare/v1.20.1...v1.20.2) (2026-10-27)
+
+
+### Bug Fixes
+
+* **release:** require all five MACOS_* secrets before signing ([74a1945](https://github.com/SteerSpec/strspc-CLI/commit/74a19456e906fca3e4a2187ccac5cdfbd9ef2b77))
+
 ## [1.20.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.20.0...v1.20.1) (2026-10-27)
 
 
