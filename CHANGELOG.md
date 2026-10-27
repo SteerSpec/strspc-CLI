@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.20.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.19.1...v1.20.0) (2026-10-27)
+
+
+### Features
+
+* **entity:** add entity add command for sub-entities ([321ba7c](https://github.com/SteerSpec/strspc-CLI/commit/321ba7ca39554b8e77b4698a3bc547c43ae42196))
+* **entity:** add entity add command for sub-entities ([b6389de](https://github.com/SteerSpec/strspc-CLI/commit/b6389de26eef1205bf8a1cb01584a4d2cb6a1e62)), closes [#115](https://github.com/SteerSpec/strspc-CLI/issues/115)
+
+
+### Bug Fixes
+
+* **entity:** validate --parent and abort uniqueness scan on parse errors ([e09ca95](https://github.com/SteerSpec/strspc-CLI/commit/e09ca956d2a5f43796ceacb323ba7c4cc174e5d7))
+
 ## [1.19.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.19.0...v1.19.1) (2026-10-24)
 
 
