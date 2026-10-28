@@ -32,5 +32,7 @@ jobs:
           # Not GITHUB_TOKEN: its tag pushes would not trigger the GoReleaser
           # workflow and its PRs get no CI. Not a PAT either: PAT commits are unsigned.
           token: ${{ steps.app.outputs.token }}
+          # Default branch is develop; pin releases to main (promotion target).
+          target-branch: main
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json

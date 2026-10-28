@@ -30,7 +30,7 @@ on:
   # It also makes the fork guard in the if: below load-bearing rather than
   # belt-and-braces. Do not remove it.
   pull_request_target:
-    branches: [main]
+    branches: [main, develop]
     types: [opened, ready_for_review, synchronize, reopened]
   # Safe as-is: pull_request_review "will only trigger a workflow run if the
   # workflow file exists on the default branch", so the definition is not
@@ -110,7 +110,7 @@ jobs:
             github.actor != 'cnslr-bt'
           )
         ) &&
-        github.event.pull_request.base.ref == 'main' &&
+        contains(fromJSON('["main","develop"]'), github.event.pull_request.base.ref) &&
         github.event.pull_request.draft == false &&
         github.event.pull_request.head.repo.full_name == github.repository
       ) || (
@@ -140,7 +140,7 @@ jobs:
           # Optional: base branch(es) PRs must target (default: main). Accepts a
           # comma-separated set, e.g. 'develop,main'. Keep in sync with the
           # branches: filter and base.ref check above (see BASE-BRANCH SYNC).
-          # base-branch: develop
+          base-branch: develop,main
 
           # STRONGLY RECOMMENDED if Copilot reviews your PRs. Without it, a PR
           # whose Copilot review lands AFTER CI is never re-evaluated and sits

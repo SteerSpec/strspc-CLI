@@ -135,7 +135,7 @@ Rule commands accept a sub-entity EUID anywhere a top-level EUID is accepted: th
 ```bash
 strspc lint rules/ --strict
 strspc realm validate rules/ --recursive
-strspc diff rules/ --base origin/main        # lifecycle transitions vs. a git ref
+strspc diff rules/ --base origin/develop        # lifecycle transitions vs. a git ref
 strspc diff rules/ --pr 42                   # ... or vs. a PR base (needs gh auth)
 strspc check --static-only                   # resolve sources + structural checks
 ```
@@ -171,7 +171,7 @@ reported as warnings. Only Claude is implemented today (`evaluator.provider: cla
 ```bash
 strspc check                                 # working tree vs HEAD
 strspc check --staged                        # index vs HEAD (pre-commit)
-strspc check --base origin/main              # merge-base of origin/main and HEAD vs working tree
+strspc check --base origin/develop              # merge-base of origin/develop and HEAD vs working tree
 strspc check --pr 42                         # same, with the PR base resolved through gh
 strspc check --diff-file change.diff         # evaluate a diff produced elsewhere
 strspc check --static-only                   # resolve sources only, no AI call (RE003)
@@ -260,7 +260,7 @@ jobs:
         run: echo "has_key=${{ secrets.ANTHROPIC_API_KEY != '' }}" >> "$GITHUB_OUTPUT"
       - name: Check code changes (Claude)
         if: steps.key.outputs.has_key == 'true'
-        run: strspc check --base origin/main --format github
+        run: strspc check --base origin/develop --format github
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # this step only
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}             # github:// rule sources
@@ -313,7 +313,7 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`
 
 ### Releases
 
-Automated via [release-please](https://github.com/googleapis/release-please) (version bumps + changelog) and [goreleaser](https://goreleaser.com/) (cross-platform binaries). Pushing to `main` triggers a release PR; merging it creates a tag; the tag triggers goreleaser.
+Automated via [release-please](https://github.com/googleapis/release-please) (version bumps + changelog) and [goreleaser](https://goreleaser.com/) (cross-platform binaries). PRs target `develop`; merging `develop` into `main` (merge commit, to keep conventional commits) triggers a release PR; merging that creates a tag; the tag triggers goreleaser.
 
 ## License
 
