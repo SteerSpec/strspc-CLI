@@ -64,13 +64,24 @@ func newRenderCmd() *cobra.Command {
 			}
 
 			resolver := newRuleIDFormatResolver()
+			// One renderer per distinct format, so the template is read and
+			// parsed once per format rather than once per file.
+			renderers := map[render.RuleIDFormatter]render.Renderer{}
 			newRenderer := func(entityPath string) (render.Renderer, error) {
 				f, err := resolver.formatterFor(entityPath)
 				if err != nil {
 					return nil, err
 				}
+				if r, ok := renderers[f]; ok {
+					return r, nil
+				}
 				fileOpts := append(append([]render.Option{}, opts...), render.WithRuleIDFormatter(f))
-				return render.New(render.Format(format), fileOpts...)
+				r, err := render.New(render.Format(format), fileOpts...)
+				if err != nil {
+					return nil, err
+				}
+				renderers[f] = r
+				return r, nil
 			}
 
 			if info.IsDir() {

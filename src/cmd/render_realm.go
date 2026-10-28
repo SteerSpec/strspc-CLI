@@ -62,7 +62,13 @@ func owningRealm(dir string) (*entity.RealmFile, error) {
 	var owner *entity.RealmFile
 	for d := dir; ; {
 		p := filepath.Join(d, "realm.json")
-		if info, err := os.Stat(p); err == nil && info.Mode().IsRegular() {
+		info, statErr := os.Stat(p)
+		switch {
+		case statErr != nil && !os.IsNotExist(statErr):
+			return nil, fmt.Errorf("accessing %s: %w", p, statErr)
+		case statErr == nil && !info.Mode().IsRegular():
+			return nil, fmt.Errorf("%s is not a regular file", p)
+		case statErr == nil:
 			rf, loadErr := entity.LoadRealm(p)
 			if loadErr != nil {
 				return nil, fmt.Errorf("loading %s: %w", p, loadErr)

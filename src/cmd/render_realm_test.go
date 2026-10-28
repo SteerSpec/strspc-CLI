@@ -84,3 +84,15 @@ func TestRenderInvalidRealmFormatErrors(t *testing.T) {
 	testutil.AssertContains(t, err.Error(), "rule_identifier_format")
 	testutil.AssertContains(t, err.Error(), "com.acme")
 }
+
+func TestRenderRealmManifestNotRegularFileErrors(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "realm.json"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", copyEntity(t, dir))
+	if err == nil {
+		t.Fatal("expected error for a realm.json that is a directory")
+	}
+	testutil.AssertContains(t, err.Error(), "not a regular file")
+}
