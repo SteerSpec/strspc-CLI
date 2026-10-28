@@ -82,4 +82,5 @@ func TestRenderInvalidRealmFormatErrors(t *testing.T) {
 		t.Fatal("expected error for a format outside the schema enums")
 	}
 	testutil.AssertContains(t, err.Error(), "rule_identifier_format")
+	testutil.AssertContains(t, err.Error(), "com.acme")
 }
