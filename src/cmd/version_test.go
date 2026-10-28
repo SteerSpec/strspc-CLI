@@ -65,3 +65,13 @@ func TestVersionCommandDefaults(t *testing.T) {
 	testutil.AssertContains(t, output, "dev")
 	testutil.AssertContains(t, output, "unknown")
 }
+
+func TestRootVersionFlag(t *testing.T) {
+	setTestVersionInfo(t, VersionInfo{Version: "9.9.9"})
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "--version")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, out, "strspc 9.9.9")
+}

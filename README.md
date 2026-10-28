@@ -58,6 +58,9 @@ Layer 3: strspc-CLI       — this repo: user-facing CLI (Go)
 brew install --cask SteerSpec/tap/strspc
 ```
 
+Recent Homebrew versions require trusting a third-party tap before its first install. If brew
+refuses, run `brew trust --cask steerspec/tap/strspc` (or `brew trust steerspec/tap`) and retry.
+
 ### From GitHub Releases
 
 Download the latest binary for your platform from [Releases](https://github.com/SteerSpec/strspc-CLI/releases).
