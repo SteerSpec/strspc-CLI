@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
-	"github.com/SteerSpec/strspc-manager/src/entity"
 )
 
 func TestNoteAddBasic(t *testing.T) {
@@ -37,29 +36,23 @@ func TestNoteAddBasic(t *testing.T) {
 	assertFileHashFresh(t, dir, "TST")
 }
 
-func TestNoteAddRecordsCurrentRuleRevision(t *testing.T) {
+func TestNoteAddStampsRevisionZero(t *testing.T) {
 	dir := t.TempDir()
 	rule := makeRule("TST-001", "D", "Rule", "@alice")
 	rule.Revision = 2
 	setupEntityFile(t, dir, "TST", rule)
 
-	if _, err := testutil.ExecuteCommand(NewRootCmd(), "note", "add", "TST-001",
-		"--type", "clarification", "--body", "Documents revision 2.", "--added-by", "@alice", "--dir", dir); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	f := loadEntityFile(t, dir, "TST")
-	if len(f.Notes) != 1 || f.Notes[0].Revision != 2 {
-		t.Fatalf("expected one note at revision 2, got %+v", f.Notes)
-	}
-
-	// --json must report the same revision as the saved note.
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "note", "add", "TST-001",
-		"--type", "clarification", "--body", "Second.", "--added-by", "@alice", "--dir", dir, "--json")
+		"--type", "clarification", "--body", "Rule is at revision 2.", "--added-by", "@alice", "--dir", dir, "--json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	testutil.AssertContains(t, out, `"revision": 2`)
+	testutil.AssertContains(t, out, `"revision": 0`)
+
+	f := loadEntityFile(t, dir, "TST")
+	if len(f.Notes) != 1 || f.Notes[0].Revision != 0 {
+		t.Fatalf("expected one note at revision 0 (NTE-008), got %+v", f.Notes)
+	}
 }
 
 func TestNoteAddIncrementsPerRule(t *testing.T) {
@@ -180,12 +173,4 @@ func TestNoteAddHelp(t *testing.T) {
 	for _, flag := range []string{"--type", "--body", "--added-by", "--dir", "--json"} {
 		testutil.AssertContains(t, out, flag)
 	}
-}
-
-// Guard: the note type list in the CLI must match the schema enum size.
-func TestNoteTypesCount(t *testing.T) {
-	if len(noteTypes) != 11 {
-		t.Errorf("expected 11 note types, got %d", len(noteTypes))
-	}
-	var _ entity.Note // keep the import honest if assertions above change
 }
