@@ -45,6 +45,9 @@ type realmMeta struct {
 // Must not start or end with a dot or hyphen.
 var realmIDPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9.\-]*[a-z0-9])?$`)
 
+// semverPattern matches dependencies[].version in realm.v1.schema.json.
+var semverPattern = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`)
+
 // parseDependency parses a dependency string in the format:
 //
 //	<realm_id>@<version>[=<source>]
@@ -77,6 +80,15 @@ func parseDependency(s string) (entity.RealmDep, error) {
 	// Validate realm ID against the established pattern.
 	if !realmIDPattern.MatchString(parts[0]) {
 		return dep, fmt.Errorf("invalid realm ID %q in dependency %q", parts[0], s)
+	}
+
+	// Validate version against the realm schema's SemVer pattern.
+	if !semverPattern.MatchString(parts[1]) {
+		hint := ""
+		if strings.HasPrefix(parts[1], "v") {
+			hint = fmt.Sprintf(" (drop the leading %q)", "v")
+		}
+		return dep, fmt.Errorf("invalid version %q in dependency %q: must be SemVer, e.g. 1.2.3%s", parts[1], s, hint)
 	}
 
 	dep.RealmID = parts[0]
