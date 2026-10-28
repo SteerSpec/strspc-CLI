@@ -92,6 +92,7 @@ func TestNoteUpdateErrors(t *testing.T) {
 		{"retype to append-only", []string{"TST-001/01", "--type", "related"}, "append-only"},
 		{"unknown note", []string{"TST-001/09", "--body", "x"}, "not found"},
 		{"malformed id", []string{"TST-001", "--body", "x"}, "invalid note ID"},
+		{"non-numeric suffix", []string{"TST-001/aa", "--body", "x"}, "invalid note ID"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

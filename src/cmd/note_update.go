@@ -13,7 +13,7 @@ import (
 // ruleIDFromNoteID returns the <rule_id> part of a <rule_id>/NN note ID.
 func ruleIDFromNoteID(noteID string) (string, error) {
 	ruleID, num, ok := strings.Cut(noteID, "/")
-	if !ok || ruleID == "" || len(num) != 2 {
+	if !ok || ruleID == "" || len(num) != 2 || num[0] < '0' || num[0] > '9' || num[1] < '0' || num[1] > '9' {
 		return "", fmt.Errorf("invalid note ID %q: expected format ENTITY-NNN/NN", noteID)
 	}
 	return ruleID, nil
