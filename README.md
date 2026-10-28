@@ -45,6 +45,7 @@ Layer 3: strspc-CLI       — this repo: user-facing CLI (Go)
 | `strspc rule abandon` | Abandon a Draft rule (D→A) |
 | `strspc rule supersede` | Create a Draft rule that supersedes a P/I/R rule |
 | `strspc note add` | Attach a typed note (`rationale`, `example`, ...) to a rule |
+| `strspc note update` | Revise a note in place (body and/or type); revision +1, notes are never removed |
 | `strspc entity add` | Add a sub-entity under an existing entity |
 | `strspc entity rehash` | Recompute null or stale `rule_set.hash` values |
 | `strspc version` | Show version, commit, and build info |
@@ -122,6 +123,7 @@ strspc realm add CFG --title "Configuration" --dir rules
 strspc rule add CFG --body "MUST write a config file." --added-by "@alice" --dir rules
 strspc rule promote CFG-001 --dir rules                      # D → P
 strspc note add CFG-001 --type rationale --body "Why." --added-by "@alice" --dir rules
+strspc note update CFG-001/01 --body "Corrected." --dir rules
 strspc rule add CFG --sub-entity CFGSUB --body "..." --added-by "@alice"   # target a sub-entity
 strspc entity rehash --all --dir rules                       # fix null/stale hashes after a bulk import
 ```
