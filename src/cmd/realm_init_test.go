@@ -349,3 +349,54 @@ func TestRealmInitHelp(t *testing.T) {
 	testutil.AssertContains(t, output, "--force")
 	testutil.AssertContains(t, output, "--dependency")
 }
+
+func TestParseDependencyVersion(t *testing.T) {
+	valid := []string{
+		"dev.steerspec.core@0.1.0",
+		"dev.steerspec.core@1.2.3-rc.1",
+		"dev.steerspec.core@1.0.0+build.5",
+		"dev.steerspec.core@0.1.0=github://SteerSpec/strspc-rules@latest/rules/core",
+	}
+	for _, in := range valid {
+		if _, err := parseDependency(in); err != nil {
+			t.Errorf("parseDependency(%q): unexpected error: %v", in, err)
+		}
+	}
+
+	invalid := []string{
+		"dev.steerspec.core@latest",
+		"dev.steerspec.core@v1.0.0",
+		"dev.steerspec.core@1.0",
+		"dev.steerspec.core@01.0.0",
+	}
+	for _, in := range invalid {
+		_, err := parseDependency(in)
+		if err == nil {
+			t.Errorf("parseDependency(%q): expected error", in)
+			continue
+		}
+		if !strings.Contains(err.Error(), "must be SemVer") {
+			t.Errorf("parseDependency(%q): error %q lacks SemVer hint", in, err)
+		}
+	}
+
+	if _, err := parseDependency("dev.steerspec.core@v1.0.0"); err == nil || !strings.Contains(err.Error(), "leading") {
+		t.Errorf("expected leading-v hint, got %v", err)
+	}
+}
+
+func TestRealmInitRejectsNonSemVerDependency(t *testing.T) {
+	setupSchemaServer(t)
+	target := filepath.Join(t.TempDir(), "rules")
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init",
+		"--dir", target, "--id", "dev.test.spec",
+		"--dependency", "dev.steerspec.core@latest",
+	)
+	if err == nil {
+		t.Fatal("expected error for non-SemVer dependency version")
+	}
+	if _, statErr := os.Stat(filepath.Join(target, "realm.json")); statErr == nil {
+		t.Error("realm.json must not be written when validation fails")
+	}
+}
