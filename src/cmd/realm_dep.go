@@ -15,10 +15,10 @@ import (
 // dependencies and rule_identifier_format, so both fields are always
 // present in serialized output (matching realm init's output format).
 type realmFileForWrite struct {
-	Schema               string            `json:"$schema"`
-	Realm                entity.RealmMeta  `json:"realm"`
-	Dependencies         []entity.RealmDep `json:"dependencies"`
-	RuleIdentifierFormat interface{}       `json:"rule_identifier_format"`
+	Schema               string                       `json:"$schema"`
+	Realm                entity.RealmMeta             `json:"realm"`
+	Dependencies         []entity.RealmDep            `json:"dependencies"`
+	RuleIdentifierFormat *entity.RuleIdentifierFormat `json:"rule_identifier_format"`
 }
 
 // checkRealmJSON verifies realm.json exists and is a regular file.
