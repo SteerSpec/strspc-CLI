@@ -5,7 +5,7 @@
 rules:
   # Core rules from the SteerSpec specification (cached under .strspc/cache/).
   # Pinned to the published strspc-rules release tag.
-  - source: github://SteerSpec/strspc-rules@v1.8.0/rules/core
+  - source: github://SteerSpec/strspc-rules@v1.9.0/rules/core
     scope: global
 
   # Local CLI-specific rules (dev.steerspec.cli realm). They govern the Go
