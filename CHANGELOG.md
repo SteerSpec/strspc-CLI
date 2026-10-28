@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.21.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.20.2...v1.21.0) (2026-10-28)
+
+
+### Features
+
+* **note:** add note update; note add stamps revision 0 ([6fa7f8a](https://github.com/SteerSpec/strspc-CLI/commit/6fa7f8a5f3decd25aad1315cea5bdf6573042b47))
+* **note:** add note update; note add stamps revision 0 ([5318516](https://github.com/SteerSpec/strspc-CLI/commit/53185161fc02a06b7d79c427611f34975f562e84)), closes [#126](https://github.com/SteerSpec/strspc-CLI/issues/126)
+
+
+### Bug Fixes
+
+* **note:** reject non-numeric note ID suffix in note update ([64b5a1e](https://github.com/SteerSpec/strspc-CLI/commit/64b5a1e5a45bdb73cb6363ed3d995d0e603a6380))
+
 ## [1.20.2](https://github.com/SteerSpec/strspc-CLI/compare/v1.20.1...v1.20.2) (2026-10-27)
 
 
