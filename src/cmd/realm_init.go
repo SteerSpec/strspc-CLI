@@ -29,10 +29,10 @@ var schemaFiles = []struct {
 
 // realmJSON is the structure written to realm.json.
 type realmJSON struct {
-	Schema            string            `json:"$schema"`
-	Realm             realmMeta         `json:"realm"`
-	Dependencies      []entity.RealmDep `json:"dependencies"`
-	RuleIdentifierFmt *string           `json:"rule_identifier_format"`
+	Schema            string                       `json:"$schema"`
+	Realm             realmMeta                    `json:"realm"`
+	Dependencies      []entity.RealmDep            `json:"dependencies"`
+	RuleIdentifierFmt *entity.RuleIdentifierFormat `json:"rule_identifier_format"`
 }
 
 type realmMeta struct {

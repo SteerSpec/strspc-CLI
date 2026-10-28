@@ -159,6 +159,10 @@ strspc render rules/core/ENT.json --json
 strspc render rules/core/ENT.json --template my-template.md.tmpl
 ```
 
+Rule identifiers follow the `rule_identifier_format` of the realm that owns the entity file (the
+nearest `realm.json`; for a sub-realm, its parent realm's format). Without one, the RLIFRMT
+defaults apply, e.g. `[ENT-001.0/D]`. Only the rendered form changes, never the stored ID.
+
 ### Check code changes against rules
 
 `strspc check` resolves the rule sources declared in `.strspc/config.yaml` (local directories, or

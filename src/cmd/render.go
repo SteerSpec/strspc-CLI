@@ -15,6 +15,10 @@ import (
 	"github.com/SteerSpec/strspc-manager/src/schema"
 )
 
+// rendererFactory builds the renderer for one entity file, applying the
+// rule_identifier_format of the realm that owns it.
+type rendererFactory func(entityPath string) (render.Renderer, error)
+
 func newRenderCmd() *cobra.Command {
 	var (
 		outputDir     string
@@ -54,15 +58,25 @@ func newRenderCmd() *cobra.Command {
 				opts = append(opts, render.WithTemplate(templatePath))
 			}
 
-			renderer, err := render.New(render.Format(format), opts...)
-			if err != nil {
+			// Fail fast on a bad format/template before touching any file.
+			if _, err := render.New(render.Format(format), opts...); err != nil {
 				return err
 			}
 
-			if info.IsDir() {
-				return renderDirectory(cmd, renderer, inputPath, outputDir, schemaVersion)
+			resolver := newRuleIDFormatResolver()
+			newRenderer := func(entityPath string) (render.Renderer, error) {
+				f, err := resolver.formatterFor(entityPath)
+				if err != nil {
+					return nil, err
+				}
+				fileOpts := append(append([]render.Option{}, opts...), render.WithRuleIDFormatter(f))
+				return render.New(render.Format(format), fileOpts...)
 			}
-			return renderFile(cmd, renderer, inputPath, outputDir, schemaVersion)
+
+			if info.IsDir() {
+				return renderDirectory(cmd, newRenderer, inputPath, outputDir, schemaVersion)
+			}
+			return renderFile(cmd, newRenderer, inputPath, outputDir, schemaVersion)
 		},
 	}
 
@@ -75,7 +89,7 @@ func newRenderCmd() *cobra.Command {
 	return cmd
 }
 
-func renderFile(cmd *cobra.Command, r render.Renderer, path, outputDir, schemaVersion string) error {
+func renderFile(cmd *cobra.Command, newRenderer rendererFactory, path, outputDir, schemaVersion string) error {
 	ef, err := entity.Load(path)
 	if err != nil {
 		return err
@@ -83,6 +97,11 @@ func renderFile(cmd *cobra.Command, r render.Renderer, path, outputDir, schemaVe
 
 	if err := schema.ValidateFileSchema(ef, schemaVersion); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
+	}
+
+	r, err := newRenderer(path)
+	if err != nil {
+		return err
 	}
 
 	if outputDir == "" {
@@ -105,7 +124,7 @@ func renderFile(cmd *cobra.Command, r render.Renderer, path, outputDir, schemaVe
 	return r.Render(f, ef)
 }
 
-func renderDirectory(cmd *cobra.Command, r render.Renderer, dir, outputDir, schemaVersion string) error {
+func renderDirectory(cmd *cobra.Command, newRenderer rendererFactory, dir, outputDir, schemaVersion string) error {
 	errW := cmd.ErrOrStderr()
 	seen := 0
 	rendered := 0
@@ -167,6 +186,11 @@ func renderDirectory(cmd *cobra.Command, r render.Renderer, dir, outputDir, sche
 
 		base := strings.TrimSuffix(filepath.Base(relPath), filepath.Ext(relPath))
 		outPath := filepath.Join(target, base+".md")
+
+		r, rErr := newRenderer(path)
+		if rErr != nil {
+			return fmt.Errorf("%s: %w", path, rErr)
+		}
 
 		f, createErr := os.Create(outPath)
 		if createErr != nil {
