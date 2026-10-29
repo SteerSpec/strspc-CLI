@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.22.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.21.0...v1.22.0) (2026-10-29)
+
+
+### Features
+
+* **cli:** add --version flag and document brew trust ([f01ed21](https://github.com/SteerSpec/strspc-CLI/commit/f01ed21f6e4f6e7c0e1f90b7eaecf861cc30008e))
+* **cli:** add --version flag and document brew trust ([db73bdd](https://github.com/SteerSpec/strspc-CLI/commit/db73bdd086cf77bc4f36c8f5c2f2cdf58ea59678))
+* **render:** honour the realm's rule_identifier_format ([92ebbce](https://github.com/SteerSpec/strspc-CLI/commit/92ebbce57876514519a6af87e49d57af513c3e5b))
+* **render:** honour the realm's rule_identifier_format ([d520777](https://github.com/SteerSpec/strspc-CLI/commit/d5207772a72f9539ea457afac5c37631dfa9cf37)), closes [#133](https://github.com/SteerSpec/strspc-CLI/issues/133)
+
+
+### Bug Fixes
+
+* **realm:** validate dependency version as SemVer ([eb18b79](https://github.com/SteerSpec/strspc-CLI/commit/eb18b790437a082f619c594ab0ce46a4f6d427ce))
+* **realm:** validate dependency version as SemVer ([3b131d0](https://github.com/SteerSpec/strspc-CLI/commit/3b131d00c88cd7afbcbe62194e8df17fcef3bd01)), closes [#121](https://github.com/SteerSpec/strspc-CLI/issues/121)
+* **render:** cache renderers per format and reject invalid realm.json ([28c383d](https://github.com/SteerSpec/strspc-CLI/commit/28c383d3681cab22c1bff16b8b8cc485b14cffb3))
+
 ## [1.21.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.20.2...v1.21.0) (2026-10-28)
 
 
