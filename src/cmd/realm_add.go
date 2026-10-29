@@ -41,7 +41,7 @@ func newRealmAddCmd() *cobra.Command {
 			if title == "" {
 				return fmt.Errorf("--title is required")
 			}
-			inheritsID, err := validateInherits(euid, inherits)
+			inheritsID, err := validateInherits(dir, euid, inherits)
 			if err != nil {
 				return err
 			}

@@ -28,6 +28,7 @@ func TestRealmAddInheritsInvalid(t *testing.T) {
 	for _, tc := range []struct{ name, value, want string }{
 		{"malformed", "Dev.Bank:ACCT", "invalid --inherits"},
 		{"self", "SAVACCT", "cannot inherit itself"},
+		{"self qualified with this realm", "dev.steerspec.test:SAVACCT", "cannot inherit itself"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -167,4 +168,46 @@ func TestInheritanceFieldsSurviveRewrite(t *testing.T) {
 		t.Errorf("state = %s, want P", got.Rules[0].State)
 	}
 	assertFileHashFresh(t, dir, "SAVACCT")
+}
+
+func TestRealmAddInheritsSameEUIDOtherRealm(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "add", "SAVACCT", "--title", "Savings",
+		"--inherits", "dev.globalbank.core:SAVACCT", "--dir", dir)
+	if err != nil {
+		t.Fatalf("same EUID in another realm must be accepted: %v", err)
+	}
+}
+
+func TestRealmAddInheritsSelfFromSubRealm(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealmWithSubs(t, dir)
+	setupSubRealm(t, dir, "auth", "dev.steerspec.test")
+	sub := filepath.Join(dir, "auth")
+	// EUIDs are unique across a realm and its sub-realms (RLM-013), so both
+	// the sub-realm and its parent qualify the entity being created.
+	for _, value := range []string{"dev.steerspec.test.auth:TOKEN", "dev.steerspec.test:TOKEN"} {
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "add", "TOKEN", "--title", "Token",
+			"--inherits", value, "--dir", sub)
+		if err == nil {
+			t.Fatalf("--inherits %s: expected self-inheritance error", value)
+		}
+		testutil.AssertContains(t, err.Error(), "cannot inherit itself")
+	}
+}
+
+func TestEntityAddInheritsSelfQualified(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	setupEntityFile(t, dir, "PRODUCTS")
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "add", "SAVACCT", "--parent", "PRODUCTS",
+		"--title", "Savings", "--inherits", "dev.steerspec.test:SAVACCT", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected self-inheritance error")
+	}
+	testutil.AssertContains(t, err.Error(), "cannot inherit itself")
+	if n := len(loadEntityFile(t, dir, "PRODUCTS").SubEntities); n != 0 {
+		t.Errorf("sub-entity added despite error: %d", n)
+	}
 }

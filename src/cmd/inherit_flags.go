@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -21,9 +22,9 @@ var (
 	overridesPattern = regexp.MustCompile(`^` + realmPrefix + `[A-Z0-9]+-\d{3}$`)
 )
 
-// validateInherits checks an --inherits value for the entity euid. An empty
-// value means the flag was not given.
-func validateInherits(euid, inherits string) (string, error) {
+// validateInherits checks an --inherits value for the entity euid, created in
+// the realm at dir. An empty value means the flag was not given.
+func validateInherits(dir, euid, inherits string) (string, error) {
 	inherits = strings.TrimSpace(inherits)
 	if inherits == "" {
 		return "", nil
@@ -31,10 +32,40 @@ func validateInherits(euid, inherits string) (string, error) {
 	if !inheritsPattern.MatchString(inherits) {
 		return "", fmt.Errorf("invalid --inherits %q: must be an EUID or <realm-id>:<EUID>", inherits)
 	}
-	if inherits == euid {
+	if self, err := namesSelf(dir, euid, inherits); err != nil {
+		return "", err
+	} else if self {
 		return "", fmt.Errorf("invalid --inherits %q: an entity cannot inherit itself", inherits)
 	}
 	return inherits, nil
+}
+
+// namesSelf reports whether inherits names euid itself: the short EUID, or
+// the EUID qualified with the ID of the realm at dir or of a realm it is a
+// sub-realm of, since EUIDs are unique across a realm and its sub-realms
+// (RLM-013). The same EUID qualified with another realm is a different entity.
+func namesSelf(dir, euid, inherits string) (bool, error) {
+	realmID, target, qualified := strings.Cut(inherits, ":")
+	if !qualified {
+		return inherits == euid, nil
+	}
+	if target != euid {
+		return false, nil
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return false, fmt.Errorf("resolving %s: %w", dir, err)
+	}
+	chain, err := realmChain(abs)
+	if err != nil {
+		return false, err
+	}
+	for _, rf := range chain {
+		if rf.Realm.ID == realmID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // validateOverrides checks an --overrides value. An empty value means the

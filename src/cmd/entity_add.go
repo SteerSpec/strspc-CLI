@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -53,12 +54,11 @@ Examples:
 			if title == "" {
 				return fmt.Errorf("--title is required")
 			}
-			inheritsID, err := validateInherits(euid, inherits)
+			target, err := resolveEntityTarget(dir, parent)
 			if err != nil {
 				return err
 			}
-
-			target, err := resolveEntityTarget(dir, parent)
+			inheritsID, err := validateInherits(filepath.Dir(target.path), euid, inherits)
 			if err != nil {
 				return err
 			}
