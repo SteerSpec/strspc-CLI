@@ -32,7 +32,10 @@ func NewRootCmd() *cobra.Command {
 		Use:   "strspc",
 		Short: "SteerSpec CLI",
 		Long:  "SteerSpec CLI — manage steering specifications from the command line.",
+		// Enables the --version flag; `strspc version` prints the full details.
+		Version: versionInfo.Version,
 	}
+	cmd.SetVersionTemplate("strspc {{.Version}}\n")
 	cmd.AddCommand(newVersionCmd())
 	cmd.AddCommand(newRenderCmd())
 	cmd.AddCommand(newInitCmd())

@@ -58,6 +58,9 @@ Layer 3: strspc-CLI       — this repo: user-facing CLI (Go)
 brew install --cask SteerSpec/tap/strspc
 ```
 
+Recent Homebrew versions require trusting a third-party tap before its first install. If brew
+refuses, run `brew trust --cask steerspec/tap/strspc` (or `brew trust steerspec/tap`) and retry.
+
 ### From GitHub Releases
 
 Download the latest binary for your platform from [Releases](https://github.com/SteerSpec/strspc-CLI/releases).
@@ -103,7 +106,7 @@ strspc init --provider null .    # offline: static checks only, no API key neede
 
 ```yaml
 rules:
-  - source: github://SteerSpec/strspc-rules@v1.9.0/rules/core   # bumped per rules release
+  - source: github://SteerSpec/strspc-rules@v1.10.0/rules/core   # bumped per rules release
     scope: global
 evaluator:
   provider: claude          # requires ANTHROPIC_API_KEY; use "null" to skip AI evaluation
@@ -113,7 +116,7 @@ fail_on:
   - I                       # state codes (D, A, P, I, R, T), not words
 ```
 
-`fail_on` uses rule state codes as defined by `config.v1.schema.json`. It also writes `.strspc/.gitignore` (`cache.db`, `cache/`) so cache artifacts stay out of version control. `github://` sources are fetched through the GitHub tarball API and cached under `.strspc/cache/`; set `GITHUB_TOKEN` for private repositories or to avoid rate limits. The generated config pins `strspc-rules@v1.9.0`.
+`fail_on` uses rule state codes as defined by `config.v1.schema.json`. It also writes `.strspc/.gitignore` (`cache.db`, `cache/`) so cache artifacts stay out of version control. `github://` sources are fetched through the GitHub tarball API and cached under `.strspc/cache/`; set `GITHUB_TOKEN` for private repositories or to avoid rate limits. The generated config pins `strspc-rules@v1.10.0`.
 
 ### Author rules
 
@@ -135,7 +138,7 @@ Rule commands accept a sub-entity EUID anywhere a top-level EUID is accepted: th
 ```bash
 strspc lint rules/ --strict
 strspc realm validate rules/ --recursive
-strspc diff rules/ --base origin/main        # lifecycle transitions vs. a git ref
+strspc diff rules/ --base origin/develop        # lifecycle transitions vs. a git ref
 strspc diff rules/ --pr 42                   # ... or vs. a PR base (needs gh auth)
 strspc check --static-only                   # resolve sources + structural checks
 ```
@@ -159,6 +162,10 @@ strspc render rules/core/ENT.json --json
 strspc render rules/core/ENT.json --template my-template.md.tmpl
 ```
 
+Rule identifiers follow the `rule_identifier_format` of the realm that owns the entity file (the
+nearest `realm.json`; for a sub-realm, its parent realm's format). Without one, the RLIFRMT
+defaults apply, e.g. `[ENT-001.0/D]`. Only the rendered form changes, never the stored ID.
+
 ### Check code changes against rules
 
 `strspc check` resolves the rule sources declared in `.strspc/config.yaml` (local directories, or
@@ -171,7 +178,7 @@ reported as warnings. Only Claude is implemented today (`evaluator.provider: cla
 ```bash
 strspc check                                 # working tree vs HEAD
 strspc check --staged                        # index vs HEAD (pre-commit)
-strspc check --base origin/main              # merge-base of origin/main and HEAD vs working tree
+strspc check --base origin/develop              # merge-base of origin/develop and HEAD vs working tree
 strspc check --pr 42                         # same, with the PR base resolved through gh
 strspc check --diff-file change.diff         # evaluate a diff produced elsewhere
 strspc check --static-only                   # resolve sources only, no AI call (RE003)
@@ -260,7 +267,7 @@ jobs:
         run: echo "has_key=${{ secrets.ANTHROPIC_API_KEY != '' }}" >> "$GITHUB_OUTPUT"
       - name: Check code changes (Claude)
         if: steps.key.outputs.has_key == 'true'
-        run: strspc check --base origin/main --format github
+        run: strspc check --base origin/develop --format github
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # this step only
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}             # github:// rule sources
@@ -313,7 +320,7 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`
 
 ### Releases
 
-Automated via [release-please](https://github.com/googleapis/release-please) (version bumps + changelog) and [goreleaser](https://goreleaser.com/) (cross-platform binaries). Pushing to `main` triggers a release PR; merging it creates a tag; the tag triggers goreleaser.
+Automated via [release-please](https://github.com/googleapis/release-please) (version bumps + changelog) and [goreleaser](https://goreleaser.com/) (cross-platform binaries). PRs target `develop`; merging `develop` into `main` (merge commit, to keep conventional commits) triggers a release PR; merging that creates a tag; the tag triggers goreleaser.
 
 ## License
 
