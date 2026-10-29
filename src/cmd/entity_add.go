@@ -15,6 +15,7 @@ func newEntityAddCmd() *cobra.Command {
 		parent      string
 		title       string
 		description string
+		inherits    string
 		dir         string
 		jsonOut     bool
 	)
@@ -30,7 +31,8 @@ hash metadata of the parent and its ancestors are refreshed.
 
 Examples:
   strspc entity add GMAILOAUTH --parent CONNECTOR --title "Gmail OAuth"
-  strspc entity add TOKENS --parent GMAILOAUTH --title "Token storage" --dir ./specs --json`,
+  strspc entity add TOKENS --parent GMAILOAUTH --title "Token storage" --dir ./specs --json
+  strspc entity add SAVACCT --parent PRODUCTS --title "Savings" --inherits dev.globalbank.core:ACCT`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -51,6 +53,10 @@ Examples:
 			if title == "" {
 				return fmt.Errorf("--title is required")
 			}
+			inheritsID, err := validateInherits(euid, inherits)
+			if err != nil {
+				return err
+			}
 
 			target, err := resolveEntityTarget(dir, parent)
 			if err != nil {
@@ -63,6 +69,12 @@ Examples:
 			child, err := entityops.NewFile(euid, title, strings.TrimSpace(description), parent)
 			if err != nil {
 				return err
+			}
+			if inheritsID != "" {
+				child.Entity.Inherits = inheritsID
+				if err := entityops.UpdateMeta(child); err != nil {
+					return err
+				}
 			}
 
 			var oldVersion, version string
@@ -84,13 +96,17 @@ Examples:
 			w := cmd.OutOrStdout()
 
 			if jsonOut {
-				return writeJSONOutput(w, map[string]any{
+				out := map[string]any{
 					"entity_id":      euid,
 					"parent":         parent,
 					"file":           target.path,
 					"parent_version": version,
 					"old_version":    oldVersion,
-				})
+				}
+				if inheritsID != "" {
+					out["inherits"] = inheritsID
+				}
+				return writeJSONOutput(w, out)
 			}
 
 			writeln(w, brandStyle.Render(fmt.Sprintf("Added sub-entity %q (%s) under %q in %s", euid, title, parent, target.path)))
@@ -108,6 +124,7 @@ Examples:
 	cmd.Flags().StringVar(&parent, "parent", "", "parent entity EUID (required)")
 	cmd.Flags().StringVar(&title, "title", "", "sub-entity title (required)")
 	cmd.Flags().StringVar(&description, "description", "", "sub-entity description")
+	cmd.Flags().StringVar(&inherits, "inherits", "", "entity whose rule set this sub-entity inherits: EUID or <realm-id>:<EUID>")
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 

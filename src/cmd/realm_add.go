@@ -19,6 +19,7 @@ func newRealmAddCmd() *cobra.Command {
 	var (
 		title       string
 		description string
+		inherits    string
 		dir         string
 	)
 
@@ -40,6 +41,10 @@ func newRealmAddCmd() *cobra.Command {
 			if title == "" {
 				return fmt.Errorf("--title is required")
 			}
+			inheritsID, err := validateInherits(euid, inherits)
+			if err != nil {
+				return err
+			}
 
 			// Check realm.json exists and is accessible.
 			realmPath := filepath.Join(dir, "realm.json")
@@ -60,6 +65,7 @@ func newRealmAddCmd() *cobra.Command {
 					ID:          euid,
 					Title:       title,
 					Description: strings.TrimSpace(description),
+					Inherits:    inheritsID,
 				},
 				RuleSet: entity.RuleSet{
 					Version:   "0.1.0",
@@ -107,6 +113,7 @@ func newRealmAddCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&title, "title", "", "entity title (required)")
 	cmd.Flags().StringVar(&description, "description", "", "entity description")
+	cmd.Flags().StringVar(&inherits, "inherits", "", "entity whose rule set this entity inherits: EUID or <realm-id>:<EUID>")
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
 
 	return cmd

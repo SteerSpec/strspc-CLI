@@ -1,0 +1,64 @@
+package cmd
+
+import (
+	"fmt"
+	"regexp"
+	"strings"
+
+	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/entityops"
+)
+
+// realmPrefix is an optional `<realm-id>:` qualifier (RLM-009).
+const realmPrefix = `([a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*:)?`
+
+var (
+	// inheritsPattern accepts a short EUID or <realm-id>:<EUID> (ENT-006/007).
+	inheritsPattern = regexp.MustCompile(`^` + realmPrefix + `[a-zA-Z0-9]{3,18}$`)
+	// overridesPattern mirrors the entity.v1 schema for rules[].overrides.
+	overridesPattern = regexp.MustCompile(`^` + realmPrefix + `[A-Z0-9]+-\d{3}$`)
+)
+
+// validateInherits checks an --inherits value for the entity euid. An empty
+// value means the flag was not given.
+func validateInherits(euid, inherits string) (string, error) {
+	inherits = strings.TrimSpace(inherits)
+	if inherits == "" {
+		return "", nil
+	}
+	if !inheritsPattern.MatchString(inherits) {
+		return "", fmt.Errorf("invalid --inherits %q: must be an EUID or <realm-id>:<EUID>", inherits)
+	}
+	if inherits == euid {
+		return "", fmt.Errorf("invalid --inherits %q: an entity cannot inherit itself", inherits)
+	}
+	return inherits, nil
+}
+
+// validateOverrides checks an --overrides value. An empty value means the
+// flag was not given.
+func validateOverrides(overrides string) (string, error) {
+	overrides = strings.TrimSpace(overrides)
+	if overrides == "" {
+		return "", nil
+	}
+	if !overridesPattern.MatchString(overrides) {
+		return "", fmt.Errorf("invalid --overrides %q: must be a rule ID <EUID>-NNN or <realm-id>:<EUID>-NNN", overrides)
+	}
+	return overrides, nil
+}
+
+// setOverrides records overrides on the rule ruleID of f and refreshes the
+// file's hash. It is a no-op when overrides is empty.
+func setOverrides(f *entity.File, ruleID, overrides string) error {
+	if overrides == "" {
+		return nil
+	}
+	for i := range f.Rules {
+		if f.Rules[i].ID == ruleID {
+			f.Rules[i].Overrides = &overrides
+			return entityops.UpdateMeta(f)
+		}
+	}
+	return fmt.Errorf("rule %s not found after it was added", ruleID)
+}
