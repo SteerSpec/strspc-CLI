@@ -59,7 +59,18 @@ func realmLabel(rf *entity.RealmFile) string {
 // such ancestor is returned: a sub-realm leaves the format null and its
 // entities use the parent's (RLM-015). Returns nil when no realm.json exists.
 func owningRealm(dir string) (*entity.RealmFile, error) {
-	var owner *entity.RealmFile
+	chain, err := realmChain(dir)
+	if err != nil || len(chain) == 0 {
+		return nil, err
+	}
+	return chain[len(chain)-1], nil
+}
+
+// realmChain walks up from dir and returns the nearest realm.json followed by
+// each enclosing realm it is a sub-realm of (its ID extends the next one's),
+// nearest first. Returns an empty chain when no realm.json exists.
+func realmChain(dir string) ([]*entity.RealmFile, error) {
+	var chain []*entity.RealmFile
 	for d := dir; ; {
 		p := filepath.Join(d, "realm.json")
 		info, statErr := os.Stat(p)
@@ -73,18 +84,14 @@ func owningRealm(dir string) (*entity.RealmFile, error) {
 			if loadErr != nil {
 				return nil, fmt.Errorf("loading %s: %w", p, loadErr)
 			}
-			switch {
-			case owner == nil:
-				owner = rf
-			case strings.HasPrefix(owner.Realm.ID, rf.Realm.ID+"."):
-				owner = rf
-			default:
-				return owner, nil
+			if n := len(chain); n > 0 && !strings.HasPrefix(chain[n-1].Realm.ID, rf.Realm.ID+".") {
+				return chain, nil
 			}
+			chain = append(chain, rf)
 		}
 		parent := filepath.Dir(d)
 		if parent == d {
-			return owner, nil
+			return chain, nil
 		}
 		d = parent
 	}
