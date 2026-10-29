@@ -9,7 +9,9 @@ import (
 	"github.com/SteerSpec/strspc-manager/src/entityops"
 )
 
-// realmPrefix is an optional `<realm-id>:` qualifier (RLM-009).
+// realmPrefix is an optional `<realm-id>:` qualifier (RLM-009). The realm-id
+// grammar is the one realm.v1.schema.json sets for realm.id and strspc-manager
+// realm-lint enforces, and the entity.v1 schema uses for rules[].overrides.
 const realmPrefix = `([a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*:)?`
 
 var (
