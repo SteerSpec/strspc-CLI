@@ -68,6 +68,36 @@ func namesSelf(dir, euid, inherits string) (bool, error) {
 	return false, nil
 }
 
+// usesInherits reports whether f or one of its sub-entities declares
+// `inherits`.
+func usesInherits(f *entity.File) bool {
+	if f.Entity.Inherits != "" {
+		return true
+	}
+	for i := range f.SubEntities {
+		if usesInherits(&f.SubEntities[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// usesOverrides reports whether a rule of f or of one of its sub-entities
+// declares `overrides`.
+func usesOverrides(f *entity.File) bool {
+	for i := range f.Rules {
+		if f.Rules[i].Overrides != nil {
+			return true
+		}
+	}
+	for i := range f.SubEntities {
+		if usesOverrides(&f.SubEntities[i]) {
+			return true
+		}
+	}
+	return false
+}
+
 // validateOverrides checks an --overrides value. An empty value means the
 // flag was not given.
 func validateOverrides(overrides string) (string, error) {
