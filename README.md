@@ -177,6 +177,13 @@ Rule identifiers follow the `rule_identifier_format` of the realm that owns the 
 nearest `realm.json`; for a sub-realm, its parent realm's format). Without one, the RLIFRMT
 defaults apply, e.g. `[ENT-001.0/D]`. Only the rendered form changes, never the stored ID.
 
+An entity that declares `inherits` gets an "Inherited rules" section listing the rules it inherits, with
+their owner and state, and which of its own rules overrides them. `--json` adds them as an `inherited`
+array, each entry naming the inheriting entity in `inherited_by`, also for sub-entities. Only such a file
+makes `render` run realm-resolve, which can download `github://` dependencies into `.strspc/cache/`. A
+chain that does not resolve is a warning and the entity renders without the section; `strspc check` is
+what fails on it.
+
 ### Check code changes against rules
 
 `strspc check` resolves the rule sources declared in `.strspc/config.yaml` (local directories, or
@@ -213,6 +220,14 @@ Diff selection precedence: `--diff-file` > `--staged` > `--pr` > `--base` > `$GI
 (`origin/<ref>`, fetched when missing) > working tree vs HEAD. Files under `.strspc/` and `rules/`
 are never part of the evaluated diff. Rules in states listed in `evaluate_on` (default `D`, `P`, `I`)
 are evaluated; others are skipped. The check only ever writes inside `.strspc/` (`cache/`, `cache.db`).
+
+**Inheritance.** The check resolves the inheritance chain of every entity of a source that has a
+`realm.json`, and exits 2 on an unresolvable `inherits` (`RR013`), a cycle or a chain over 3 hops (`RR014`),
+or an `overrides` target that is not inherited (`RR015`), also with `--static-only`. Overriding a rule that
+is not Published or Implemented is warning `RR016`. Such an entity is evaluated on its effective rule set:
+the rules it inherits, minus those replaced by its own rules in `evaluate_on`, plus its own, so `rule_count`
+includes inherited rules. An entity that declares `inherits` in a source without a `realm.json` cannot be
+resolved: warning `CHK003` says its inherited rules are not evaluated.
 
 **Configuration validation.** Before any source is resolved, the check rejects a config it cannot work
 with and exits 2: an empty `rules:` list (core rule SPCFG-004 requires at least one source; `strspc init`
