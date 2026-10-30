@@ -38,6 +38,16 @@ func checkRealmJSON(dir string) (string, error) {
 	return realmPath, nil
 }
 
+// printableRealmID returns a realm ID from realm.json for output. An invalid ID
+// is quoted because it can start a line, where GitHub would parse `::` as a
+// workflow command.
+func printableRealmID(id string) string {
+	if !realmIDPattern.MatchString(id) {
+		return fmt.Sprintf("%q", id)
+	}
+	return id
+}
+
 // loadAndWriteRealm is a helper that loads realm.json, applies a mutation
 // to its dependencies, and writes it back.
 func loadAndWriteRealm(realmPath string, mutate func([]entity.RealmDep) ([]entity.RealmDep, error)) error {
@@ -131,13 +141,8 @@ func newRealmDepListCmd() *cobra.Command {
 			for _, dep := range rf.Dependencies {
 				// realm.json isn't validated here, and a cloned realm can hold
 				// anything, so each field is neutralised before it reaches a
-				// terminal. An invalid ID is quoted because it starts the line,
-				// where GitHub would parse `::` as a workflow command.
-				id := dep.RealmID
-				if !realmIDPattern.MatchString(id) {
-					id = fmt.Sprintf("%q", id)
-				}
-				line := cmdStyle.Render(sanitizeLine(fmt.Sprintf("  %s@%s", id, dep.Version)))
+				// terminal.
+				line := cmdStyle.Render(sanitizeLine(fmt.Sprintf("  %s@%s", printableRealmID(dep.RealmID), dep.Version)))
 				if dep.Source != "" {
 					line += descStyle.Render(sanitizeLine(fmt.Sprintf("  (source: %s)", dep.Source)))
 				}
