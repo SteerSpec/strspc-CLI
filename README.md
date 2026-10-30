@@ -37,7 +37,7 @@ Layer 3: strspc-CLI       — this repo: user-facing CLI (Go)
 | `strspc realm init` | Scaffold a new Realm directory |
 | `strspc realm add` | Add a new entity to a Realm |
 | `strspc realm add-subrealm` | Scaffold a sub-realm inside an existing Realm |
-| `strspc realm dep` | Add or remove Realm dependencies |
+| `strspc realm dep` | Add, remove, list or upgrade Realm dependencies |
 | `strspc realm validate` | Validate Realm structure and EUID uniqueness |
 | `strspc rule add` | Add a Draft rule to an entity or sub-entity |
 | `strspc rule update` | Edit the body of a Draft rule |
@@ -153,6 +153,20 @@ strspc diff rules/ --base origin/develop        # lifecycle transitions vs. a gi
 strspc diff rules/ --pr 42                   # ... or vs. a PR base (needs gh auth)
 strspc check --static-only                   # resolve sources + structural checks
 ```
+
+`strspc realm validate` also compares the realm with the dependencies it pins, so it fetches them and needs network access unless they're cached. It reports a pin that disagrees with its source tag or the dependency's manifest, and a `_schema/` file that differs from the pinned `dev.steerspec.core`.
+
+### Keep dependencies current
+
+Dependabot and Renovate cannot read `realm.json`, so a pinned dependency drifts silently. `strspc realm dep upgrade` moves each `github://` dependency to the latest release of its repository, rewrites `version` and the `@vX.Y.Z` in `source`, then validates the realm (strict, recursive).
+
+```bash
+strspc realm dep upgrade --check                       # exit 1 if an upgrade is available; writes nothing
+strspc realm dep upgrade                               # upgrade every dependency
+strspc realm dep upgrade dev.steerspec.core --to 1.11.0
+```
+
+If the new version breaks the realm, `realm.json` is restored and the command exits non-zero. Dependencies are never downgraded, and sources that are not `github://` references are skipped. Private sources need `GITHUB_TOKEN`.
 
 ### Render entity files to Markdown
 
@@ -322,6 +336,7 @@ strspc ci init --dry-run  # print the files instead of writing them
 - Workflows run for the repository's default branch (read from `origin/HEAD`, else `main`); pass `--branch` to override.
 - For `--rules-source` pointing at a private GitHub repository, add a `STRSPC_GITHUB_TOKEN` repository secret (read access to that repo); otherwise the workflow token is used.
 - Both call the reusable workflows in `SteerSpec/.github`, pinned to `@v1`. Use `--rules-source` to point a consumer at your realm and `--workflow-ref` to pin another ref.
+- The workflows install the latest `strspc` release. Pass `--cli-version X.Y.Z` to pin one; `--force` regenerates from the flags given, so repeat it to keep the pin.
 
 ## Rule sources
 

@@ -151,6 +151,66 @@ func TestCIInitBranchAndToken(t *testing.T) {
 	}
 }
 
+func TestCIInitCLIVersion(t *testing.T) {
+	for _, tc := range []struct {
+		name, kind, workflow, want string
+	}{
+		{"realm", "realm", "strspc-lint.yml", "      strict: true\n      cli-version: 1.24.0\n"},
+		{"consumer", "consumer", "strspc-check.yml", "      pull-requests: read\n    with:\n      cli-version: 1.24.0\n    secrets:\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if _, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", dir, "--kind", tc.kind, "--cli-version", "1.24.0"); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			wfPath := filepath.Join(dir, ".github", "workflows", tc.workflow)
+			if wf := readFile(t, wfPath); !strings.Contains(wf, tc.want) {
+				t.Errorf("workflow missing %q:\n%s", tc.want, wf)
+			}
+
+			if _, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", dir, "--kind", tc.kind, "--cli-version", "1.24.1", "--force"); err != nil {
+				t.Fatalf("--force should overwrite: %v", err)
+			}
+			if wf := readFile(t, wfPath); !strings.Contains(wf, "cli-version: 1.24.1\n") || strings.Contains(wf, "1.24.0") {
+				t.Errorf("--force should write the new pin:\n%s", wf)
+			}
+		})
+	}
+}
+
+func TestCIInitCLIVersionOmittedByDefault(t *testing.T) {
+	for _, tc := range []struct{ kind, workflow string }{
+		{"realm", "strspc-lint.yml"},
+		{"consumer", "strspc-check.yml"},
+	} {
+		dir := t.TempDir()
+		if _, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", dir, "--kind", tc.kind); err != nil {
+			t.Fatalf("%s: unexpected error: %v", tc.kind, err)
+		}
+		wf := readFile(t, filepath.Join(dir, ".github", "workflows", tc.workflow))
+		if strings.Contains(wf, "cli-version") {
+			t.Errorf("%s: workflow should not set cli-version:\n%s", tc.kind, wf)
+		}
+		if tc.kind == "consumer" && strings.Contains(wf, "with:") {
+			t.Errorf("consumer workflow should have no with: block:\n%s", wf)
+		}
+	}
+}
+
+func TestCIInitCLIVersionValues(t *testing.T) {
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", t.TempDir(), "--cli-version", "latest"); err != nil {
+		t.Errorf("latest rejected: %v", err)
+	}
+	for _, v := range []string{"v1.24.0", "1.24", "1", "1.24.0-rc.1", "01.2.3", "main", "1.24.0\n      evil: true"} {
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", t.TempDir(), "--cli-version", v)
+		if err == nil {
+			t.Errorf("--cli-version %q: expected error", v)
+			continue
+		}
+		testutil.AssertContains(t, err.Error(), "invalid --cli-version")
+	}
+}
+
 func TestCIInitRejectsYAMLIndicators(t *testing.T) {
 	for _, v := range []string{"@release", ":foo", "~", "-x", "foo:"} {
 		if _, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", t.TempDir(), "--branch", v); err == nil {

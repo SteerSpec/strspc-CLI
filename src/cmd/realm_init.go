@@ -67,6 +67,9 @@ func parseDependency(s string) (entity.RealmDep, error) {
 		if source == "" {
 			return dep, fmt.Errorf("invalid dependency %q: source must not be empty when '=' is present", s)
 		}
+		if err := rejectControlChars("source", source); err != nil {
+			return dep, err
+		}
 		dep.Source = source
 	}
 
