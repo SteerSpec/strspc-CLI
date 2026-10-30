@@ -7,9 +7,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/remote"
 	"github.com/SteerSpec/strspc-manager/src/result"
 )
@@ -176,5 +178,41 @@ func TestFetchLatestReleaseTag(t *testing.T) {
 	}
 	if _, err := fetchLatestReleaseTag(context.Background(), remote.Ref{Owner: "o", Repo: "missing"}, ""); err == nil {
 		t.Error("expected error for 404")
+	}
+}
+
+func TestRealmDepUpgradePreservesSubRealms(t *testing.T) {
+	dir := setupUpgradeTest(t, "v1.11.0", nil)
+	withSubs := strings.Replace(upgradeRealmJSON, `"rule_identifier_format"`, `"sub_realms": ["auth"],
+  "rule_identifier_format"`, 1)
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(withSubs), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rf.SubRealms) != 1 || rf.SubRealms[0] != "auth" {
+		t.Errorf("sub_realms lost: %v", rf.SubRealms)
+	}
+}
+
+func TestRealmDepUpgradeSkipsCommitSHA(t *testing.T) {
+	dir := setupUpgradeTest(t, "v1.11.0", nil)
+	sha := strings.Repeat("a", 40)
+	pinned := strings.Replace(upgradeRealmJSON, "@v1.8.0/", "@"+sha+"/", 1)
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(pinned), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, out, "commit SHA")
+	if got := readRealmDeps(t, dir)[0].Source; !strings.Contains(got, sha) {
+		t.Errorf("SHA pin rewritten: %s", got)
 	}
 }

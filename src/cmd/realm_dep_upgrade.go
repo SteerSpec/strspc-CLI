@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -35,6 +36,10 @@ var validateUpgradedRealm = func(ctx context.Context, dir string) *result.Result
 	mergeDiagnostics(res, vs.ruleLinter.LintRealm(ctx, dir))
 	return res
 }
+
+// commitSHA matches a full commit hash used as a source ref; such immutable pins
+// are never rewritten to a movable tag.
+var commitSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 // depUpgrade is one planned change to a dependency's pin.
 type depUpgrade struct {
@@ -94,6 +99,9 @@ func planDepUpgrade(ctx context.Context, dep entity.RealmDep, to string) (up *de
 	}
 	if ref.Ref == remote.LatestRef {
 		return nil, "skipped: source already tracks @latest", nil
+	}
+	if commitSHA.MatchString(ref.Ref) {
+		return nil, "skipped: source is pinned to a commit SHA", nil
 	}
 	cur, err := semver.NewVersion(dep.Version)
 	if err != nil {

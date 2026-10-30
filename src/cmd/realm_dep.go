@@ -18,6 +18,7 @@ type realmFileForWrite struct {
 	Schema               string                       `json:"$schema"`
 	Realm                entity.RealmMeta             `json:"realm"`
 	Dependencies         []entity.RealmDep            `json:"dependencies"`
+	SubRealms            []string                     `json:"sub_realms,omitempty"`
 	RuleIdentifierFormat *entity.RuleIdentifierFormat `json:"rule_identifier_format"`
 }
 
@@ -58,6 +59,7 @@ func loadAndWriteRealm(realmPath string, mutate func([]entity.RealmDep) ([]entit
 		Schema:               rf.Schema,
 		Realm:                rf.Realm,
 		Dependencies:         deps,
+		SubRealms:            rf.SubRealms,
 		RuleIdentifierFormat: rf.RuleIdentifierFormat,
 	}
 
