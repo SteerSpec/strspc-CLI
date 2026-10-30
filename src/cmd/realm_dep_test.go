@@ -208,6 +208,23 @@ func TestRealmDepListNeutralisesControlChars(t *testing.T) {
 	testutil.AssertContains(t, output, "../dep")
 }
 
+func TestRealmDepListQuotesInvalidRealmID(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	writeRealmDeps(t, dir, entity.RealmDep{RealmID: "::stop-commands::x", Version: "1.0.0"})
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "list", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "::") {
+			t.Errorf("line starts a workflow command: %q", line)
+		}
+	}
+	testutil.AssertContains(t, output, `"::stop-commands::x"@1.0.0`)
+}
+
 func TestRealmDepListJSON(t *testing.T) {
 	dir := t.TempDir()
 	setupValidRealm(t, dir)

@@ -128,8 +128,13 @@ func newRealmDepListCmd() *cobra.Command {
 			for _, dep := range rf.Dependencies {
 				// realm.json isn't validated here, and a cloned realm can hold
 				// anything, so each field is neutralised before it reaches a
-				// terminal.
-				line := cmdStyle.Render(sanitizeLine(fmt.Sprintf("  %s@%s", dep.RealmID, dep.Version)))
+				// terminal. An invalid ID is quoted because it starts the line,
+				// where GitHub would parse `::` as a workflow command.
+				id := dep.RealmID
+				if !realmIDPattern.MatchString(id) {
+					id = fmt.Sprintf("%q", id)
+				}
+				line := cmdStyle.Render(sanitizeLine(fmt.Sprintf("  %s@%s", id, dep.Version)))
 				if dep.Source != "" {
 					line += descStyle.Render(sanitizeLine(fmt.Sprintf("  (source: %s)", dep.Source)))
 				}
