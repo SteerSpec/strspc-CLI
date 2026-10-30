@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.26.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.25.0...v1.26.0) (2026-10-30)
+
+
+### Features
+
+* **release:** ship Windows builds ([b1eeac7](https://github.com/SteerSpec/strspc-CLI/commit/b1eeac7b41f37d2c20fccbff5c48023dc47c7885))
+* **release:** ship Windows builds ([42dee0a](https://github.com/SteerSpec/strspc-CLI/commit/42dee0af9ae834a9337081858905717d39f9d018))
+
+
+### Bug Fixes
+
+* **ci:** extract the Windows archive with PowerShell ([37fe87c](https://github.com/SteerSpec/strspc-CLI/commit/37fe87ca665de521707709c60192674d1a0c3bbf))
+* **realm:** treat rooted Windows paths as non-relative ([99dee35](https://github.com/SteerSpec/strspc-CLI/commit/99dee356605f8241e979482673fdad0d04ad73a5))
+
 ## [1.25.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.24.0...v1.25.0) (2026-10-30)
 
 
