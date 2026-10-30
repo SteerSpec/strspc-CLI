@@ -31,7 +31,7 @@ var githubAPIBase = remote.DefaultBaseURL
 // validateUpgradedRealm checks a realm the way CI does (strict and recursive).
 // Package-level so tests can skip schema and network access.
 var validateUpgradedRealm = func(ctx context.Context, dir string) *result.Result {
-	vs := newRealmValidator(true, true)
+	vs := newRealmValidator(dir, true, true, false)
 	res := vs.realmLinter.Lint(ctx, dir)
 	mergeDiagnostics(res, vs.ruleLinter.LintRealm(ctx, dir))
 	return res

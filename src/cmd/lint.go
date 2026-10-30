@@ -16,10 +16,18 @@ import (
 	"github.com/SteerSpec/strspc-manager/src/schema"
 )
 
-// newSchemaFetcher creates the schema fetcher used by the lint command.
+// newSchemaFetcher creates the schema fetcher used by lint and realm validate.
 // Package-level so tests can override it.
-var newSchemaFetcher = func() *schema.Fetcher {
-	return schema.New()
+var newSchemaFetcher = schema.New
+
+// realmSchemaOptions selects the schemas for the realm in dir: those of the core
+// version it pins or, with core, its own _schema/. Only the caller can make that
+// choice, because a realm declares its own ID.
+func realmSchemaOptions(dir string, core bool) []schema.Option {
+	if core {
+		return []schema.Option{schema.WithLocalDir(dir)}
+	}
+	return schema.ForRealm(dir)
 }
 
 func newLintCmd() *cobra.Command {
@@ -27,29 +35,35 @@ func newLintCmd() *cobra.Command {
 		crossRef      bool
 		jsonOutput    bool
 		strict        bool
+		core          bool
 		schemaVersion string
 	)
 
 	cmd := &cobra.Command{
-		Use:           "lint [path]",
-		Short:         "Validate entity JSON files",
-		Long:          "Validate SteerSpec entity JSON files against schema and business rules. Accepts a single file or directory.",
+		Use:   "lint [path]",
+		Short: "Validate entity JSON files",
+		Long: "Validate SteerSpec entity JSON files against schema and business rules. Accepts a single file or directory.\n\n" +
+			"Schemas come from the core version pinned in the realm.json of the directory, or of the file's\n" +
+			"directory. Without a pin, the latest published schemas are used.",
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fetcher := newSchemaFetcher()
-			linter := rulelint.New(
-				rulelint.WithSchemaFetcher(fetcher),
-				rulelint.WithStrict(strict),
-				rulelint.WithSchemaVersion(schemaVersion),
-			)
-
 			inputPath := args[0]
 			info, err := os.Stat(inputPath)
 			if err != nil {
 				return fmt.Errorf("accessing %s: %w", inputPath, err)
 			}
+
+			realmDir := inputPath
+			if !info.IsDir() {
+				realmDir = filepath.Dir(inputPath)
+			}
+			linter := rulelint.New(
+				rulelint.WithSchemaFetcher(newSchemaFetcher(realmSchemaOptions(realmDir, core)...)),
+				rulelint.WithStrict(strict),
+				rulelint.WithSchemaVersion(schemaVersion),
+			)
 
 			var res *result.Result
 			if info.IsDir() {
@@ -100,6 +114,7 @@ func newLintCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&crossRef, "cross-ref", false, "enable cross-file reference checks (directory mode)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output diagnostics as JSON")
 	cmd.Flags().BoolVar(&strict, "strict", false, "treat warnings as errors")
+	cmd.Flags().BoolVar(&core, "core", false, "the path is in the core realm: validate against its own _schema/")
 	cmd.Flags().StringVar(&schemaVersion, "schema-version", "v1", "entity schema version")
 
 	return cmd
