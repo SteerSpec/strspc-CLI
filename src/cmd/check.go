@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/spf13/cobra"
 
@@ -825,7 +826,7 @@ func isStaticProviderName(name string) bool {
 // commands.
 func rejectControlChars(field, value string) error {
 	for _, c := range value {
-		if c < 0x20 || c == 0x7f {
+		if unicode.IsControl(c) {
 			return fmt.Errorf("%s contains a control character (%q); use a plain identifier", field, value)
 		}
 	}
