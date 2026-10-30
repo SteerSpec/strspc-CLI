@@ -375,7 +375,7 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`
 
 ### Releases
 
-Automated via [release-please](https://github.com/googleapis/release-please) (version bumps + changelog) and [goreleaser](https://goreleaser.com/) (cross-platform binaries). PRs target `develop`; merging `develop` into `main` (merge commit, to keep conventional commits) triggers a release PR; merging that creates a tag; the tag triggers goreleaser.
+Automated via [release-please](https://github.com/googleapis/release-please) (version bumps + changelog) and [goreleaser](https://goreleaser.com/) (cross-platform binaries). PRs target `develop` and are squashed, so the PR title becomes the commit release-please reads; merging `develop` into `main` (merge commit, to keep conventional commits) triggers a release PR; merging that creates a tag; the tag triggers goreleaser.
 
 ## License
 
