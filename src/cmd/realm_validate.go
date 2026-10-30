@@ -27,18 +27,28 @@ type realmValidatorSet struct {
 	ruleLinter  *rulelint.Linter
 }
 
-// newRealmValidator creates configured linters. Package-level so tests can override it.
-var newRealmValidator = func(strict, recursive bool) *realmValidatorSet {
-	fetcher := schema.New()
-	rl := rulelint.New(
-		rulelint.WithSchemaFetcher(fetcher),
-		rulelint.WithStrict(strict),
-	)
+// newRealmValidator creates linters for the realm in dir. Package-level so tests
+// can override it.
+var newRealmValidator = func(dir string, strict, recursive, core bool) *realmValidatorSet {
+	linters := func(opts []schema.Option) (*schema.Fetcher, *rulelint.Linter) {
+		fetcher := newSchemaFetcher(opts...)
+		return fetcher, rulelint.New(
+			rulelint.WithSchemaFetcher(fetcher),
+			rulelint.WithStrict(strict),
+		)
+	}
+	fetcher, rl := linters(realmSchemaOptions(dir, core))
 
 	realmOpts := []realmlint.Option{
 		realmlint.WithSchemaFetcher(fetcher),
 		realmlint.WithStrict(strict),
 		realmlint.WithDependencyFetcher(fetchRealmDependency),
+		// A sub-realm with its own core pin uses that pin, even with core. When
+		// recursive, rulelint.LintRealm also lints its entities with this realm's
+		// schemas, and mergeDiagnostics drops the duplicates.
+		realmlint.WithSubRealmLinters(func(subDir string) (*schema.Fetcher, *rulelint.Linter) {
+			return linters(schema.ForRealm(subDir))
+		}),
 	}
 	// When recursive, rulelint.LintRealm handles entity validation globally;
 	// skip per-file rule linting inside realmlint to avoid duplication.
@@ -88,12 +98,15 @@ func newRealmValidateCmd() *cobra.Command {
 		jsonOutput bool
 		strict     bool
 		recursive  bool
+		core       bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "validate [path]",
 		Short: "Validate a Realm directory",
 		Long: "Validate a SteerSpec Realm directory structure, realm.json, schemas, and entity files.\n\n" +
+			"Schemas come from the core version the realm pins. Without a pin, the latest published " +
+			"schemas are used.\n\n" +
 			"With --recursive, also validates sub-realm directories declared in realm.json and checks " +
 			"cross-entity references (e.g. supersedes) globally across the realm tree.",
 		Args:          cobra.MaximumNArgs(1),
@@ -105,7 +118,7 @@ func newRealmValidateCmd() *cobra.Command {
 				dir = args[0]
 			}
 
-			vs := newRealmValidator(strict, recursive)
+			vs := newRealmValidator(dir, strict, recursive, core)
 			res := vs.realmLinter.Lint(cmd.Context(), dir)
 
 			if recursive {
@@ -141,6 +154,7 @@ func newRealmValidateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output diagnostics as JSON")
 	cmd.Flags().BoolVar(&strict, "strict", false, "treat warnings as errors")
 	cmd.Flags().BoolVar(&recursive, "recursive", false, "validate sub-realms and check cross-entity references globally")
+	cmd.Flags().BoolVar(&core, "core", false, "path is the core realm: validate it against its own _schema/")
 
 	return cmd
 }
