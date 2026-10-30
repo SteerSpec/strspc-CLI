@@ -125,6 +125,17 @@ Examples:
 			}
 
 			w := cmd.OutOrStdout()
+			var root *os.Root
+			if !dryRun {
+				if err := os.MkdirAll(targetDir, 0o755); err != nil {
+					return fmt.Errorf("creating %s: %w", targetDir, err)
+				}
+				var err error
+				if root, err = os.OpenRoot(targetDir); err != nil {
+					return fmt.Errorf("opening %s: %w", targetDir, err)
+				}
+				defer func() { _ = root.Close() }()
+			}
 			for _, f := range files {
 				dest := filepath.Join(targetDir, f.path)
 				if dryRun {
@@ -132,15 +143,13 @@ Examples:
 					writeln(w, f.content)
 					continue
 				}
-				if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+				// All filesystem access goes through root, which refuses any
+				// path that escapes targetDir via a symlink, closing the gap
+				// between the check above and the write.
+				if err := root.MkdirAll(filepath.Dir(f.path), 0o755); err != nil {
 					return fmt.Errorf("creating %s: %w", filepath.Dir(dest), err)
 				}
-				// Re-check after MkdirAll, then create without following a
-				// symlink planted at the destination.
-				if err := checkCIDest(targetDir, f.path, force); err != nil {
-					return err
-				}
-				if err := writeCIFile(dest, f.content, force); err != nil {
+				if err := writeCIFile(root, f.path, f.content, force); err != nil {
 					return fmt.Errorf("writing %s: %w", dest, err)
 				}
 				writeln(w, brandStyle.Render("Wrote "+dest))
@@ -231,16 +240,16 @@ func checkCIDest(targetDir, rel string, force bool) error {
 	return nil
 }
 
-// writeCIFile creates the file exclusively unless force is set, in which case
-// it truncates the (already verified non-symlink) existing file.
-func writeCIFile(path, content string, force bool) error {
+// writeCIFile creates path inside root exclusively unless force is set, in
+// which case it truncates an existing file.
+func writeCIFile(root *os.Root, path, content string, force bool) error {
 	flags := os.O_WRONLY | os.O_CREATE
 	if force {
 		flags |= os.O_TRUNC
 	} else {
 		flags |= os.O_EXCL
 	}
-	f, err := os.OpenFile(path, flags, 0o644)
+	f, err := root.OpenFile(path, flags, 0o644)
 	if err != nil {
 		return err
 	}
