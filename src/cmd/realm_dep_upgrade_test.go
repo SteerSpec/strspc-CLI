@@ -217,3 +217,58 @@ func TestRealmDepUpgradeSkipsNonTagRefs(t *testing.T) {
 		}
 	}
 }
+
+func TestRealmDepUpgradeNeutralisesRealmValues(t *testing.T) {
+	dir := setupUpgradeTest(t, "v1.11.0", nil)
+	writeRealmDeps(t, dir,
+		entity.RealmDep{RealmID: "::stop-commands::x", Version: "1.0.0\x1b[2J\n::stop-commands::y", Source: "../sibling"},
+		entity.RealmDep{RealmID: "::add-mask::z", Version: "1.8.0", Source: "github://SteerSpec/strspc-rules@v1.8.0/rules/core"},
+	)
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("output contains a raw escape:\n%q", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "::") {
+			t.Errorf("line starts a workflow command: %q", line)
+		}
+	}
+	testutil.AssertContains(t, out, `"::stop-commands::x"@1.0.0`)
+	testutil.AssertContains(t, out, `"::add-mask::z": 1.8.0 -> 1.11.0`)
+}
+
+func TestRealmDepUpgradeErrorsNeutraliseRealmValues(t *testing.T) {
+	core := "github://SteerSpec/strspc-rules@v1.8.0/rules/core"
+	for name, tt := range map[string]struct {
+		dep  entity.RealmDep
+		want string
+	}{
+		"version": {entity.RealmDep{RealmID: "::stop-commands::x", Version: "nope\x1b[2J", Source: core}, "not semver"},
+		"source": {
+			entity.RealmDep{RealmID: "::stop-commands::x", Version: "1.8.0", Source: "github://Steer\x1b[2JSpec/strspc-rules@v1.8.0"},
+			"control character",
+		},
+		"no ref": {entity.RealmDep{RealmID: "::stop-commands::x", Version: "1.8.0", Source: "github://SteerSpec/strspc-rules"}, "missing @ref"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := setupUpgradeTest(t, "v1.11.0", nil)
+			writeRealmDeps(t, dir, tt.dep)
+
+			_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			testutil.AssertContains(t, err.Error(), tt.want)
+			if strings.Contains(err.Error(), "\x1b") {
+				t.Errorf("error contains a raw escape: %q", err)
+			}
+			if !strings.HasPrefix(err.Error(), `"::stop-commands::x"`) {
+				t.Errorf("error doesn't quote the ID: %q", err)
+			}
+		})
+	}
+}
