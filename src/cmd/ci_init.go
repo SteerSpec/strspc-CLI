@@ -131,7 +131,7 @@ Examples:
 
 			for name, v := range map[string]string{"--rules-path": rulesPath, "--rules-source": rulesSource, "--workflow-ref": workflowRef, "--branch": branchOrMain(branch)} {
 				if !ciSafeValue.MatchString(v) {
-					return fmt.Errorf("invalid %s %q: only letters, digits and ._/@:~+- are allowed, starting with a letter, digit, . or / and not ending with :", name, v)
+					return fmt.Errorf("invalid %s %q: allowed characters are letters, digits and ._/@:~+-; it must start with a letter, digit, . or / and must not end with a colon", name, v)
 				}
 			}
 
