@@ -1076,7 +1076,7 @@ func TestCheckDiffFileExcludesRulesAndConfig(t *testing.T) {
 }
 
 func TestSanitizeLine(t *testing.T) {
-	if got := sanitizeLine("effort=low\n::stop-commands::x\r\x7f"); got != "effort=low ::stop-commands::x  " {
+	if got := sanitizeLine("effort=low\n::stop-commands::x\r\x7f\u009b"); got != "effort=low ::stop-commands::x   " {
 		t.Errorf("sanitizeLine = %q", got)
 	}
 }

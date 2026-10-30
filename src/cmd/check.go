@@ -728,7 +728,7 @@ func (r *checkRun) verbosef(format string, args ...any) {
 // the result stays a single log line.
 func sanitizeLine(s string) string {
 	return strings.Map(func(c rune) rune {
-		if c < 0x20 || c == 0x7f {
+		if unicode.IsControl(c) {
 			return ' '
 		}
 		return c
@@ -821,13 +821,13 @@ func isStaticProviderName(name string) bool {
 	return false
 }
 
-// rejectControlChars refuses repository-controlled identifiers that could
-// smuggle a line break into stdout, where GitHub parses `::` workflow
-// commands.
+// rejectControlChars refuses repository-controlled values that could smuggle
+// a line break into stdout, where GitHub parses `::` workflow commands, or an
+// escape sequence into a terminal.
 func rejectControlChars(field, value string) error {
 	for _, c := range value {
 		if unicode.IsControl(c) {
-			return fmt.Errorf("%s contains a control character (%q); use a plain identifier", field, value)
+			return fmt.Errorf("%s contains a control character (%q)", field, value)
 		}
 	}
 	return nil

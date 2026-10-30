@@ -126,9 +126,12 @@ func newRealmDepListCmd() *cobra.Command {
 
 			writeln(w, brandStyle.Render("Dependencies:"))
 			for _, dep := range rf.Dependencies {
-				line := cmdStyle.Render(fmt.Sprintf("  %s@%s", dep.RealmID, dep.Version))
+				// realm.json isn't validated here, and a cloned realm can hold
+				// anything, so each field is neutralised before it reaches a
+				// terminal.
+				line := cmdStyle.Render(sanitizeLine(fmt.Sprintf("  %s@%s", dep.RealmID, dep.Version)))
 				if dep.Source != "" {
-					line += descStyle.Render(fmt.Sprintf("  (source: %s)", dep.Source))
+					line += descStyle.Render(sanitizeLine(fmt.Sprintf("  (source: %s)", dep.Source)))
 				}
 				writeln(w, line)
 			}
