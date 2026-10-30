@@ -50,7 +50,7 @@ const crossRefEntityB = `{
 func setupLintTest(t *testing.T) {
 	t.Helper()
 	original := newSchemaFetcher
-	newSchemaFetcher = func() *schema.Fetcher { return nil }
+	newSchemaFetcher = func(...schema.Option) *schema.Fetcher { return nil }
 	t.Cleanup(func() { newSchemaFetcher = original })
 }
 

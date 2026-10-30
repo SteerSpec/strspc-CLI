@@ -31,7 +31,7 @@ var githubAPIBase = remote.DefaultBaseURL
 // validateUpgradedRealm checks a realm the way CI does (strict and recursive).
 // Package-level so tests can skip schema and network access.
 var validateUpgradedRealm = func(ctx context.Context, dir string) *result.Result {
-	vs := newRealmValidator(true, true)
+	vs := newRealmValidator(dir, true, true, false)
 	res := vs.realmLinter.Lint(ctx, dir)
 	mergeDiagnostics(res, vs.ruleLinter.LintRealm(ctx, dir))
 	return res
@@ -94,9 +94,14 @@ func planDepUpgrade(ctx context.Context, dep entity.RealmDep, to string) (up *de
 	if !strings.HasPrefix(dep.Source, remote.Scheme) {
 		return nil, "skipped: source is not a github:// reference", nil
 	}
+	id := printableRealmID(dep.RealmID)
+	// Owner and repo reach the release lookup and its error messages.
+	if err := rejectControlChars("source", dep.Source); err != nil {
+		return nil, "", fmt.Errorf("%s: %w", id, err)
+	}
 	ref, err := remote.ParseGitHub(dep.Source)
 	if err != nil {
-		return nil, "", fmt.Errorf("%s: %w", dep.RealmID, err)
+		return nil, "", fmt.Errorf("%s: %w", id, err)
 	}
 	if ref.Ref == remote.LatestRef {
 		return nil, "skipped: source already tracks @latest", nil
@@ -106,25 +111,25 @@ func planDepUpgrade(ctx context.Context, dep entity.RealmDep, to string) (up *de
 	}
 	cur, err := semver.NewVersion(dep.Version)
 	if err != nil {
-		return nil, "", fmt.Errorf("%s: version %q is not semver: %w", dep.RealmID, dep.Version, err)
+		return nil, "", fmt.Errorf("%s: version %q is not semver: %w", id, dep.Version, err)
 	}
 
 	var tag string
 	if to != "" {
 		tag = "v" + strings.TrimPrefix(to, "v")
 	} else if tag, err = latestReleaseTag(ctx, ref, remote.TokenFromEnv()); err != nil {
-		return nil, "", fmt.Errorf("%s: %w", dep.RealmID, err)
+		return nil, "", fmt.Errorf("%s: %w", id, err)
 	}
 	next, err := semver.NewVersion(tag)
 	if err != nil {
-		return nil, "", fmt.Errorf("%s: release tag %q is not semver: %w", dep.RealmID, tag, err)
+		return nil, "", fmt.Errorf("%s: release tag %q is not semver: %w", id, tag, err)
 	}
 	if next.Prerelease() != "" && to == "" {
-		return nil, "", fmt.Errorf("%s: latest release %s is a prerelease", dep.RealmID, tag)
+		return nil, "", fmt.Errorf("%s: latest release %s is a prerelease", id, tag)
 	}
 	switch {
 	case next.LessThan(cur):
-		return nil, "", fmt.Errorf("%s: %s is older than the pinned %s; refusing to downgrade", dep.RealmID, next, cur)
+		return nil, "", fmt.Errorf("%s: %s is older than the pinned %s; refusing to downgrade", id, next, cur)
 	case next.Equal(cur):
 		return nil, "up to date", nil
 	}
@@ -193,11 +198,13 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
+				// As in realm dep list, realm.json isn't validated yet.
+				id := printableRealmID(d.RealmID)
 				if up == nil {
-					writeln(w, descStyle.Render(fmt.Sprintf("  %s@%s: %s", d.RealmID, d.Version, note)))
+					writeln(w, descStyle.Render(sanitizeLine(fmt.Sprintf("  %s@%s: %s", id, d.Version, note))))
 					continue
 				}
-				writeln(w, cmdStyle.Render(fmt.Sprintf("  %s: %s -> %s", up.realmID, up.from, up.to)))
+				writeln(w, cmdStyle.Render(sanitizeLine(fmt.Sprintf("  %s: %s -> %s", id, up.from, up.to))))
 				ups = append(ups, *up)
 			}
 

@@ -156,6 +156,15 @@ strspc check --static-only                   # resolve sources + structural chec
 
 `strspc realm validate` also compares the realm with the dependencies it pins, so it fetches them and needs network access unless they're cached. It reports a pin that disagrees with its source tag or the dependency's manifest, and a `_schema/` file that differs from the pinned `dev.steerspec.core`.
 
+Both `strspc lint` and `strspc realm validate` use the schemas of the `dev.steerspec.core` version the realm pins, so a schema change reaches a realm when it bumps its pin. A realm with no pin uses the latest published schemas, and a realm's own `_schema/` never decides validation. `strspc lint` reads the pin from `realm.json` in the directory it's given, or in the file's directory.
+
+The core realm defines the schemas, so it has nothing to pin. Pass `--core` to validate it against its own `_schema/`:
+
+```bash
+strspc realm validate rules/core --recursive --strict --core
+strspc lint rules/core --strict --core
+```
+
 ### Keep dependencies current
 
 Dependabot and Renovate cannot read `realm.json`, so a pinned dependency drifts silently. `strspc realm dep upgrade` moves each `github://` dependency to the latest release of its repository, rewrites `version` and the `@vX.Y.Z` in `source`, then validates the realm (strict, recursive).
@@ -375,7 +384,7 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`
 
 ### Releases
 
-Automated via [release-please](https://github.com/googleapis/release-please) (version bumps + changelog) and [goreleaser](https://goreleaser.com/) (cross-platform binaries). PRs target `develop`; merging `develop` into `main` (merge commit, to keep conventional commits) triggers a release PR; merging that creates a tag; the tag triggers goreleaser.
+Automated via [release-please](https://github.com/googleapis/release-please) (version bumps + changelog) and [goreleaser](https://goreleaser.com/) (cross-platform binaries). PRs target `develop` and are squashed, so the PR title becomes the commit release-please reads; merging `develop` into `main` (merge commit, to keep conventional commits) triggers a release PR; merging that creates a tag; the tag triggers goreleaser.
 
 ## License
 
