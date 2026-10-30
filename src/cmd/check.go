@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -823,12 +824,12 @@ func isStaticProviderName(name string) bool {
 
 // rejectControlChars refuses repository-controlled values that could smuggle
 // a line break into stdout, where GitHub parses `::` workflow commands, or an
-// escape sequence into a terminal.
+// escape sequence into a terminal. Invalid UTF-8 is refused too: a lone 0x9b
+// byte decodes to U+FFFD, not a control character, but a terminal may still
+// treat it as one.
 func rejectControlChars(field, value string) error {
-	for _, c := range value {
-		if unicode.IsControl(c) {
-			return fmt.Errorf("%s contains a control character (%q)", field, value)
-		}
+	if !utf8.ValidString(value) || strings.ContainsFunc(value, unicode.IsControl) {
+		return fmt.Errorf("%s contains a control character or invalid UTF-8 (%q)", field, value)
 	}
 	return nil
 }

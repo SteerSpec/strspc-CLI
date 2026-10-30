@@ -82,6 +82,8 @@ func TestRealmDepAddRejectsControlChars(t *testing.T) {
 		{"dev.steerspec.core@0.1.0=../dep\u009b2J"},
 		{"dev.steerspec.core@0.1.0", "--source", "../dep\x1b[2J"},
 		{"dev.steerspec.core@0.1.0", "--source", "../dep\u009b2J"},
+		{"dev.steerspec.core@0.1.0=../dep\x9b2J"},
+		{"dev.steerspec.core@0.1.0", "--source", "../dep\x9b2J"},
 	} {
 		_, err := testutil.ExecuteCommand(NewRootCmd(), append([]string{"realm", "dep", "add", "--dir", dir}, args...)...)
 		if err == nil {
