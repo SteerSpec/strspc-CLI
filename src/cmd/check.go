@@ -146,7 +146,7 @@ type checkRun struct {
 	notices  []result.Diagnostic // non-fatal resolution and cache diagnostics
 	inputs   []ruleeval.RuleInput
 
-	chains       map[string]*realmresolve.Inheritance // resolved chains by inheriting EUID
+	chains       map[string]*realmresolve.Inheritance // resolved chains by inheriting EUID, unique across sources (RSV005)
 	sourceRealms map[string]string                    // realm ID by source, for sources with a manifest
 
 	repoDir    string
@@ -392,7 +392,7 @@ func (r *checkRun) resolveRealmDeps(cacheDir string, resolved []*ruleresolve.Res
 			continue
 		}
 		r.sourceRealms[e.Source] = rf.Realm.ID
-		if len(rf.Dependencies) == 0 && len(rf.SubRealms) == 0 && !sourceUsesInherits(resolved, e.Source) {
+		if len(rf.Dependencies) == 0 && len(rf.SubRealms) == 0 && !sourceUsesInheritance(resolved, e.Source) {
 			continue // sub-realms may declare dependencies of their own
 		}
 		rrOpts := []realmresolve.Option{
@@ -419,11 +419,12 @@ func (r *checkRun) resolveRealmDeps(cacheDir string, resolved []*ruleresolve.Res
 	return diags
 }
 
-// sourceUsesInherits reports whether an entity resolved from source declares
-// `inherits`, which needs realm-resolve even without dependencies.
-func sourceUsesInherits(resolved []*ruleresolve.ResolvedFile, source string) bool {
+// sourceUsesInheritance reports whether an entity resolved from source
+// declares `inherits` or `overrides`, which need realm-resolve even without
+// dependencies.
+func sourceUsesInheritance(resolved []*ruleresolve.ResolvedFile, source string) bool {
 	for _, rf := range resolved {
-		if rf.Origin.Source == source && usesInherits(rf.File) {
+		if rf.Origin.Source == source && (usesInherits(rf.File) || usesOverrides(rf.File)) {
 			return true
 		}
 	}

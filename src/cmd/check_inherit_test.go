@@ -179,6 +179,42 @@ func TestCheckWarnsOnOverrideOfUnpublishedRule(t *testing.T) {
 	testutil.AssertContains(t, output, "RR016")
 }
 
+func TestCheckStaticOnlyFailsOnOverrideWithoutInherits(t *testing.T) {
+	override := inheritRule{id: "SAVACCT-001", state: "P", overrides: "dev.lib:ACCT-001"}
+	tests := []struct {
+		name, body string
+	}{
+		{"entity", inheritEntityJSON("SAVACCT", "", "", override)},
+		{"sub-entity", inheritEntityJSON("TOP", "", "["+inheritEntityJSON("SAVACCT", "", "", override)+"]")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			rules := filepath.Join(dir, "rules")
+			writeRealmManifest(t, rules, "dev.app")
+			writeInheritFile(t, rules, "SAVACCT", tt.body)
+			writeCheckConfig(t, dir, "./rules/", "null", nil, nil)
+
+			output, err := runCheckCmd(t, dir, "--static-only")
+			assertExit(t, err, exitConfig)
+			testutil.AssertContains(t, output, "RR015")
+		})
+	}
+}
+
+// The chains of a check are keyed by EUID alone because this holds.
+func TestCheckRejectsEUIDInTwoConfiguredSources(t *testing.T) {
+	dir, _ := setupInheritProject(t, "null", "./rules/", "./other/")
+	writeRealmManifest(t, filepath.Join(dir, "other"), "dev.other")
+	writeInheritEntity(t, filepath.Join(dir, "rules"), "SAVACCT", "", inheritRule{id: "SAVACCT-001", state: "P"})
+	sub := inheritEntityJSON("SAVACCT", "", "", inheritRule{id: "SAVACCT-002", state: "P"})
+	writeInheritFile(t, filepath.Join(dir, "other"), "OTHER", inheritEntityJSON("OTHER", "", "["+sub+"]"))
+
+	output, err := runCheckCmd(t, dir, "--static-only")
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, output, "RSV005")
+}
+
 func TestCheckCountsInheritedRules(t *testing.T) {
 	dir, _ := setupInheritProject(t, "null", "./rules/")
 	writeInheritEntity(t, filepath.Join(dir, "rules"), "SAVACCT", "dev.lib:ACCT", inheritRule{id: "SAVACCT-001", state: "P"})
