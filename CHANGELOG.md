@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.23.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.22.0...v1.23.0) (2026-10-30)
+
+
+### Features
+
+* **cli:** add ci init ([1ba7b94](https://github.com/SteerSpec/strspc-CLI/commit/1ba7b94e5f7a3eade34d876232328eb3db7c30f0))
+* **cli:** add ci init to wire SteerSpec rule workflows into CI ([8dac793](https://github.com/SteerSpec/strspc-CLI/commit/8dac7937ee5619c25831c5b3a0aaa5a594d128d0))
+* **cmd:** add --inherits and --overrides flags ([1cab555](https://github.com/SteerSpec/strspc-CLI/commit/1cab555f7ce6dd98798b1cd278bb3b450c645b0c))
+* **cmd:** add --inherits and --overrides flags ([8d9981d](https://github.com/SteerSpec/strspc-CLI/commit/8d9981d5f72f946bdbfa79da6e93606ed78838ba))
+
+
+### Bug Fixes
+
+* **cli:** reject unsafe values interpolated into ci init YAML ([6541edf](https://github.com/SteerSpec/strspc-CLI/commit/6541edfd153787bf8d2fcfa5669f5943b78b8a97))
+* **cli:** reject YAML indicator-leading values in ci init ([5ee05c0](https://github.com/SteerSpec/strspc-CLI/commit/5ee05c0a5ad0f1173482044868133647a67bff4d))
+* **cli:** reword ci init validation error for staticcheck ([1a588f0](https://github.com/SteerSpec/strspc-CLI/commit/1a588f032ee7d5b72005f460da2f98ed5373f92a))
+* **cli:** target the default branch and forward STRSPC_GITHUB_TOKEN in ci init ([4e95bc4](https://github.com/SteerSpec/strspc-CLI/commit/4e95bc4402f6a13145b9218c21e49403ad2f4708))
+* **cli:** write .strspc/.gitignore and refuse symlinked destinations in ci init ([182542c](https://github.com/SteerSpec/strspc-CLI/commit/182542cef276477a4be31e9207097db3f7e939cc))
+* **cli:** write ci init files through os.Root ([c71e888](https://github.com/SteerSpec/strspc-CLI/commit/c71e888574438d3736b4e5f7300dabff137c452d))
+* **cmd:** reject realm-qualified self-inheritance ([e9c4326](https://github.com/SteerSpec/strspc-CLI/commit/e9c4326c0227f680cb252fa60d2e919a5cf34958))
+
+
+### Documentation
+
+* **cli:** document --branch and STRSPC_GITHUB_TOKEN for ci init ([ac43f22](https://github.com/SteerSpec/strspc-CLI/commit/ac43f22e978da8cb4f23eba819e1836bd48ca080))
+* **cmd:** name the source of the realm-id grammar for inheritance flags ([6dcbee3](https://github.com/SteerSpec/strspc-CLI/commit/6dcbee3d21da5ec60b6e25913b693e7ffb018a71))
+
 ## [1.22.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.21.0...v1.22.0) (2026-10-29)
 
 
