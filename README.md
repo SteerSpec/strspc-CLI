@@ -322,6 +322,7 @@ strspc ci init --dry-run  # print the files instead of writing them
 - Workflows run for the repository's default branch (read from `origin/HEAD`, else `main`); pass `--branch` to override.
 - For `--rules-source` pointing at a private GitHub repository, add a `STRSPC_GITHUB_TOKEN` repository secret (read access to that repo); otherwise the workflow token is used.
 - Both call the reusable workflows in `SteerSpec/.github`, pinned to `@v1`. Use `--rules-source` to point a consumer at your realm and `--workflow-ref` to pin another ref.
+- The workflows install the latest `strspc` release. Pass `--cli-version X.Y.Z` to pin one; `--force` regenerates from the flags given, so repeat it to keep the pin.
 
 ## Rule sources
 
