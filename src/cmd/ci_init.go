@@ -118,11 +118,9 @@ Examples:
 
 			files := ciFiles(kind, rulesPath, rulesSource, workflowRef)
 
-			if !force {
-				for _, f := range files {
-					if _, err := os.Stat(filepath.Join(targetDir, f.path)); err == nil {
-						return fmt.Errorf("%s already exists — use --force to overwrite", f.path)
-					}
+			for _, f := range files {
+				if err := checkCIDest(targetDir, f.path, force); err != nil {
+					return err
 				}
 			}
 
@@ -137,7 +135,12 @@ Examples:
 				if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 					return fmt.Errorf("creating %s: %w", filepath.Dir(dest), err)
 				}
-				if err := os.WriteFile(dest, []byte(f.content), 0o644); err != nil {
+				// Re-check after MkdirAll, then create without following a
+				// symlink planted at the destination.
+				if err := checkCIDest(targetDir, f.path, force); err != nil {
+					return err
+				}
+				if err := writeCIFile(dest, f.content, force); err != nil {
 					return fmt.Errorf("writing %s: %w", dest, err)
 				}
 				writeln(w, brandStyle.Render("Wrote "+dest))
@@ -184,6 +187,10 @@ func ciFiles(kind, rulesPath, rulesSource, workflowRef string) []ciFile {
 			content: fmt.Sprintf(defaultConfigTemplate, rulesSource, "claude"),
 		},
 		{
+			path:    filepath.Join(".strspc", ".gitignore"),
+			content: strspcGitignore,
+		},
+		{
 			path:    filepath.Join(".github", "workflows", "strspc-check.yml"),
 			content: fmt.Sprintf(consumerWorkflowTemplate, workflowRef),
 		},
@@ -198,4 +205,48 @@ func newCICmd() *cobra.Command {
 	}
 	cmd.AddCommand(newCIInitCmd())
 	return cmd
+}
+
+// checkCIDest rejects a destination that is, or sits under, a symlink, and an
+// existing file unless force is set. A cloned repository may carry symlinks
+// that would redirect the write outside targetDir.
+func checkCIDest(targetDir, rel string, force bool) error {
+	cur := targetDir
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		cur = filepath.Join(cur, part)
+		fi, err := os.Lstat(cur)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("accessing %s: %w", cur, err)
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s is a symlink — refusing to write through it", cur)
+		}
+	}
+	if !force {
+		return fmt.Errorf("%s already exists — use --force to overwrite", rel)
+	}
+	return nil
+}
+
+// writeCIFile creates the file exclusively unless force is set, in which case
+// it truncates the (already verified non-symlink) existing file.
+func writeCIFile(path, content string, force bool) error {
+	flags := os.O_WRONLY | os.O_CREATE
+	if force {
+		flags |= os.O_TRUNC
+	} else {
+		flags |= os.O_EXCL
+	}
+	f, err := os.OpenFile(path, flags, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := f.WriteString(content); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }

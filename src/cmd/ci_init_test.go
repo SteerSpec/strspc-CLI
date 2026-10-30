@@ -53,6 +53,9 @@ func TestCIInitConsumerRepo(t *testing.T) {
 	if cfg := readFile(t, filepath.Join(dir, ".strspc", "config.yaml")); !strings.Contains(cfg, src) {
 		t.Errorf("config missing rule source %q:\n%s", src, cfg)
 	}
+	if gi := readFile(t, filepath.Join(dir, ".strspc", ".gitignore")); !strings.Contains(gi, "cache.db") || !strings.Contains(gi, "cache/") {
+		t.Errorf(".strspc/.gitignore should ignore cache artifacts:\n%s", gi)
+	}
 	if wf := readFile(t, filepath.Join(dir, ".github", "workflows", "strspc-check.yml")); !strings.Contains(wf, "strspc-check.yml@v1") {
 		t.Errorf("workflow missing reusable ref:\n%s", wf)
 	}
@@ -98,4 +101,21 @@ func TestCIInitUnknownKind(t *testing.T) {
 		t.Fatal("expected error for unknown kind")
 	}
 	testutil.AssertContains(t, err.Error(), "unknown kind")
+}
+
+func TestCIInitRefusesSymlink(t *testing.T) {
+	dir := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(dir, ".github")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", dir, "--kind", "realm", "--force")
+	if err == nil {
+		t.Fatal("expected error for symlinked .github")
+	}
+	testutil.AssertContains(t, err.Error(), "symlink")
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Errorf("wrote through symlink: %d entries", len(entries))
+	}
 }
