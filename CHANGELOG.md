@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.24.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.23.0...v1.24.0) (2026-10-30)
+
+
+### Features
+
+* **check:** evaluate the effective rule set of inheriting entities ([e01f359](https://github.com/SteerSpec/strspc-CLI/commit/e01f359d6b974226f1ecf7803b8db757ae2ad65b)), closes [#122](https://github.com/SteerSpec/strspc-CLI/issues/122)
+* **render:** list inherited rules in Markdown and --json ([5839f57](https://github.com/SteerSpec/strspc-CLI/commit/5839f57ac1a256614af263224cca97eb07df367c)), closes [#122](https://github.com/SteerSpec/strspc-CLI/issues/122)
+* wire entity inheritance into check and render ([96c1168](https://github.com/SteerSpec/strspc-CLI/commit/96c1168b99c43f0a33adaa6bab1e7a684cc8280b))
+
+
+### Bug Fixes
+
+* **check:** resolve dependency-free realms that only declare overrides ([a59014f](https://github.com/SteerSpec/strspc-CLI/commit/a59014f1e840e3b259dcfb8f24dbc6189a590796))
+* **render:** keep an empty inherited array for a resolved chain ([3210199](https://github.com/SteerSpec/strspc-CLI/commit/32101995633a3201ac96fbb78ea82fccffebd4a3))
+
+
+### Documentation
+
+* describe inheritance in check and render ([3619d4f](https://github.com/SteerSpec/strspc-CLI/commit/3619d4f4a43604b3a43db88a0111670dd4f94258))
+
 ## [1.23.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.22.0...v1.23.0) (2026-10-30)
 
 
