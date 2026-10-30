@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -66,6 +67,11 @@ jobs:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 `
 
+// ciSafeValue matches the characters allowed in values interpolated into the
+// generated YAML: paths, git refs and github:// sources. It excludes
+// whitespace, quotes and YAML syntax, so a value cannot add keys or jobs.
+var ciSafeValue = regexp.MustCompile(`^[A-Za-z0-9._/@:~+-]+$`)
+
 // ciFile is one file `strspc ci init` writes, relative to the target directory.
 type ciFile struct {
 	path    string
@@ -114,6 +120,12 @@ Examples:
 			}
 			if kind == "auto" {
 				kind = detectCIKind(targetDir, rulesPath)
+			}
+
+			for name, v := range map[string]string{"--rules-path": rulesPath, "--rules-source": rulesSource, "--workflow-ref": workflowRef} {
+				if !ciSafeValue.MatchString(v) {
+					return fmt.Errorf("invalid %s %q: only letters, digits and ._/@:~+- are allowed", name, v)
+				}
 			}
 
 			files := ciFiles(kind, rulesPath, rulesSource, workflowRef)

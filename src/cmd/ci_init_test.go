@@ -119,3 +119,13 @@ func TestCIInitRefusesSymlink(t *testing.T) {
 		t.Errorf("wrote through symlink: %d entries", len(entries))
 	}
 }
+
+func TestCIInitRejectsUnsafeValues(t *testing.T) {
+	for _, flag := range []string{"--rules-path", "--rules-source", "--workflow-ref"} {
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", t.TempDir(), flag, "x\n  evil: true")
+		if err == nil {
+			t.Fatalf("%s: expected error for value with newline", flag)
+		}
+		testutil.AssertContains(t, err.Error(), "invalid "+flag)
+	}
+}
