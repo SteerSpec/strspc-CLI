@@ -66,7 +66,7 @@ func fetchRealmDependency(ctx context.Context, realmDir string, dep entity.Realm
 		return "", err
 	}
 	if !strings.HasPrefix(dep.Source, remote.Scheme) {
-		if filepath.IsAbs(dep.Source) || strings.Contains(dep.Source, "://") {
+		if isRootedPath(dep.Source) || strings.Contains(dep.Source, "://") {
 			return "", fmt.Errorf("unsupported source %q: use github:// or a relative path", dep.Source)
 		}
 		return filepath.Join(realmDir, dep.Source), nil

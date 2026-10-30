@@ -66,7 +66,7 @@ refuses, run `brew trust --cask steerspec/tap/strspc` (or `brew trust steerspec/
 
 Download the latest binary for your platform from [Releases](https://github.com/SteerSpec/strspc-CLI/releases).
 
-Available for Linux and macOS (amd64, arm64).
+Available for Linux, macOS and Windows (amd64, arm64). Linux and macOS builds are `.tar.gz` archives; Windows builds are `.zip` archives containing `strspc.exe`, which you can put in any directory on your `PATH`. Windows builds aren't code-signed, so SmartScreen may warn on first run.
 
 ### In GitHub Actions
 

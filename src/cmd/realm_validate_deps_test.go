@@ -20,7 +20,7 @@ func TestFetchRealmDependency(t *testing.T) {
 		t.Errorf("relative source = %q, want %q", dir, want)
 	}
 
-	for _, source := range []string{"", "github://acme/specs", "/etc", "https://example.com/realm"} {
+	for _, source := range []string{"", "github://acme/specs", "/etc", `\etc`, "https://example.com/realm"} {
 		if _, err := fetchRealmDependency(context.Background(), realmDir, entity.RealmDep{RealmID: "dev.example.dep", Source: source}); err == nil {
 			t.Errorf("source %q: expected error", source)
 		}

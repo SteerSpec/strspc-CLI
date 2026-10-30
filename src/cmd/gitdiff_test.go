@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -401,6 +402,23 @@ func TestCheckNotAGitRepo(t *testing.T) {
 	assertExit(t, err, exitConfig)
 	if !strings.Contains(err.Error(), "not a git repository") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestIsRootedPath(t *testing.T) {
+	rooted := []string{"/etc", `\etc`}
+	if runtime.GOOS == "windows" {
+		rooted = append(rooted, `C:\etc`, "C:etc")
+	}
+	for _, p := range rooted {
+		if !isRootedPath(p) {
+			t.Errorf("isRootedPath(%q) = false", p)
+		}
+	}
+	for _, p := range []string{"rules", "../dep", "src/x.go"} {
+		if isRootedPath(p) {
+			t.Errorf("isRootedPath(%q) = true", p)
+		}
 	}
 }
 
