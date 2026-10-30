@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -10,6 +13,7 @@ import (
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/realmlint"
+	"github.com/SteerSpec/strspc-manager/src/remote"
 	"github.com/SteerSpec/strspc-manager/src/result"
 	"github.com/SteerSpec/strspc-manager/src/rulelint"
 	"github.com/SteerSpec/strspc-manager/src/schema"
@@ -34,6 +38,7 @@ var newRealmValidator = func(strict, recursive bool) *realmValidatorSet {
 	realmOpts := []realmlint.Option{
 		realmlint.WithSchemaFetcher(fetcher),
 		realmlint.WithStrict(strict),
+		realmlint.WithDependencyFetcher(fetchRealmDependency),
 	}
 	// When recursive, rulelint.LintRealm handles entity validation globally;
 	// skip per-file rule linting inside realmlint to avoid duplication.
@@ -45,6 +50,32 @@ var newRealmValidator = func(strict, recursive bool) *realmValidatorSet {
 		realmLinter: realmlint.New(realmOpts...),
 		ruleLinter:  rl,
 	}
+}
+
+// fetchRealmDependency returns the directory holding a realm's dependency: a
+// github:// source is downloaded into the user cache, and any other source must
+// be a path relative to the realm. As in realm-resolve, a relative path may
+// leave the realm directory, because a sibling realm is a valid dependency.
+func fetchRealmDependency(ctx context.Context, realmDir string, dep entity.RealmDep) (string, error) {
+	if dep.Source == "" {
+		return "", errors.New("empty source")
+	}
+	if !strings.HasPrefix(dep.Source, remote.Scheme) {
+		if filepath.IsAbs(dep.Source) || strings.Contains(dep.Source, "://") {
+			return "", fmt.Errorf("unsupported source %q: use github:// or a relative path", dep.Source)
+		}
+		return filepath.Join(realmDir, dep.Source), nil
+	}
+	ref, err := remote.ParseGitHub(dep.Source)
+	if err != nil {
+		return "", err
+	}
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("locating user cache: %w", err)
+	}
+	fetcher := &remote.Fetcher{Token: remote.TokenFromEnv(), CacheDir: filepath.Join(cacheDir, "strspc", "realms")}
+	return fetcher.EnsureDir(ctx, ref)
 }
 
 func newRealmValidateCmd() *cobra.Command {

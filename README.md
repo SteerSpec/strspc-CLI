@@ -154,6 +154,8 @@ strspc diff rules/ --pr 42                   # ... or vs. a PR base (needs gh au
 strspc check --static-only                   # resolve sources + structural checks
 ```
 
+`strspc realm validate` also compares the realm with the dependencies it pins, so it fetches them and needs network access unless they're cached. It reports a pin that disagrees with its source tag or the dependency's manifest, and a `_schema/` file that differs from the pinned `dev.steerspec.core`.
+
 ### Render entity files to Markdown
 
 ```bash
