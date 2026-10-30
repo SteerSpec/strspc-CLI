@@ -18,6 +18,7 @@ import (
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/evalcache"
+	"github.com/SteerSpec/strspc-manager/src/inherit"
 	"github.com/SteerSpec/strspc-manager/src/realmresolve"
 	"github.com/SteerSpec/strspc-manager/src/remote"
 	"github.com/SteerSpec/strspc-manager/src/result"
@@ -144,6 +145,9 @@ type checkRun struct {
 	resolved []*ruleresolve.ResolvedFile
 	notices  []result.Diagnostic // non-fatal resolution and cache diagnostics
 	inputs   []ruleeval.RuleInput
+
+	chains       map[string]*realmresolve.Inheritance // resolved chains by inheriting EUID
+	sourceRealms map[string]string                    // realm ID by source, for sources with a manifest
 
 	repoDir    string
 	diffSource diffSource
@@ -338,7 +342,7 @@ func (r *checkRun) resolveRules() error {
 	if res.OK() {
 		// Only once every source is in place: a failed download must not be
 		// retried here (and time out twice).
-		diags = append(diags, r.resolveRealmDeps(cacheDir)...)
+		diags = append(diags, r.resolveRealmDeps(cacheDir, resolved)...)
 	}
 
 	var fatal int
@@ -361,8 +365,12 @@ func (r *checkRun) resolveRules() error {
 // has a manifest. Dependencies are read-only references for the realm's
 // own authoring (SPEC §2.8); their rules are not evaluated here, only
 // resolved so that a broken or colliding dependency surfaces in the check.
-func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
+// The exception is an entity's inheritance chain, kept for buildInputs: the
+// rules it inherits are that entity's rules (ENT-009).
+func (r *checkRun) resolveRealmDeps(cacheDir string, resolved []*ruleresolve.ResolvedFile) []result.Diagnostic {
 	var diags []result.Diagnostic
+	r.chains = make(map[string]*realmresolve.Inheritance)
+	r.sourceRealms = make(map[string]string)
 	for _, e := range r.entries {
 		dir, err := r.sourceDir(e)
 		if err != nil || dir == "" {
@@ -383,7 +391,8 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 			})
 			continue
 		}
-		if len(rf.Dependencies) == 0 && len(rf.SubRealms) == 0 {
+		r.sourceRealms[e.Source] = rf.Realm.ID
+		if len(rf.Dependencies) == 0 && len(rf.SubRealms) == 0 && !sourceUsesInherits(resolved, e.Source) {
 			continue // sub-realms may declare dependencies of their own
 		}
 		rrOpts := []realmresolve.Option{
@@ -402,9 +411,23 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 		rr := realmresolve.New(rrOpts...)
 		out, res := rr.Resolve(r.ctx, rf, dir)
 		diags = append(diags, res.Diagnostics...)
-		r.verbosef("realm %s: %d dependency(ies) resolved", rf.Realm.ID, len(out.Dependencies))
+		for _, c := range out.Inheritance {
+			r.chains[c.Entity.Entity.Entity.ID] = c
+		}
+		r.verbosef("realm %s: %d dependency(ies) resolved, %d inheritance chain(s)", rf.Realm.ID, len(out.Dependencies), len(out.Inheritance))
 	}
 	return diags
+}
+
+// sourceUsesInherits reports whether an entity resolved from source declares
+// `inherits`, which needs realm-resolve even without dependencies.
+func sourceUsesInherits(resolved []*ruleresolve.ResolvedFile, source string) bool {
+	for _, rf := range resolved {
+		if rf.Origin.Source == source && usesInherits(rf.File) {
+			return true
+		}
+	}
+	return false
 }
 
 // sourceDir returns the local directory holding a source: the path itself
@@ -460,21 +483,62 @@ func (r *checkRun) collectDiff() error {
 
 // buildInputs flattens the resolved files into rule inputs, tagging each
 // with its source and scope so the provider can restrict local rules to
-// their own directory and the cache key reflects both.
+// their own directory and the cache key reflects both. An entity with an
+// inheritance chain contributes its effective rule set, and a rule of a
+// configured source that inheriting entities replace is annotated as such.
 func (r *checkRun) buildInputs() {
 	labelBase := r.repoDir
 	if labelBase == "" {
 		labelBase = r.cwd
 	}
+	effective := make(map[string][]inherit.Rule, len(r.chains))
+	sets := make([][]inherit.Rule, 0, len(r.chains))
+	for id, c := range r.chains {
+		effective[id] = inherit.Effective(c.Entity, c.Ancestors, r.evaluateOn)
+		sets = append(sets, effective[id])
+	}
+	overriddenBy := inherit.OverriddenBy(sets...)
+
 	for _, rf := range r.resolved {
 		label := r.sourceLabel(rf, labelBase)
-		ins := ruleeval.RuleInputsFromFile(rf.File)
+		ins := r.entityInputs(rf.File, rf.Path, effective)
 		for i := range ins {
 			ins[i].Source = label
 			ins[i].Scope = string(rf.Origin.Scope)
 		}
+		if realmID, ok := r.sourceRealms[rf.Origin.Source]; ok {
+			ruleeval.AnnotateOverriddenBy(ins, realmID, overriddenBy)
+		}
 		r.inputs = append(r.inputs, ins...)
 	}
+}
+
+// entityInputs returns the rule inputs of f and its sub-entities. An entity
+// that declares `inherits` without a resolved chain is outside any realm
+// that could resolve it: its own rules are kept and CHK003 reports the rest
+// as not evaluated.
+func (r *checkRun) entityInputs(f *entity.File, path string, effective map[string][]inherit.Rule) []ruleeval.RuleInput {
+	var ins []ruleeval.RuleInput
+	if rules, ok := effective[f.Entity.ID]; ok {
+		ins = ruleeval.RuleInputsFromEffective(f.Entity.ID, rules)
+	} else {
+		own := *f
+		own.SubEntities = nil
+		ins = ruleeval.RuleInputsFromFile(&own)
+		if f.Entity.Inherits != "" {
+			r.notices = append(r.notices, result.Diagnostic{
+				Module:   "strspc",
+				Code:     "CHK003",
+				Severity: result.Warning,
+				Path:     path,
+				Message:  fmt.Sprintf("entity %s inherits %q but its source has no realm.json to resolve it from; the inherited rules are not evaluated", f.Entity.ID, f.Entity.Inherits),
+			})
+		}
+	}
+	for i := range f.SubEntities {
+		ins = append(ins, r.entityInputs(&f.SubEntities[i], path, effective)...)
+	}
+	return ins
 }
 
 // sourceLabel names a source the way paths appear in the diff: repository
