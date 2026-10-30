@@ -15,6 +15,7 @@ func newRuleAddCmd() *cobra.Command {
 		addedBy   string
 		dir       string
 		subEntity string
+		overrides string
 		jsonOut   bool
 	)
 
@@ -30,7 +31,8 @@ sub-entity of <entity_id> explicitly.
 Examples:
   strspc rule add MYE --body "The system MUST validate input" --added-by "@alice"
   strspc rule add MYE --body "Users SHOULD be notified" --added-by "@bob" --dir ./specs --json
-  strspc rule add MYE --sub-entity MYESUB --body "Sub-entity rule" --added-by "@alice"`,
+  strspc rule add MYE --sub-entity MYESUB --body "Sub-entity rule" --added-by "@alice"
+  strspc rule add SAVACCT --body "Withdrawals MUST..." --added-by "@alice" --overrides dev.globalbank.core:ACCT-005`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -43,11 +45,12 @@ Examples:
 			if addedBy == "" {
 				return fmt.Errorf("--added-by is required")
 			}
+			overridesID, err := validateOverrides(overrides)
+			if err != nil {
+				return err
+			}
 
-			var (
-				target entityTarget
-				err    error
-			)
+			var target entityTarget
 			if subEntity != "" {
 				target, err = resolveSubEntityOf(dir, entityID, subEntity)
 			} else {
@@ -68,7 +71,7 @@ Examples:
 					return addErr
 				}
 				version = f.RuleSet.Version
-				return nil
+				return setOverrides(f, newRuleID, overridesID)
 			})
 			if err != nil {
 				return err
@@ -77,16 +80,23 @@ Examples:
 			w := cmd.OutOrStdout()
 
 			if jsonOut {
-				return writeJSONOutput(w, map[string]any{
+				out := map[string]any{
 					"rule_id":     newRuleID,
 					"state":       entity.StateDraft,
 					"revision":    0,
 					"version":     version,
 					"old_version": oldVersion,
-				})
+				}
+				if overridesID != "" {
+					out["overrides"] = overridesID
+				}
+				return writeJSONOutput(w, out)
 			}
 
 			writeln(w, brandStyle.Render(fmt.Sprintf("Added rule %s (Draft, revision 0)", newRuleID)))
+			if overridesID != "" {
+				writeln(w, descStyle.Render("  Overrides: "+overridesID))
+			}
 			writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", oldVersion, version)))
 
 			return nil
@@ -97,6 +107,7 @@ Examples:
 	cmd.Flags().StringVar(&addedBy, "added-by", "", "contributor identifier (required)")
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
 	cmd.Flags().StringVar(&subEntity, "sub-entity", "", "target this sub-entity of <entity_id> instead of the entity itself")
+	cmd.Flags().StringVar(&overrides, "overrides", "", "inherited rule this rule replaces for the entity: <EUID>-NNN or <realm-id>:<EUID>-NNN")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 
 	return cmd
