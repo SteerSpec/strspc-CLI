@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/realmlint"
+	"github.com/SteerSpec/strspc-manager/src/remote"
 	"github.com/SteerSpec/strspc-manager/src/rulelint"
 	"github.com/SteerSpec/strspc-manager/src/schema"
 )
@@ -164,15 +166,18 @@ func TestRealmDepUpgradeValidatesAgainstTheNewPin(t *testing.T) {
 	)
 	for name, tt := range map[string]struct {
 		nextSchema  string
+		wantErr     bool
 		wantVersion string
 	}{
-		"accepted": {allowSchema, "1.11.0"},
-		"rejected": {rejectSchema, "1.8.0"},
+		"accepted": {nextSchema: allowSchema, wantVersion: "1.11.0"},
+		"rejected": {nextSchema: rejectSchema, wantErr: true, wantVersion: "1.8.0"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			validate := validateUpgradedRealm
-			dir := setupUpgradeTest(t, "v1.11.0", nil)
-			validateUpgradedRealm = validate
+			originalTag := latestReleaseTag
+			t.Cleanup(func() { latestReleaseTag = originalTag })
+			latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) { return "v1.11.0", nil }
+
+			dir := t.TempDir()
 			setupValidRealm(t, dir)
 			writeRealmDeps(t, dir, entity.RealmDep{
 				RealmID: schema.CoreRealmID,
@@ -185,8 +190,8 @@ func TestRealmDepUpgradeValidatesAgainstTheNewPin(t *testing.T) {
 			// only what matters here: reading the pin when it's built.
 			original := newRealmValidator
 			t.Cleanup(func() { newRealmValidator = original })
-			newRealmValidator = func(dir string, strict, _, _ bool) *realmValidatorSet {
-				fetcher := newSchemaFetcher(schema.ForRealm(dir)...)
+			newRealmValidator = func(dir string, strict, _, core bool) *realmValidatorSet {
+				fetcher := newSchemaFetcher(realmSchemaOptions(dir, core)...)
 				return &realmValidatorSet{
 					realmLinter: realmlint.New(realmlint.WithSchemaFetcher(fetcher), realmlint.WithStrict(strict)),
 					ruleLinter:  rulelint.New(rulelint.WithSchemaFetcher(fetcher), rulelint.WithStrict(strict)),
@@ -194,7 +199,7 @@ func TestRealmDepUpgradeValidatesAgainstTheNewPin(t *testing.T) {
 			}
 
 			output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
-			if tt.nextSchema == rejectSchema {
+			if tt.wantErr {
 				if err == nil {
 					t.Fatalf("expected the new pin's schema to reject the realm, got:\n%s", output)
 				}
