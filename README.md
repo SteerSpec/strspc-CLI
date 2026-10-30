@@ -293,6 +293,8 @@ strspc ci init --dry-run  # print the files instead of writing them
 
 - **Realm repo** (has `rules/realm.json`): `.github/workflows/strspc-lint.yml` validates the realm, lints entities and checks lifecycle transitions on pull requests, in strict mode. Pass `diff: false` to the reusable workflow on release PRs that aggregate several promotions.
 - **Consumer repo**: `.strspc/config.yaml` plus `.github/workflows/strspc-check.yml`. Without an `ANTHROPIC_API_KEY` secret the job runs structural checks only; add the secret to enable AI evaluation.
+- Workflows run for the repository's default branch (read from `origin/HEAD`, else `main`); pass `--branch` to override.
+- For `--rules-source` pointing at a private GitHub repository, add a `STRSPC_GITHUB_TOKEN` repository secret (read access to that repo); otherwise the workflow token is used.
 - Both call the reusable workflows in `SteerSpec/.github`, pinned to `@v1`. Use `--rules-source` to point a consumer at your realm and `--workflow-ref` to pin another ref.
 
 ## Rule sources
