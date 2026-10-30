@@ -20,7 +20,8 @@ const ciWorkflowRef = "v1"
 var ciKinds = []string{"auto", "realm", "consumer"}
 
 // realmWorkflowTemplate validates a Realm and its lifecycle transitions. The
-// slots are the workflow ref, the realm path and the branch.
+// slots are the workflow ref, the realm path, the branch and the optional
+// cli-version input.
 const realmWorkflowTemplate = `name: strspc lint
 
 on:
@@ -41,11 +42,12 @@ jobs:
     with:
       path: %[2]s
       strict: true
-`
+%[4]s`
 
 // consumerWorkflowTemplate checks a change against the rules in
 // .strspc/config.yaml. Without ANTHROPIC_API_KEY only structural checks run.
-// The slots are the workflow ref and the branch.
+// The slots are the workflow ref, the branch and the optional with: block
+// holding the cli-version input.
 const consumerWorkflowTemplate = `name: strspc check
 
 on:
@@ -63,7 +65,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-    secrets:
+%[3]s    secrets:
       # Optional: without it the job runs structural checks only.
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       # Optional: token for github:// rule sources in private repositories;
@@ -78,6 +80,10 @@ jobs:
 // would make the unquoted scalar invalid or change its type.
 var ciSafeValue = regexp.MustCompile(`^[A-Za-z0-9._/]([A-Za-z0-9._/@:~+-]*[A-Za-z0-9._/@~+-])?$`)
 
+// ciCLIVersion matches what the setup-strspc action installs: a bare release
+// version without a leading v, or latest.
+var ciCLIVersion = regexp.MustCompile(`^(latest|(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*))$`)
+
 // ciFile is one file `strspc ci init` writes, relative to the target directory.
 type ciFile struct {
 	path    string
@@ -90,6 +96,7 @@ func newCIInitCmd() *cobra.Command {
 		rulesPath   string
 		rulesSource string
 		workflowRef string
+		cliVersion  string
 		branch      string
 		force       bool
 		dryRun      bool
@@ -106,11 +113,13 @@ Any other repository gets a .strspc/config.yaml and a workflow that checks
 changes against the rules it consumes; without an ANTHROPIC_API_KEY secret the
 check runs structural checks only.
 
-Existing files are never overwritten without --force.
+Existing files are never overwritten without --force, which regenerates them
+from the flags given: repeat --cli-version to keep a pinned release.
 
 Examples:
   strspc ci init
   strspc ci init --kind consumer --rules-source github://acme/specs@v1.0.0/rules
+  strspc ci init --cli-version 1.24.0 --force
   strspc ci init --dry-run ./my-project`,
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
@@ -134,11 +143,14 @@ Examples:
 					return fmt.Errorf("invalid %s %q: allowed characters are letters, digits and ._/@:~+-; it must start with a letter, digit, . or / and must not end with a colon", name, v)
 				}
 			}
+			if cliVersion != "" && !ciCLIVersion.MatchString(cliVersion) {
+				return fmt.Errorf("invalid --cli-version %q: must be X.Y.Z without a leading v, or latest", cliVersion)
+			}
 
 			if branch == "" {
 				branch = detectDefaultBranch(targetDir)
 			}
-			files := ciFiles(kind, rulesPath, rulesSource, workflowRef, branch)
+			files := ciFiles(kind, rulesPath, rulesSource, workflowRef, branch, cliVersion)
 
 			for _, f := range files {
 				if err := checkCIDest(targetDir, f.path, force); err != nil {
@@ -189,6 +201,7 @@ Examples:
 	cmd.Flags().StringVar(&rulesPath, "rules-path", "rules/", "realm directory (realm kind)")
 	cmd.Flags().StringVar(&rulesSource, "rules-source", defaultCoreSource, "rule source written to .strspc/config.yaml (consumer kind)")
 	cmd.Flags().StringVar(&workflowRef, "workflow-ref", ciWorkflowRef, "ref of SteerSpec/.github the workflow calls")
+	cmd.Flags().StringVar(&cliVersion, "cli-version", "", "strspc release the workflow installs: X.Y.Z or latest (default: latest)")
 	cmd.Flags().StringVar(&branch, "branch", "", "branch the workflow runs for (default: the repository's default branch, else main)")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the files instead of writing them")
@@ -226,13 +239,22 @@ func detectCIKind(dir, rulesPath string) string {
 	return "consumer"
 }
 
-// ciFiles returns the files to write for a repository kind.
-func ciFiles(kind, rulesPath, rulesSource, workflowRef, branch string) []ciFile {
+// ciFiles returns the files to write for a repository kind. An empty
+// cliVersion leaves the input out, so the workflow's own default applies.
+func ciFiles(kind, rulesPath, rulesSource, workflowRef, branch, cliVersion string) []ciFile {
+	var versionInput string
+	if cliVersion != "" {
+		versionInput = fmt.Sprintf("      cli-version: %s\n", cliVersion)
+	}
 	if kind == "realm" {
 		return []ciFile{{
 			path:    filepath.Join(".github", "workflows", "strspc-lint.yml"),
-			content: fmt.Sprintf(realmWorkflowTemplate, workflowRef, rulesPath, branch),
+			content: fmt.Sprintf(realmWorkflowTemplate, workflowRef, rulesPath, branch, versionInput),
 		}}
+	}
+	var withBlock string
+	if versionInput != "" {
+		withBlock = "    with:\n" + versionInput
 	}
 	return []ciFile{
 		{
@@ -245,7 +267,7 @@ func ciFiles(kind, rulesPath, rulesSource, workflowRef, branch string) []ciFile 
 		},
 		{
 			path:    filepath.Join(".github", "workflows", "strspc-check.yml"),
-			content: fmt.Sprintf(consumerWorkflowTemplate, workflowRef, branch),
+			content: fmt.Sprintf(consumerWorkflowTemplate, workflowRef, branch, withBlock),
 		},
 	}
 }
