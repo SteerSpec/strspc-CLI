@@ -150,3 +150,14 @@ func TestCIInitBranchAndToken(t *testing.T) {
 		t.Errorf("realm workflow should target develop twice:\n%s", wf)
 	}
 }
+
+func TestCIInitRejectsYAMLIndicators(t *testing.T) {
+	for _, v := range []string{"@release", ":foo", "~", "-x", "foo:"} {
+		if _, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", t.TempDir(), "--branch", v); err == nil {
+			t.Errorf("--branch %q: expected error", v)
+		}
+	}
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", t.TempDir(), "--rules-source", defaultCoreSource); err != nil {
+		t.Errorf("default source rejected: %v", err)
+	}
+}

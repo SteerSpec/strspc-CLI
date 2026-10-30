@@ -73,8 +73,10 @@ jobs:
 
 // ciSafeValue matches the characters allowed in values interpolated into the
 // generated YAML: paths, git refs and github:// sources. It excludes
-// whitespace, quotes and YAML syntax, so a value cannot add keys or jobs.
-var ciSafeValue = regexp.MustCompile(`^[A-Za-z0-9._/@:~+-]+$`)
+// whitespace, quotes and YAML syntax, so a value cannot add keys or jobs. It
+// must not start with an indicator (@, :, ~, -) or end with a colon, which
+// would make the unquoted scalar invalid or change its type.
+var ciSafeValue = regexp.MustCompile(`^[A-Za-z0-9._/]([A-Za-z0-9._/@:~+-]*[A-Za-z0-9._/@~+-])?$`)
 
 // ciFile is one file `strspc ci init` writes, relative to the target directory.
 type ciFile struct {
@@ -129,7 +131,7 @@ Examples:
 
 			for name, v := range map[string]string{"--rules-path": rulesPath, "--rules-source": rulesSource, "--workflow-ref": workflowRef, "--branch": branchOrMain(branch)} {
 				if !ciSafeValue.MatchString(v) {
-					return fmt.Errorf("invalid %s %q: only letters, digits and ._/@:~+- are allowed", name, v)
+					return fmt.Errorf("invalid %s %q: only letters, digits and ._/@:~+- are allowed, starting with a letter, digit, . or / and not ending with :", name, v)
 				}
 			}
 
