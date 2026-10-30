@@ -28,6 +28,7 @@ Layer 3: strspc-CLI       — this repo: user-facing CLI (Go)
 | Command | Description |
 |---------|-------------|
 | `strspc init` | Bootstrap `.strspc/config.yaml` (and `.strspc/.gitignore`) in a project |
+| `strspc ci init` | Write the GitHub Actions workflow (and config) that runs SteerSpec in CI |
 | `strspc lint` | Validate entity files against schema and rule constraints |
 | `strspc diff` | Validate rule lifecycle transitions between a git ref and the working tree |
 | `strspc check` | Evaluate a code diff against the rules declared in `.strspc/config.yaml` with Claude (or `--static-only`) |
@@ -282,6 +283,17 @@ jobs:
 - name: Check no drift
   run: git diff --exit-code rules/core/*.md
 ```
+
+## Add SteerSpec to your CI
+
+```bash
+strspc ci init            # realm repo → rule lint workflow; any other repo → check workflow + .strspc/config.yaml
+strspc ci init --dry-run  # print the files instead of writing them
+```
+
+- **Realm repo** (has `rules/realm.json`): `.github/workflows/strspc-lint.yml` validates the realm, lints entities and checks lifecycle transitions on pull requests, in strict mode. Pass `diff: false` to the reusable workflow on release PRs that aggregate several promotions.
+- **Consumer repo**: `.strspc/config.yaml` plus `.github/workflows/strspc-check.yml`. Without an `ANTHROPIC_API_KEY` secret the job runs structural checks only; add the secret to enable AI evaluation.
+- Both call the reusable workflows in `SteerSpec/.github`, pinned to `@v1`. Use `--rules-source` to point a consumer at your realm and `--workflow-ref` to pin another ref.
 
 ## Rule sources
 

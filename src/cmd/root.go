@@ -39,6 +39,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newVersionCmd())
 	cmd.AddCommand(newRenderCmd())
 	cmd.AddCommand(newInitCmd())
+	cmd.AddCommand(newCICmd())
 	cmd.AddCommand(newRealmCmd())
 	cmd.AddCommand(newRuleCmd())
 	cmd.AddCommand(newNoteCmd())
