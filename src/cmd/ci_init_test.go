@@ -129,3 +129,24 @@ func TestCIInitRejectsUnsafeValues(t *testing.T) {
 		testutil.AssertContains(t, err.Error(), "invalid "+flag)
 	}
 }
+
+func TestCIInitBranchAndToken(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", dir, "--branch", "develop"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wf := readFile(t, filepath.Join(dir, ".github", "workflows", "strspc-check.yml"))
+	for _, want := range []string{"branches: [develop]", "STRSPC_GITHUB_TOKEN: ${{ secrets.STRSPC_GITHUB_TOKEN }}"} {
+		if !strings.Contains(wf, want) {
+			t.Errorf("workflow missing %q:\n%s", want, wf)
+		}
+	}
+
+	realm := t.TempDir()
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", realm, "--kind", "realm", "--branch", "develop"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if wf := readFile(t, filepath.Join(realm, ".github", "workflows", "strspc-lint.yml")); strings.Count(wf, "branches: [develop]") != 2 {
+		t.Errorf("realm workflow should target develop twice:\n%s", wf)
+	}
+}

@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -19,52 +20,55 @@ const ciWorkflowRef = "v1"
 var ciKinds = []string{"auto", "realm", "consumer"}
 
 // realmWorkflowTemplate validates a Realm and its lifecycle transitions. The
-// slots are the workflow ref and the realm path.
+// slots are the workflow ref, the realm path and the branch.
 const realmWorkflowTemplate = `name: strspc lint
 
 on:
   push:
-    branches: [main]
+    branches: [%[3]s]
   pull_request:
-    branches: [main]
+    branches: [%[3]s]
 
 permissions:
   contents: read
 
 jobs:
   rules:
-    uses: SteerSpec/.github/.github/workflows/strspc-lint.yml@%s
+    uses: SteerSpec/.github/.github/workflows/strspc-lint.yml@%[1]s
     permissions:
       contents: read
       pull-requests: read
     with:
-      path: %s
+      path: %[2]s
       strict: true
 `
 
 // consumerWorkflowTemplate checks a change against the rules in
 // .strspc/config.yaml. Without ANTHROPIC_API_KEY only structural checks run.
-// The slot is the workflow ref.
+// The slots are the workflow ref and the branch.
 const consumerWorkflowTemplate = `name: strspc check
 
 on:
   push:
-    branches: [main]
+    branches: [%[2]s]
   pull_request:
-    branches: [main]
+    branches: [%[2]s]
 
 permissions:
   contents: read
 
 jobs:
   check:
-    uses: SteerSpec/.github/.github/workflows/strspc-check.yml@%s
+    uses: SteerSpec/.github/.github/workflows/strspc-check.yml@%[1]s
     permissions:
       contents: read
       pull-requests: read
     secrets:
       # Optional: without it the job runs structural checks only.
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # Optional: token for github:// rule sources in private repositories;
+      # the workflow token is used when unset.
+      STRSPC_GITHUB_TOKEN: ${{ secrets.STRSPC_GITHUB_TOKEN }}
 `
 
 // ciSafeValue matches the characters allowed in values interpolated into the
@@ -84,6 +88,7 @@ func newCIInitCmd() *cobra.Command {
 		rulesPath   string
 		rulesSource string
 		workflowRef string
+		branch      string
 		force       bool
 		dryRun      bool
 	)
@@ -122,13 +127,16 @@ Examples:
 				kind = detectCIKind(targetDir, rulesPath)
 			}
 
-			for name, v := range map[string]string{"--rules-path": rulesPath, "--rules-source": rulesSource, "--workflow-ref": workflowRef} {
+			for name, v := range map[string]string{"--rules-path": rulesPath, "--rules-source": rulesSource, "--workflow-ref": workflowRef, "--branch": branchOrMain(branch)} {
 				if !ciSafeValue.MatchString(v) {
 					return fmt.Errorf("invalid %s %q: only letters, digits and ._/@:~+- are allowed", name, v)
 				}
 			}
 
-			files := ciFiles(kind, rulesPath, rulesSource, workflowRef)
+			if branch == "" {
+				branch = detectDefaultBranch(targetDir)
+			}
+			files := ciFiles(kind, rulesPath, rulesSource, workflowRef, branch)
 
 			for _, f := range files {
 				if err := checkCIDest(targetDir, f.path, force); err != nil {
@@ -179,10 +187,32 @@ Examples:
 	cmd.Flags().StringVar(&rulesPath, "rules-path", "rules/", "realm directory (realm kind)")
 	cmd.Flags().StringVar(&rulesSource, "rules-source", defaultCoreSource, "rule source written to .strspc/config.yaml (consumer kind)")
 	cmd.Flags().StringVar(&workflowRef, "workflow-ref", ciWorkflowRef, "ref of SteerSpec/.github the workflow calls")
+	cmd.Flags().StringVar(&branch, "branch", "", "branch the workflow runs for (default: the repository's default branch, else main)")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the files instead of writing them")
 
 	return cmd
+}
+
+// branchOrMain returns b, or main when b is empty (validated before detection).
+func branchOrMain(b string) string {
+	if b == "" {
+		return "main"
+	}
+	return b
+}
+
+// detectDefaultBranch returns the repository's default branch from
+// origin/HEAD, or main when it cannot be determined.
+func detectDefaultBranch(dir string) string {
+	out, err := exec.Command("git", "-C", dir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").Output()
+	if err != nil {
+		return "main"
+	}
+	if b := strings.TrimPrefix(strings.TrimSpace(string(out)), "origin/"); ciSafeValue.MatchString(b) {
+		return b
+	}
+	return "main"
 }
 
 // detectCIKind returns "realm" when the repository holds a realm manifest
@@ -195,11 +225,11 @@ func detectCIKind(dir, rulesPath string) string {
 }
 
 // ciFiles returns the files to write for a repository kind.
-func ciFiles(kind, rulesPath, rulesSource, workflowRef string) []ciFile {
+func ciFiles(kind, rulesPath, rulesSource, workflowRef, branch string) []ciFile {
 	if kind == "realm" {
 		return []ciFile{{
 			path:    filepath.Join(".github", "workflows", "strspc-lint.yml"),
-			content: fmt.Sprintf(realmWorkflowTemplate, workflowRef, rulesPath),
+			content: fmt.Sprintf(realmWorkflowTemplate, workflowRef, rulesPath, branch),
 		}}
 	}
 	return []ciFile{
@@ -213,7 +243,7 @@ func ciFiles(kind, rulesPath, rulesSource, workflowRef string) []ciFile {
 		},
 		{
 			path:    filepath.Join(".github", "workflows", "strspc-check.yml"),
-			content: fmt.Sprintf(consumerWorkflowTemplate, workflowRef),
+			content: fmt.Sprintf(consumerWorkflowTemplate, workflowRef, branch),
 		},
 	}
 }
