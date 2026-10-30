@@ -18,6 +18,7 @@ type realmFileForWrite struct {
 	Schema               string                       `json:"$schema"`
 	Realm                entity.RealmMeta             `json:"realm"`
 	Dependencies         []entity.RealmDep            `json:"dependencies"`
+	SubRealms            []string                     `json:"sub_realms,omitempty"`
 	RuleIdentifierFormat *entity.RuleIdentifierFormat `json:"rule_identifier_format"`
 }
 
@@ -58,6 +59,7 @@ func loadAndWriteRealm(realmPath string, mutate func([]entity.RealmDep) ([]entit
 		Schema:               rf.Schema,
 		Realm:                rf.Realm,
 		Dependencies:         deps,
+		SubRealms:            rf.SubRealms,
 		RuleIdentifierFormat: rf.RuleIdentifierFormat,
 	}
 
@@ -76,12 +78,13 @@ func newRealmDepCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dep",
 		Short: "Manage Realm dependencies",
-		Long:  "Add, remove, or list dependencies declared in realm.json.",
+		Long:  "Add, remove, list, or upgrade dependencies declared in realm.json.",
 	}
 
 	cmd.AddCommand(newRealmDepAddCmd())
 	cmd.AddCommand(newRealmDepRemoveCmd())
 	cmd.AddCommand(newRealmDepListCmd())
+	cmd.AddCommand(newRealmDepUpgradeCmd())
 
 	return cmd
 }
