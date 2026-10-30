@@ -1,0 +1,2 @@
+# Golden files compare byte for byte, so Windows checkouts must keep LF.
+*.golden text eol=lf

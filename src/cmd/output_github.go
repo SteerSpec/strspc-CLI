@@ -53,7 +53,14 @@ func githubAnnotation(d *result.Diagnostic) string {
 // workspace-relative file: URIs and absolute paths (rule sources, cache
 // directories) are left out so GitHub does not try to resolve them.
 func isWorkspacePath(p string) bool {
-	return p != "" && !strings.Contains(p, "://") && !filepath.IsAbs(p)
+	return p != "" && !strings.Contains(p, "://") && !isRootedPath(p)
+}
+
+// isRootedPath reports whether p isn't relative to the current directory.
+// filepath.IsAbs alone misses `/etc` and `C:etc` on Windows, which are rooted
+// or tied to a drive there without being absolute.
+func isRootedPath(p string) bool {
+	return filepath.IsAbs(p) || filepath.VolumeName(p) != "" || strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`)
 }
 
 // githubErrorAnnotation renders a fatal command error as a ::error so CI
