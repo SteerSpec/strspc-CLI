@@ -76,12 +76,13 @@ func newRealmDepCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dep",
 		Short: "Manage Realm dependencies",
-		Long:  "Add, remove, or list dependencies declared in realm.json.",
+		Long:  "Add, remove, list, or upgrade dependencies declared in realm.json.",
 	}
 
 	cmd.AddCommand(newRealmDepAddCmd())
 	cmd.AddCommand(newRealmDepRemoveCmd())
 	cmd.AddCommand(newRealmDepListCmd())
+	cmd.AddCommand(newRealmDepUpgradeCmd())
 
 	return cmd
 }
