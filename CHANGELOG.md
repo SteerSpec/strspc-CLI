@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.27.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.26.0...v1.27.0) (2026-10-30)
+
+
+### Features
+
+* **realm:** validate against the schemas of the pinned core version ([#163](https://github.com/SteerSpec/strspc-CLI/issues/163)) ([1f434ce](https://github.com/SteerSpec/strspc-CLI/commit/1f434cec411b09eba55c6ba7831fd93f81b839d6))
+
+
+### Bug Fixes
+
+* **realm:** neutralise realm.json values in dep upgrade output ([a4fc45b](https://github.com/SteerSpec/strspc-CLI/commit/a4fc45bf62a2895539d31a66e8fac35dd371453d))
+* **realm:** neutralise realm.json values in dep upgrade output ([944855f](https://github.com/SteerSpec/strspc-CLI/commit/944855f0ccd03da6d86070bf1c9699ca8037b696))
+
+
+### Documentation
+
+* squash pull requests into develop ([#164](https://github.com/SteerSpec/strspc-CLI/issues/164)) ([50cf1ff](https://github.com/SteerSpec/strspc-CLI/commit/50cf1ffdc9a3509e84718bb31781aa674870ed41))
+
 ## [1.26.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.25.0...v1.26.0) (2026-10-30)
 
 
