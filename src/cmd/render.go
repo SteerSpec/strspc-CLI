@@ -17,7 +17,14 @@ import (
 
 // rendererFactory builds the renderer for one entity file, applying the
 // rule_identifier_format of the realm that owns it.
-type rendererFactory func(entityPath string) (render.Renderer, error)
+type rendererFactory func(entityPath string, ef *entity.File) (render.Renderer, error)
+
+// rendererKey identifies a renderer: its rule ID format and the realm whose
+// inheritance chains it holds (EUIDs are unique within a realm only).
+type rendererKey struct {
+	format render.RuleIDFormatter
+	realm  string
+}
 
 func newRenderCmd() *cobra.Command {
 	var (
@@ -46,11 +53,13 @@ func newRenderCmd() *cobra.Command {
 				return fmt.Errorf("accessing %s: %w", inputPath, err)
 			}
 
+			chains := newChainResolver(cmd.Context(), cmd.ErrOrStderr())
+
 			if jsonOutput {
 				if info.IsDir() {
-					return renderDirectoryJSON(cmd, inputPath, outputDir, schemaVersion)
+					return renderDirectoryJSON(cmd, chains, inputPath, outputDir, schemaVersion)
 				}
-				return renderFileJSON(cmd, inputPath, outputDir, schemaVersion)
+				return renderFileJSON(cmd, chains, inputPath, outputDir, schemaVersion)
 			}
 
 			var opts []render.Option
@@ -64,23 +73,32 @@ func newRenderCmd() *cobra.Command {
 			}
 
 			resolver := newRuleIDFormatResolver()
-			// One renderer per distinct format, so the template is read and
-			// parsed once per format rather than once per file.
-			renderers := map[render.RuleIDFormatter]render.Renderer{}
-			newRenderer := func(entityPath string) (render.Renderer, error) {
+			// One renderer per distinct format and inheriting realm, so the
+			// template is read and parsed once for each rather than once per
+			// file.
+			renderers := map[rendererKey]render.Renderer{}
+			newRenderer := func(entityPath string, ef *entity.File) (render.Renderer, error) {
 				f, err := resolver.formatterFor(entityPath)
 				if err != nil {
 					return nil, err
 				}
-				if r, ok := renderers[f]; ok {
+				realm, realmChains, err := chains.chainsFor(entityPath, ef)
+				if err != nil {
+					return nil, err
+				}
+				key := rendererKey{format: f, realm: realm}
+				if r, ok := renderers[key]; ok {
 					return r, nil
 				}
 				fileOpts := append(append([]render.Option{}, opts...), render.WithRuleIDFormatter(f))
+				if realmChains != nil {
+					fileOpts = append(fileOpts, render.WithInheritance(realmChains))
+				}
 				r, err := render.New(render.Format(format), fileOpts...)
 				if err != nil {
 					return nil, err
 				}
-				renderers[f] = r
+				renderers[key] = r
 				return r, nil
 			}
 
@@ -110,7 +128,7 @@ func renderFile(cmd *cobra.Command, newRenderer rendererFactory, path, outputDir
 		return fmt.Errorf("%s: %w", path, err)
 	}
 
-	r, err := newRenderer(path)
+	r, err := newRenderer(path, ef)
 	if err != nil {
 		return err
 	}
@@ -198,7 +216,7 @@ func renderDirectory(cmd *cobra.Command, newRenderer rendererFactory, dir, outpu
 		base := strings.TrimSuffix(filepath.Base(relPath), filepath.Ext(relPath))
 		outPath := filepath.Join(target, base+".md")
 
-		r, rErr := newRenderer(path)
+		r, rErr := newRenderer(path, ef)
 		if rErr != nil {
 			return fmt.Errorf("%s: %w", path, rErr)
 		}
@@ -232,7 +250,20 @@ func renderDirectory(cmd *cobra.Command, newRenderer rendererFactory, dir, outpu
 	return nil
 }
 
-func renderFileJSON(cmd *cobra.Command, path, outputDir, schemaVersion string) error {
+// marshalRendered returns the normalized JSON of ef, followed by the rules
+// it inherits when it has any.
+func marshalRendered(chains *chainResolver, path string, ef *entity.File) ([]byte, error) {
+	_, realmChains, err := chains.chainsFor(path, ef)
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(struct {
+		*entity.File
+		Inherited []inheritedRule `json:"inherited,omitempty"`
+	}{File: ef, Inherited: inheritedRows(ef, realmChains)}, "", "  ")
+}
+
+func renderFileJSON(cmd *cobra.Command, chains *chainResolver, path, outputDir, schemaVersion string) error {
 	ef, err := entity.Load(path)
 	if err != nil {
 		return err
@@ -242,7 +273,7 @@ func renderFileJSON(cmd *cobra.Command, path, outputDir, schemaVersion string) e
 		return fmt.Errorf("%s: %w", path, err)
 	}
 
-	data, err := json.MarshalIndent(ef, "", "  ")
+	data, err := marshalRendered(chains, path, ef)
 	if err != nil {
 		return fmt.Errorf("marshaling JSON: %w", err)
 	}
@@ -261,7 +292,7 @@ func renderFileJSON(cmd *cobra.Command, path, outputDir, schemaVersion string) e
 	return os.WriteFile(outPath, append(data, '\n'), 0o644)
 }
 
-func renderDirectoryJSON(cmd *cobra.Command, dir, outputDir, schemaVersion string) error {
+func renderDirectoryJSON(cmd *cobra.Command, chains *chainResolver, dir, outputDir, schemaVersion string) error {
 	if outputDir == "" {
 		return fmt.Errorf("--json with directory input requires -o/--output to avoid overwriting source files")
 	}
@@ -317,7 +348,7 @@ func renderDirectoryJSON(cmd *cobra.Command, dir, outputDir, schemaVersion strin
 			return nil
 		}
 
-		data, marshalErr := json.MarshalIndent(ef, "", "  ")
+		data, marshalErr := marshalRendered(chains, path, ef)
 		if marshalErr != nil {
 			return fmt.Errorf("marshaling %s: %w", path, marshalErr)
 		}
