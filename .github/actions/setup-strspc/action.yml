@@ -116,7 +116,11 @@ runs:
         BIN="${RUNNER_TEMP}/strspc-bin"
         mkdir -p "$BIN"
         if [ "$EXT" = "zip" ]; then
-          unzip -q -o "${TMP}/${ARCHIVE}" "$EXE" -d "$BIN"
+          # Git Bash on Windows runners doesn't guarantee unzip; PowerShell is
+          # always there. Paths go through env, so nothing needs quoting twice.
+          ARCHIVE_PATH="$(cygpath -w "${TMP}/${ARCHIVE}")" BIN_PATH="$(cygpath -w "$BIN")" \
+            powershell -NoProfile -NonInteractive -Command \
+            'Expand-Archive -Force -LiteralPath $env:ARCHIVE_PATH -DestinationPath $env:BIN_PATH'
         else
           tar -xzf "${TMP}/${ARCHIVE}" -C "$BIN" "$EXE"
         fi
