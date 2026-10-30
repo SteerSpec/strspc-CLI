@@ -60,6 +60,11 @@ func fetchRealmDependency(ctx context.Context, realmDir string, dep entity.Realm
 	if dep.Source == "" {
 		return "", errors.New("empty source")
 	}
+	// The source comes from realm.json and can reach diagnostics printed to a
+	// terminal.
+	if err := rejectControlChars("source", dep.Source); err != nil {
+		return "", err
+	}
 	if !strings.HasPrefix(dep.Source, remote.Scheme) {
 		if filepath.IsAbs(dep.Source) || strings.Contains(dep.Source, "://") {
 			return "", fmt.Errorf("unsupported source %q: use github:// or a relative path", dep.Source)
