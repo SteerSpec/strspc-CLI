@@ -47,17 +47,17 @@ func setupUpgradeTest(t *testing.T, latest string, validate func() *result.Resul
 }
 
 func TestRealmDepUpgradeRewritesVersionAndSource(t *testing.T) {
-	dir := setupUpgradeTest(t, "v1.11.0", nil)
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
 
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	testutil.AssertContains(t, out, "1.8.0 -> 1.11.0")
+	testutil.AssertContains(t, out, "1.8.0 -> 9.9.9")
 	testutil.AssertContains(t, out, "not a github://")
 
 	deps := readRealmDeps(t, dir)
-	if deps[0].Version != "1.11.0" || deps[0].Source != "github://SteerSpec/strspc-rules@v1.11.0/rules/core" {
+	if deps[0].Version != "9.9.9" || deps[0].Source != "github://SteerSpec/strspc-rules@v9.9.9/rules/core" {
 		t.Errorf("core dep not rewritten: %+v", deps[0])
 	}
 	if deps[1].Version != "0.1.0" || deps[1].Source != "../sibling" {
@@ -66,7 +66,7 @@ func TestRealmDepUpgradeRewritesVersionAndSource(t *testing.T) {
 }
 
 func TestRealmDepUpgradeCheck(t *testing.T) {
-	dir := setupUpgradeTest(t, "v1.11.0", nil)
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--check", "--dir", dir)
 	if err == nil {
@@ -116,7 +116,7 @@ func TestRealmDepUpgradeTo(t *testing.T) {
 }
 
 func TestRealmDepUpgradeFlagErrors(t *testing.T) {
-	dir := setupUpgradeTest(t, "v1.11.0", nil)
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
 
 	for name, args := range map[string][]string{
 		"to without id":      {"--to", "1.9.0"},
@@ -135,7 +135,7 @@ func TestRealmDepUpgradeRestoresOnValidationFailure(t *testing.T) {
 		res.Add(result.Diagnostic{Code: "RM099", Severity: result.Error, Message: "breaks"})
 		return res
 	}
-	dir := setupUpgradeTest(t, "v1.11.0", failing)
+	dir := setupUpgradeTest(t, "v9.9.9", failing)
 	before, err := os.ReadFile(filepath.Join(dir, "realm.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -182,7 +182,7 @@ func TestFetchLatestReleaseTag(t *testing.T) {
 }
 
 func TestRealmDepUpgradePreservesSubRealms(t *testing.T) {
-	dir := setupUpgradeTest(t, "v1.11.0", nil)
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
 	withSubs := strings.Replace(upgradeRealmJSON, `"rule_identifier_format"`, `"sub_realms": ["auth"],
   "rule_identifier_format"`, 1)
 	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(withSubs), 0o644); err != nil {
@@ -202,7 +202,7 @@ func TestRealmDepUpgradePreservesSubRealms(t *testing.T) {
 
 func TestRealmDepUpgradeSkipsNonTagRefs(t *testing.T) {
 	for _, ref := range []string{strings.Repeat("a", 40), "abc1234", strings.Repeat("A", 40), "main", "v1"} {
-		dir := setupUpgradeTest(t, "v1.11.0", nil)
+		dir := setupUpgradeTest(t, "v9.9.9", nil)
 		pinned := strings.Replace(upgradeRealmJSON, "@v1.8.0/", "@"+ref+"/", 1)
 		if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(pinned), 0o644); err != nil {
 			t.Fatal(err)
@@ -219,7 +219,7 @@ func TestRealmDepUpgradeSkipsNonTagRefs(t *testing.T) {
 }
 
 func TestRealmDepUpgradeNeutralisesRealmValues(t *testing.T) {
-	dir := setupUpgradeTest(t, "v1.11.0", nil)
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
 	writeRealmDeps(t, dir,
 		entity.RealmDep{RealmID: "::stop-commands::x", Version: "1.0.0\x1b[2J\n::stop-commands::y", Source: "../sibling"},
 		entity.RealmDep{RealmID: "::add-mask::z", Version: "1.8.0", Source: "github://SteerSpec/strspc-rules@v1.8.0/rules/core"},
@@ -238,7 +238,7 @@ func TestRealmDepUpgradeNeutralisesRealmValues(t *testing.T) {
 		}
 	}
 	testutil.AssertContains(t, out, `"::stop-commands::x"@1.0.0`)
-	testutil.AssertContains(t, out, `"::add-mask::z": 1.8.0 -> 1.11.0`)
+	testutil.AssertContains(t, out, `"::add-mask::z": 1.8.0 -> 9.9.9`)
 }
 
 func TestRealmDepUpgradeErrorsNeutraliseRealmValues(t *testing.T) {
@@ -255,7 +255,7 @@ func TestRealmDepUpgradeErrorsNeutraliseRealmValues(t *testing.T) {
 		"no ref": {entity.RealmDep{RealmID: "::stop-commands::x", Version: "1.8.0", Source: "github://SteerSpec/strspc-rules"}, "missing @ref"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			dir := setupUpgradeTest(t, "v1.11.0", nil)
+			dir := setupUpgradeTest(t, "v9.9.9", nil)
 			writeRealmDeps(t, dir, tt.dep)
 
 			_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
