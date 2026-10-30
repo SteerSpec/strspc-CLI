@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.25.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.24.0...v1.25.0) (2026-10-30)
+
+
+### Features
+
+* **ci:** add --cli-version to ci init ([4a8e5d4](https://github.com/SteerSpec/strspc-CLI/commit/4a8e5d437a5f163f491e031153f6f6f206e8c313))
+* **ci:** add --cli-version to ci init ([64a3075](https://github.com/SteerSpec/strspc-CLI/commit/64a30754bcd25024e20245a34964d6f9ce970c1a))
+* **realm:** add 'realm dep upgrade' to bump github:// dependencies ([8be69b1](https://github.com/SteerSpec/strspc-CLI/commit/8be69b12b8fa6b5477d6c048e022e065924e4687))
+* **realm:** add 'realm dep upgrade' to bump github:// dependencies ([762fa76](https://github.com/SteerSpec/strspc-CLI/commit/762fa760e0d85c7d62aedee94e21c0a4d36033c4))
+* **realm:** compare a realm with its pinned dependencies ([3a5bb32](https://github.com/SteerSpec/strspc-CLI/commit/3a5bb32911a4850b85d9582982c4910f34adda14))
+* **realm:** compare a realm with its pinned dependencies ([3265ff3](https://github.com/SteerSpec/strspc-CLI/commit/3265ff3e561eee3f1360f4f832fbc605875ffe43))
+
+
+### Bug Fixes
+
+* **check:** refuse invalid UTF-8 with control characters ([fed9d1a](https://github.com/SteerSpec/strspc-CLI/commit/fed9d1a48675b869fe0d40af63a4d2c6009f9b6f))
+* **check:** treat C1 characters as control characters ([2c488e3](https://github.com/SteerSpec/strspc-CLI/commit/2c488e35fcd995853cfffd9e144edc7021e03bd4))
+* **realm:** keep control characters out of dep output ([1a06e75](https://github.com/SteerSpec/strspc-CLI/commit/1a06e75b21f2f45401a98192ff46937cf2b85e28))
+* **realm:** keep control characters out of dependency output ([abe80c2](https://github.com/SteerSpec/strspc-CLI/commit/abe80c2eb962018d043efe3085cf070fa8b317e7))
+* **realm:** keep sub_realms when rewriting realm.json; skip SHA-pinned sources ([4a6511f](https://github.com/SteerSpec/strspc-CLI/commit/4a6511f76286d6d351575ef36193d8969b18e56c))
+* **realm:** quote an invalid realm ID in dep list ([4a109d1](https://github.com/SteerSpec/strspc-CLI/commit/4a109d13e372a7e4d23f51c69e6c501311ad565a))
+* **realm:** refuse control characters in a dependency source ([d9c76cc](https://github.com/SteerSpec/strspc-CLI/commit/d9c76cc2f64274d7c655ab0531acec9a87562fda))
+* **realm:** upgrade only sources pinned to a release tag ([c36b967](https://github.com/SteerSpec/strspc-CLI/commit/c36b967df3ad703a5b6d0b1d90c22a1c40672e2b))
+
 ## [1.24.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.23.0...v1.24.0) (2026-10-30)
 
 
