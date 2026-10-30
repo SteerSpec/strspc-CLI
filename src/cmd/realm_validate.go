@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -122,6 +123,7 @@ func newRealmValidateCmd() *cobra.Command {
 			res := vs.realmLinter.Lint(cmd.Context(), dir)
 
 			if recursive {
+				dropSkippedEntityNotes(res)
 				realmRes := vs.ruleLinter.LintRealm(cmd.Context(), dir)
 				mergeDiagnostics(res, realmRes)
 			}
@@ -157,6 +159,15 @@ func newRealmValidateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&core, "core", false, "path is the core realm: validate it against its own _schema/")
 
 	return cmd
+}
+
+// dropSkippedEntityNotes removes realmlint's RM005 notes that it skipped entity
+// validation. They are false with --recursive, where LintRealm lints those files.
+// RM005 at Info means only this; its errors report unreadable paths and stay.
+func dropSkippedEntityNotes(res *result.Result) {
+	res.Diagnostics = slices.DeleteFunc(res.Diagnostics, func(d result.Diagnostic) bool {
+		return d.Code == "RM005" && d.Severity == result.Info
+	})
 }
 
 // diagKey identifies a diagnostic for deduplication.
