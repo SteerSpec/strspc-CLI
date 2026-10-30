@@ -92,6 +92,37 @@ func TestRenderJSONListsRulesInheritedBySubEntity(t *testing.T) {
 	}
 }
 
+func TestRenderJSONKeepsEmptyInheritedArrayOfResolvedChain(t *testing.T) {
+	draftOnly := inheritRule{id: "ACCT-001", state: "D"}
+	own := inheritRule{id: "SAVACCT-001", state: "P"}
+	tests := []struct {
+		name, body string
+	}{
+		{"entity", inheritEntityJSON("SAVACCT", "ACCT", "", own)},
+		{"sub-entity", inheritEntityJSON("TOP", "", "["+inheritEntityJSON("SAVACCT", "ACCT", "", own)+"]")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeRealmManifest(t, dir, "dev.app")
+			writeInheritEntity(t, dir, "ACCT", "", draftOnly)
+			writeInheritFile(t, dir, "FILE", tt.body)
+
+			out, err := testutil.ExecuteCommand(NewRootCmd(), "render", filepath.Join(dir, "FILE.json"), "--json")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			var got renderedInherited
+			if err := json.Unmarshal([]byte(out), &got); err != nil {
+				t.Fatalf("invalid JSON: %v\n%s", err, out)
+			}
+			if got.Inherited == nil || len(*got.Inherited) != 0 {
+				t.Errorf("inherited = %v, want an empty array", got.Inherited)
+			}
+		})
+	}
+}
+
 func TestRenderDirectoryKeepsChainsOfEachRealm(t *testing.T) {
 	dir := t.TempDir()
 	for _, realm := range []string{"one", "two"} {

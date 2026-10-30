@@ -251,7 +251,7 @@ func renderDirectory(cmd *cobra.Command, newRenderer rendererFactory, dir, outpu
 }
 
 // marshalRendered returns the normalized JSON of ef, followed by the rules
-// it inherits when it has any.
+// it inherits when an inheritance chain resolved, even if it has none yet.
 func marshalRendered(chains *chainResolver, path string, ef *entity.File) ([]byte, error) {
 	_, realmChains, err := chains.chainsFor(path, ef)
 	if err != nil {
@@ -259,7 +259,7 @@ func marshalRendered(chains *chainResolver, path string, ef *entity.File) ([]byt
 	}
 	return json.MarshalIndent(struct {
 		*entity.File
-		Inherited []inheritedRule `json:"inherited,omitempty"`
+		Inherited []inheritedRule `json:"inherited,omitzero"`
 	}{File: ef, Inherited: inheritedRows(ef, realmChains)}, "", "  ")
 }
 

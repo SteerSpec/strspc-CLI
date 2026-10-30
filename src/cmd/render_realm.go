@@ -191,7 +191,8 @@ func (c *chainResolver) warnUnresolved(path string, f *entity.File, chains map[s
 	}
 }
 
-// inheritedRows lists the rules that f and its sub-entities inherit.
+// inheritedRows lists the rules that f and its sub-entities inherit. The
+// result is nil only when none of them has a chain.
 func inheritedRows(f *entity.File, chains map[string]render.Chain) []inheritedRule {
 	var rows []inheritedRule
 	if c, ok := chains[f.Entity.ID]; ok {
@@ -203,6 +204,7 @@ func inheritedRows(f *entity.File, chains map[string]render.Chain) []inheritedRu
 			}
 		}
 		inherited := inherit.Inherited(c.Ancestors)
+		rows = make([]inheritedRule, 0, len(inherited))
 		for i := range inherited {
 			r := &inherited[i]
 			rows = append(rows, inheritedRule{
@@ -217,7 +219,11 @@ func inheritedRows(f *entity.File, chains map[string]render.Chain) []inheritedRu
 		}
 	}
 	for i := range f.SubEntities {
-		rows = append(rows, inheritedRows(&f.SubEntities[i], chains)...)
+		if sub := inheritedRows(&f.SubEntities[i], chains); rows == nil {
+			rows = sub
+		} else {
+			rows = append(rows, sub...)
+		}
 	}
 	return rows
 }

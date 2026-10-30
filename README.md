@@ -179,7 +179,8 @@ defaults apply, e.g. `[ENT-001.0/D]`. Only the rendered form changes, never the 
 
 An entity that declares `inherits` gets an "Inherited rules" section listing the rules it inherits, with
 their owner and state, and which of its own rules overrides them. `--json` adds them as an `inherited`
-array, each entry naming the inheriting entity in `inherited_by`, also for sub-entities. Only such a file
+array, each entry naming the inheriting entity in `inherited_by`, also for sub-entities; the array is
+empty when the chain resolved but nothing is inherited yet, and absent without a chain. Only such a file
 makes `render` run realm-resolve, which can download `github://` dependencies into `.strspc/cache/`. A
 chain that does not resolve is a warning and the entity renders without the section; `strspc check` is
 what fails on it.
