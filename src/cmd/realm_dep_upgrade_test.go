@@ -200,19 +200,20 @@ func TestRealmDepUpgradePreservesSubRealms(t *testing.T) {
 	}
 }
 
-func TestRealmDepUpgradeSkipsCommitSHA(t *testing.T) {
-	dir := setupUpgradeTest(t, "v1.11.0", nil)
-	sha := strings.Repeat("a", 40)
-	pinned := strings.Replace(upgradeRealmJSON, "@v1.8.0/", "@"+sha+"/", 1)
-	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(pinned), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	testutil.AssertContains(t, out, "commit SHA")
-	if got := readRealmDeps(t, dir)[0].Source; !strings.Contains(got, sha) {
-		t.Errorf("SHA pin rewritten: %s", got)
+func TestRealmDepUpgradeSkipsNonTagRefs(t *testing.T) {
+	for _, ref := range []string{strings.Repeat("a", 40), "abc1234", strings.Repeat("A", 40), "main", "v1"} {
+		dir := setupUpgradeTest(t, "v1.11.0", nil)
+		pinned := strings.Replace(upgradeRealmJSON, "@v1.8.0/", "@"+ref+"/", 1)
+		if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(pinned), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", ref, err)
+		}
+		testutil.AssertContains(t, out, "not a release tag")
+		if got := readRealmDeps(t, dir)[0].Source; !strings.Contains(got, "@"+ref+"/") {
+			t.Errorf("%s: pin rewritten: %s", ref, got)
+		}
 	}
 }
