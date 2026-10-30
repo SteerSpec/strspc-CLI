@@ -82,8 +82,9 @@ runs:
         fi
 
         case "${RUNNER_OS}" in
-          Linux) OS=linux ;;
-          macOS) OS=darwin ;;
+          Linux) OS=linux; EXT=tar.gz; EXE=strspc ;;
+          macOS) OS=darwin; EXT=tar.gz; EXE=strspc ;;
+          Windows) OS=windows; EXT=zip; EXE=strspc.exe ;;
           *) echo "::error::unsupported runner OS '${RUNNER_OS}'" >&2; exit 1 ;;
         esac
         case "${RUNNER_ARCH}" in
@@ -93,7 +94,7 @@ runs:
         esac
 
         # Asset names come from .goreleaser.yml (project name strspc-CLI).
-        ARCHIVE="strspc-CLI_${VERSION}_${OS}_${ARCH}.tar.gz"
+        ARCHIVE="strspc-CLI_${VERSION}_${OS}_${ARCH}.${EXT}"
         BASE_URL="https://github.com/${REPO}/releases/download/v${VERSION}"
 
         TMP="$(mktemp -d)"
@@ -114,10 +115,14 @@ runs:
 
         BIN="${RUNNER_TEMP}/strspc-bin"
         mkdir -p "$BIN"
-        tar -xzf "${TMP}/${ARCHIVE}" -C "$BIN" strspc
-        chmod +x "${BIN}/strspc"
+        if [ "$EXT" = "zip" ]; then
+          unzip -q -o "${TMP}/${ARCHIVE}" "$EXE" -d "$BIN"
+        else
+          tar -xzf "${TMP}/${ARCHIVE}" -C "$BIN" "$EXE"
+        fi
+        chmod +x "${BIN}/${EXE}"
         echo "$BIN" >> "$GITHUB_PATH"
         rm -rf "$TMP"
 
-        "${BIN}/strspc" version
+        "${BIN}/${EXE}" version
         echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
