@@ -10,6 +10,8 @@ import (
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/realmlint"
+	"github.com/SteerSpec/strspc-manager/src/rulelint"
 	"github.com/SteerSpec/strspc-manager/src/schema"
 )
 
@@ -153,6 +155,58 @@ func TestRealmValidateRecursiveUsesThePinForEntities(t *testing.T) {
 		t.Fatalf("expected RL002 from the pinned schema, got:\n%s", output)
 	}
 	testutil.AssertContains(t, output, "RL002")
+}
+
+func TestRealmDepUpgradeValidatesAgainstTheNewPin(t *testing.T) {
+	const (
+		pinned = "/rules/v1.8.0/_schema/realm.v1.schema.json"
+		next   = "/rules/v1.11.0/_schema/realm.v1.schema.json"
+	)
+	for name, tt := range map[string]struct {
+		nextSchema  string
+		wantVersion string
+	}{
+		"accepted": {allowSchema, "1.11.0"},
+		"rejected": {rejectSchema, "1.8.0"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			validate := validateUpgradedRealm
+			dir := setupUpgradeTest(t, "v1.11.0", nil)
+			validateUpgradedRealm = validate
+			setupValidRealm(t, dir)
+			writeRealmDeps(t, dir, entity.RealmDep{
+				RealmID: schema.CoreRealmID,
+				Version: "1.8.0",
+				Source:  "github://SteerSpec/strspc-rules@v1.8.0/rules/core",
+			})
+			serveSchemas(t, map[string]string{pinned: allowSchema, next: tt.nextSchema, latestEntity: allowSchema})
+
+			// The real validator would fetch the dependency, so this one keeps
+			// only what matters here: reading the pin when it's built.
+			original := newRealmValidator
+			t.Cleanup(func() { newRealmValidator = original })
+			newRealmValidator = func(dir string, strict, _, _ bool) *realmValidatorSet {
+				fetcher := newSchemaFetcher(schema.ForRealm(dir)...)
+				return &realmValidatorSet{
+					realmLinter: realmlint.New(realmlint.WithSchemaFetcher(fetcher), realmlint.WithStrict(strict)),
+					ruleLinter:  rulelint.New(rulelint.WithSchemaFetcher(fetcher), rulelint.WithStrict(strict)),
+				}
+			}
+
+			output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
+			if tt.nextSchema == rejectSchema {
+				if err == nil {
+					t.Fatalf("expected the new pin's schema to reject the realm, got:\n%s", output)
+				}
+				testutil.AssertContains(t, output, "RM002")
+			} else if err != nil {
+				t.Fatalf("unexpected error: %v\n%s", err, output)
+			}
+			if got := readRealmDeps(t, dir)[0].Version; got != tt.wantVersion {
+				t.Errorf("version = %s, want %s", got, tt.wantVersion)
+			}
+		})
+	}
 }
 
 func TestRealmValidateCoreUsesItsOwnSchemas(t *testing.T) {
