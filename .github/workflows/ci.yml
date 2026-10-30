@@ -79,6 +79,22 @@ jobs:
         env:
           INSTALLED: ${{ steps.pinned.outputs.version }}
 
+  setup-action-windows:
+    # Same smoke test on Windows. 1.26.0 is the first release with Windows
+    # archives. The second step checks PATH from PowerShell, the default shell.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-strspc
+        id: pinned
+        with:
+          version: "1.26.0"
+      - run: test "${INSTALLED}" = "1.26.0" && strspc version
+        shell: bash
+        env:
+          INSTALLED: ${{ steps.pinned.outputs.version }}
+      - run: strspc version
+
   commits:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
