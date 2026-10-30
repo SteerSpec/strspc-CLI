@@ -5,16 +5,16 @@
     "title": "Conventions"
   },
   "rule_set": {
-    "version": "0.1.4",
-    "timestamp": "2026-10-19T19:22:35Z",
-    "hash": "blake3:0e842e9003719a8b25b3cbe9cd2630f6814a8025f6e1aae5e7abb219e66dbb5f"
+    "version": "0.1.5",
+    "timestamp": "2026-10-30T10:47:31Z",
+    "hash": "blake3:91660391a850931d3dcf3d315b5fe8732938bd58102571b1bc29c16e8c016e03"
   },
   "rules": [
     {
       "id": "CONV-001",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "MUST use Conventional Commits format for all commits (type(scope): description). Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert.",
+      "body": "MUST use Conventional Commits format for all commits (type(scope): description), with a type from feat, fix, docs, style, refactor, perf, test, build, ci, chore or revert.",
       "added_by": "@pleberre",
       "added_at": "2026-03-25",
       "supersedes": null
