@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -727,7 +729,7 @@ func (r *checkRun) verbosef(format string, args ...any) {
 // the result stays a single log line.
 func sanitizeLine(s string) string {
 	return strings.Map(func(c rune) rune {
-		if c < 0x20 || c == 0x7f {
+		if unicode.IsControl(c) {
 			return ' '
 		}
 		return c
@@ -820,14 +822,14 @@ func isStaticProviderName(name string) bool {
 	return false
 }
 
-// rejectControlChars refuses repository-controlled identifiers that could
-// smuggle a line break into stdout, where GitHub parses `::` workflow
-// commands.
+// rejectControlChars refuses repository-controlled values that could smuggle
+// a line break into stdout, where GitHub parses `::` workflow commands, or an
+// escape sequence into a terminal. Invalid UTF-8 is refused too: a lone 0x9b
+// byte decodes to U+FFFD, not a control character, but a terminal may still
+// treat it as one.
 func rejectControlChars(field, value string) error {
-	for _, c := range value {
-		if c < 0x20 || c == 0x7f {
-			return fmt.Errorf("%s contains a control character (%q); use a plain identifier", field, value)
-		}
+	if !utf8.ValidString(value) || strings.ContainsFunc(value, unicode.IsControl) {
+		return fmt.Errorf("%s contains a control character or invalid UTF-8 (%q)", field, value)
 	}
 	return nil
 }

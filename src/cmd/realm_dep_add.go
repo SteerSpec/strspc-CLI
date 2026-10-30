@@ -31,6 +31,9 @@ func newRealmDepAddCmd() *cobra.Command {
 				if dep.Source != "" && dep.Source != source {
 					return fmt.Errorf("conflicting sources: inline source %q and --source %q; please specify only one", dep.Source, source)
 				}
+				if err := rejectControlChars("source", source); err != nil {
+					return err
+				}
 				dep.Source = source
 			}
 
@@ -42,7 +45,7 @@ func newRealmDepAddCmd() *cobra.Command {
 			err = loadAndWriteRealm(realmPath, func(deps []entity.RealmDep) ([]entity.RealmDep, error) {
 				for _, d := range deps {
 					if d.RealmID == dep.RealmID {
-						return nil, fmt.Errorf("dependency %q already exists (version %s)", dep.RealmID, d.Version)
+						return nil, fmt.Errorf("dependency %q already exists (version %q)", dep.RealmID, d.Version)
 					}
 				}
 				return append(deps, dep), nil
