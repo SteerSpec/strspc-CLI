@@ -40,7 +40,7 @@ const crossRefEntityB = `{
   "entity": {"id": "RUL", "title": "Entity B"},
   "rule_set": {"version": "1.0.0", "timestamp": "2026-01-01T00:00:00Z", "hash": null},
   "rules": [
-    {"id": "RUL-001", "revision": 0, "state": "D", "body": "Supersedes missing.", "added_by": "test", "added_at": "2026-01-01", "supersedes": "MISSING-001"}
+    {"id": "RUL-001", "revision": 0, "state": "D", "body": "Supersedes missing.", "added_by": "test", "added_at": "2026-01-01", "supersedes": "RUL-099"}
   ],
   "notes": []
 }`
@@ -126,13 +126,13 @@ func TestLintCrossRef(t *testing.T) {
 	}
 	testutil.AssertNotContains(t, output, "RL012")
 
-	// With --cross-ref: RL012 warning about MISSING-001.
+	// With --cross-ref: RL012 warning about RUL-099.
 	output, err = testutil.ExecuteCommand(NewRootCmd(), "lint", dir, "--cross-ref")
 	if err != nil {
 		t.Fatalf("unexpected error with --cross-ref: %v", err)
 	}
 	testutil.AssertContains(t, output, "RL012")
-	testutil.AssertContains(t, output, "MISSING-001")
+	testutil.AssertContains(t, output, "RUL-099")
 }
 
 func TestLintCrossRefStrict(t *testing.T) {
