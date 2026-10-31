@@ -569,7 +569,7 @@ jobs:
 
 | Workflow | Runs | Notable inputs |
 | -------- | ---- | -------------- |
-| `strspc-lint.yml` | `realm validate`, `lint` and `diff` | `diff: false` for release PRs that aggregate promotions; `core: true` for the core realm |
+| `strspc-lint.yml` | `realm validate`, `lint` and `diff`, and optionally `refs` | `diff: false` for release PRs that aggregate promotions; `core: true` for the core realm; `refs: true` to check rule citations, which needs `.strspc/config.yaml` and strspc 1.30.0 or later; `refs-allow-state` lists the rule states a citation may name, `D` by default and none when empty; `STRSPC_GITHUB_TOKEN` for private rule sources |
 | `strspc-check.yml` | `check`, or `check --static-only` without a key | `cache: true` only where every rule source is public: the cache stores explanations that fork PRs can restore |
 | `strspc-deps-bump.yml` | `realm dep upgrade`, then opens one pull request | Run it on a schedule; it never merges |
 
