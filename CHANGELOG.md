@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.29.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.28.0...v1.29.0) (2026-10-31)
+
+
+### Features
+
+* **check:** send the rules an extends note names to the evaluator ([#177](https://github.com/SteerSpec/strspc-CLI/issues/177)) ([6baafb8](https://github.com/SteerSpec/strspc-CLI/commit/6baafb8935e511be49a31ca318ec0af7c0c0a455))
+
 ## [1.28.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.27.0...v1.28.0) (2026-10-31)
 
 
