@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"cmp"
+	"fmt"
 	"io"
 	"regexp"
 	"slices"
@@ -140,6 +141,12 @@ func printableDiagnostic(s string) string {
 		lines[i] = runnerCommandRe.ReplaceAllString(b.String(), `#\#$1[`)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// writeWarning prints a warning, whose text can name a file or quote a
+// dependency, through printableDiagnostic.
+func writeWarning(w io.Writer, format string, args ...any) {
+	writeln(w, printableDiagnostic("warning: "+fmt.Sprintf(format, args...)))
 }
 
 // diagnosticPrinter writes diagnostics as text and counts them. With explain,

@@ -611,7 +611,7 @@ func (r *checkRun) evaluate() error {
 		case errors.Is(err, evalcache.ErrLocked):
 			_, _ = fmt.Fprintf(r.errOut, "warning: evaluation cache is locked by another process; continuing without cache\n")
 		default:
-			_, _ = fmt.Fprintf(r.errOut, "warning: evaluation cache unavailable (%v); continuing without cache\n", err)
+			writeWarning(r.errOut, "evaluation cache unavailable (%v); continuing without cache", err)
 		}
 	} else {
 		r.verbosef("cache: disabled")
@@ -672,7 +672,7 @@ func (r *checkRun) evaluate() error {
 		writeGitHubAnnotations(r.out, diags)
 		writeln(r.out, r.summaryLine(&out))
 		if err := appendGitHubStepSummary(os.Getenv("GITHUB_STEP_SUMMARY"), &out); err != nil {
-			_, _ = fmt.Fprintf(r.errOut, "warning: writing GITHUB_STEP_SUMMARY: %v\n", err)
+			writeWarning(r.errOut, "writing GITHUB_STEP_SUMMARY: %v", err)
 		}
 	default:
 		outputDiagnostics(r.out, &result.Result{Diagnostics: withLineInPath(diags)}, r.opts.explain)

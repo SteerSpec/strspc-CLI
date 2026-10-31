@@ -63,7 +63,7 @@ func Execute() {
 	err := NewRootCmd().ExecuteContext(ctx)
 	stop()
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "Error:", err)
+		_, _ = fmt.Fprintln(os.Stderr, printableDiagnostic("Error: "+err.Error()))
 		os.Exit(exitCodeOf(err))
 	}
 }

@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -36,6 +39,29 @@ func TestPrintableDiagnostic(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := printableDiagnostic(tt.in); got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// A directory render skips a file it can't read and names it in a warning, in
+// both output modes.
+func TestRenderSkipWarningIsSanitized(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows file names can't hold control characters")
+	}
+	for _, flags := range [][]string{nil, {"--json"}} {
+		t.Run(strings.Join(flags, " "), func(t *testing.T) {
+			dir := t.TempDir()
+			name := "a\n::error::forged\x1b[31m.json"
+			if err := os.WriteFile(filepath.Join(dir, name), []byte("not json"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			args := append([]string{"render", dir, "-o", t.TempDir()}, flags...)
+			out, _ := testutil.ExecuteCommand(NewRootCmd(), args...)
+			testutil.AssertContains(t, out, "skipping")
+			if strings.Contains(out, "\n::") || strings.Contains(out, "\x1b[31m") {
+				t.Errorf("control character or workflow command in output: %q", out)
 			}
 		})
 	}
