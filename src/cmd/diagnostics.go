@@ -145,7 +145,8 @@ func printableDiagnostic(s string) string {
 
 // printableJSON escapes the runner command prefixes in marshaled JSON, which a
 // CI step can print. A # only appears inside a string, so \u0023 leaves what
-// the document says unchanged.
+// the document says unchanged. It's for output only: a file stays as marshaled,
+// because rule files are hashed.
 func printableJSON(data []byte) []byte {
 	return runnerCommandRe.ReplaceAllFunc(data, func(match []byte) []byte {
 		return append([]byte(`\u0023`), match[1:]...)

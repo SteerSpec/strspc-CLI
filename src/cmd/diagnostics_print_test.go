@@ -138,6 +138,10 @@ func TestJSONWritersEscapeRunnerCommands(t *testing.T) {
 		"status": func() error { return writeStatusJSON(&buf, report) },
 		"lint":   func() error { return writeJSON(&buf, diags, false) },
 		"check":  func() error { r := &checkRun{out: &buf}; return r.writeJSONOutput(&out) },
+		"rule":   func() error { return writeJSONOutput(&buf, map[string]string{"id": "##vso[x]"}) },
+		"explain": func() error {
+			return writeIndentedJSON(&buf, map[string]string{"code": "##[error]x"})
+		},
 	}
 	for name, write := range writers {
 		t.Run(name, func(t *testing.T) {
@@ -153,6 +157,44 @@ func TestJSONWritersEscapeRunnerCommands(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSyncJSONEscapesRunnerCommands(t *testing.T) {
+	dir := statusProject(t, "", "./##vso[task.setvariable]x/")
+	out, _ := testutil.ExecuteCommand(NewRootCmd(), "sync", dir, "--json")
+	testutil.AssertContains(t, out, "vso")
+	if runnerCommandRe.MatchString(out) {
+		t.Errorf("runner command in output: %s", out)
+	}
+	if !json.Valid([]byte(out)) {
+		t.Errorf("not JSON: %s", out)
+	}
+}
+
+func TestRenderJSONEscapesRunnerCommands(t *testing.T) {
+	dir := t.TempDir()
+	body := strings.Replace(inheritEntityJSON("APP", "", "", inheritRule{id: "APP-001", state: "I"}), "Rule APP-001.", "##vso[task.setvariable]x", 1)
+	writeInheritFile(t, dir, "APP", body)
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "render", filepath.Join(dir, "APP.json"), "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.AssertContains(t, out, "task.setvariable")
+	if runnerCommandRe.MatchString(out) {
+		t.Errorf("runner command in output: %s", out)
+	}
+
+	// A file keeps the bytes of the rule.
+	outDir := t.TempDir()
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "render", filepath.Join(dir, "APP.json"), "--json", "-o", outDir); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(outDir, "APP.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.AssertContains(t, string(data), "##vso[task.setvariable]x")
 }
 
 // Every severity goes through the same printer, and every command through it.

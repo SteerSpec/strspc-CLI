@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -219,6 +220,9 @@ func TestStatusBadLocalSources(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "below a file" && runtime.GOOS == "windows" {
+				t.Skip("Windows reports this path as not found")
+			}
 			dir := statusProject(t, "", tt.source)
 			writeRefsFile(t, dir, "file.txt", "x")
 			writeInheritEntity(t, filepath.Join(dir, "rules"), "APP", "", inheritRule{id: "APP-001", state: "I"})
