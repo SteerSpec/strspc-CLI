@@ -226,8 +226,8 @@ CLI scans `sub_entities[]` of every entity file under `--dir` and refreshes the 
 
 **Superseding.** Rules that have left Draft are immutable, so `rule supersede` creates a Draft that
 replaces them. It leaves the original unchanged: when the new rule reaches Implemented, the old one
-must be Retired, or `strspc diff` warns (`RD006`). `rule retire` only works from Implemented, so
-promote a Published rule first. A rule that's already Retired needs nothing.
+must be Retired, or `strspc diff` warns (`RD006`). `rule retire` moves a rule from Implemented to
+Retired, so promote a Published rule first. A rule that's already Retired needs nothing.
 
 **Notes.** Types are `rationale`, `example`, `counter_example`, `reference`, `applies_to`, `changelog`,
 `clarification`, `deprecation_notice`, `supersedes`, `extends` and `related`. A note can be revised
