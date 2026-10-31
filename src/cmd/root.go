@@ -29,9 +29,10 @@ func SetVersionInfo(v VersionInfo) {
 // NewRootCmd creates a fresh root command with all subcommands registered.
 func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "strspc",
-		Short: "SteerSpec CLI",
-		Long:  "SteerSpec CLI — manage steering specifications from the command line.",
+		Use:           "strspc",
+		SilenceErrors: true, // Execute prints the error, sanitized
+		Short:         "SteerSpec CLI",
+		Long:          "SteerSpec CLI — manage steering specifications from the command line.",
 		// Enables the --version flag; `strspc version` prints the full details.
 		Version: versionInfo.Version,
 	}

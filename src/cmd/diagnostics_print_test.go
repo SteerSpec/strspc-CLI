@@ -67,6 +67,20 @@ func TestRenderSkipWarningIsSanitized(t *testing.T) {
 	}
 }
 
+// Cobra would print a root-level error itself, unsanitized and before Execute.
+func TestRootLeavesErrorsToExecute(t *testing.T) {
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "--bad\x1b[31m")
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+	if strings.Contains(out, "\x1b[31m") {
+		t.Errorf("escape sequence in output: %q", out)
+	}
+	if got := printableDiagnostic("Error: " + err.Error()); strings.Contains(got, "\x1b[31m") {
+		t.Errorf("escape sequence in the error: %q", got)
+	}
+}
+
 func TestChainResolverWarnIsSanitized(t *testing.T) {
 	var out bytes.Buffer
 	c := &chainResolver{errW: &out}
