@@ -117,7 +117,7 @@ Examples:
 			}
 
 			if err := appendGitignore(targetDir); err != nil {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not update .gitignore: %v\n", err)
+				writeWarning(cmd.ErrOrStderr(), "could not update .gitignore: %v", err)
 			}
 
 			w := cmd.OutOrStdout()

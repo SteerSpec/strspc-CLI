@@ -2,9 +2,13 @@ package cmd
 
 import (
 	"cmp"
+	"fmt"
 	"io"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/SteerSpec/strspc-manager/src/result"
 )
@@ -105,6 +109,46 @@ func plainText(s string) string {
 	return strings.ReplaceAll(s, "`", "")
 }
 
+// diagnosticContinuation starts every line after the first of a printed
+// diagnostic, so the text never decides how a line of output begins.
+const diagnosticContinuation = "  | "
+
+// runnerCommandRe matches the command prefixes of GitHub Actions (##[) and
+// Azure Pipelines (##vso[).
+var runnerCommandRe = regexp.MustCompile(`(?i)##(vso)?\[`)
+
+// printableDiagnostic makes a line of output safe to print: its text can come
+// from a remote dependency. A multi-line message such as a schema error stays
+// readable, but each line after the first starts with diagnosticContinuation,
+// so a CI runner can't read it as a workflow command. Control and format
+// characters are escaped, tabs aside, and so are the command prefixes runners
+// accept anywhere in a line. The caller's own prefix starts the first line.
+func printableDiagnostic(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		var b strings.Builder
+		if i > 0 {
+			b.WriteString(diagnosticContinuation)
+		}
+		for _, r := range line {
+			if r != '\t' && (unicode.IsControl(r) || unicode.Is(unicode.Cf, r)) {
+				quoted := strconv.QuoteRune(r)
+				b.WriteString(quoted[1 : len(quoted)-1])
+			} else {
+				b.WriteRune(r)
+			}
+		}
+		lines[i] = runnerCommandRe.ReplaceAllString(b.String(), `#\#$1[`)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// writeWarning prints a warning, whose text can name a file or quote a
+// dependency, through printableDiagnostic.
+func writeWarning(w io.Writer, format string, args ...any) {
+	writeln(w, printableDiagnostic("warning: "+fmt.Sprintf(format, args...)))
+}
+
 // diagnosticPrinter writes diagnostics as text and counts them. With explain,
 // each code is explained under its first occurrence only, so a run with many
 // identical findings stays readable.
@@ -124,12 +168,12 @@ func (p *diagnosticPrinter) print(d *result.Diagnostic) {
 	switch d.Severity {
 	case result.Error:
 		p.errors++
-		writeln(p.w, brandStyle.Render(d.String()))
+		writeln(p.w, brandStyle.Render(printableDiagnostic(d.String())))
 	case result.Warning:
 		p.warnings++
-		writeln(p.w, descStyle.Render(d.String()))
+		writeln(p.w, descStyle.Render(printableDiagnostic(d.String())))
 	case result.Info:
-		writeln(p.w, descStyle.Render(d.String()))
+		writeln(p.w, descStyle.Render(printableDiagnostic(d.String())))
 	}
 
 	if !p.explain || p.seen[d.Code] {
