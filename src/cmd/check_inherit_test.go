@@ -59,6 +59,13 @@ func inheritEntityJSON(euid, inherits, subEntities string, rules ...inheritRule)
   "rules": [%s], "notes": [], "sub_entities": %s}`, euid, euid, inheritsField, strings.Join(entries, ","), subEntities)
 }
 
+// withNote adds a note on ruleRef to an entity written by inheritEntityJSON.
+func withNote(body, ruleRef, noteType, content string) string {
+	note := fmt.Sprintf(`"notes": [{"id": "%s/01", "rule_ref": %q, "type": %q,`+
+		` "content": %q, "added_by": "@test", "added_at": "2026-01-01", "revision": 0}]`, ruleRef, ruleRef, noteType, content)
+	return strings.Replace(body, `"notes": []`, note, 1)
+}
+
 func writeRealmManifest(t *testing.T, dir, id string, deps ...string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -180,9 +187,7 @@ func TestCheckStaticOnlyFailsOnNoteToUndeclaredRealm(t *testing.T) {
 	rules := filepath.Join(dir, "rules")
 	writeRealmManifest(t, rules, "dev.app")
 	body := inheritEntityJSON("SAVACCT", "", "", inheritRule{id: "SAVACCT-001", state: "P"})
-	body = strings.Replace(body, `"notes": []`, `"notes": [{"id": "SAVACCT-001/01", "rule_ref": "SAVACCT-001", "type": "related",`+
-		` "content": "See dev.other:OTHER-001.", "added_by": "@test", "added_at": "2026-01-01", "revision": 0}]`, 1)
-	writeInheritFile(t, rules, "SAVACCT", body)
+	writeInheritFile(t, rules, "SAVACCT", withNote(body, "SAVACCT-001", "related", "See dev.other:OTHER-001."))
 	writeCheckConfig(t, dir, "./rules/", "null", nil, nil)
 
 	output, err := runCheckCmd(t, dir, "--static-only")
@@ -316,6 +321,71 @@ func TestCheckSendsInheritedRulesToTheProvider(t *testing.T) {
 	if len(own) != 1 || own[0].Overrides != "dev.lib:ACCT-001" {
 		t.Errorf("SAVACCT-001 requests = %+v, want overrides dev.lib:ACCT-001", own)
 	}
+}
+
+// assertExtended fails unless the single request for ruleID carries id with
+// the body inheritEntityJSON gives it.
+func assertExtended(t *testing.T, p *recordingProvider, ruleID, id, targetID string) {
+	t.Helper()
+	got := p.requests(ruleID)
+	if len(got) != 1 {
+		t.Fatalf("%s requests = %d, want 1", ruleID, len(got))
+	}
+	if len(got[0].Extended) != 1 || got[0].Extended[0].ID != id || got[0].Extended[0].Body != "Rule "+targetID+"." {
+		t.Errorf("%s extended = %+v, want %s with the body of %s", ruleID, got[0].Extended, id, targetID)
+	}
+}
+
+func TestCheckSendsExtendedRuleToTheProvider(t *testing.T) {
+	dir, diff := setupInheritProject(t, "claude", "./rules/")
+	body := inheritEntityJSON("SAVACCT", "", "", inheritRule{id: "SAVACCT-001", state: "P"})
+	writeInheritFile(t, filepath.Join(dir, "rules"), "SAVACCT", withNote(body, "SAVACCT-001", "extends", "Builds on dev.lib:ACCT-002."))
+	p := &recordingProvider{}
+	stubEvalProvider(t, p, nil)
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitOK)
+
+	assertExtended(t, p, "SAVACCT-001", "dev.lib:ACCT-002", "ACCT-002")
+}
+
+// An inherited rule's note resolves from the Realm that owns the rule, where
+// the unqualified reference means something.
+func TestCheckSendsExtendedRuleOfInheritedRule(t *testing.T) {
+	dir, diff := setupInheritProject(t, "claude", "./rules/")
+	lib := inheritEntityJSON("ACCT", "", "", inheritRule{id: "ACCT-001", state: "P"}, inheritRule{id: "ACCT-002", state: "I"})
+	writeInheritFile(t, filepath.Join(dir, "lib"), "ACCT", withNote(lib, "ACCT-002", "extends", "Builds on ACCT-001."))
+	writeInheritEntity(t, filepath.Join(dir, "rules"), "SAVACCT", "dev.lib:ACCT", inheritRule{id: "SAVACCT-001", state: "P"})
+	p := &recordingProvider{}
+	stubEvalProvider(t, p, nil)
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitOK)
+
+	assertExtended(t, p, "ACCT-002", "ACCT-001", "ACCT-001")
+}
+
+// A rule of a sub-realm is read under its source's realm.json, the Realm
+// resolution keys it on.
+func TestCheckSendsExtendedRuleOfSubRealm(t *testing.T) {
+	dir, diff := setupInheritProject(t, "claude", "./rules/")
+	rules := filepath.Join(dir, "rules")
+	manifest := `{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0"}, "sub_realms": ["payments"],` +
+		` "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}]}`
+	if err := os.WriteFile(filepath.Join(rules, "realm.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(rules, "payments")
+	writeRealmManifest(t, sub, "dev.app.payments")
+	body := inheritEntityJSON("PAY", "", "", inheritRule{id: "PAY-001", state: "P"})
+	writeInheritFile(t, sub, "PAY", withNote(body, "PAY-001", "extends", "Builds on dev.lib:ACCT-002."))
+	p := &recordingProvider{}
+	stubEvalProvider(t, p, nil)
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitOK)
+
+	assertExtended(t, p, "PAY-001", "dev.lib:ACCT-002", "ACCT-002")
 }
 
 func TestCheckOverrideOutsideEvaluateOnRestoresInheritedRule(t *testing.T) {
