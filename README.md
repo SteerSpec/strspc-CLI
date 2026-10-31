@@ -253,6 +253,10 @@ the rules it inherits, minus those replaced by its own rules in `evaluate_on`, p
 includes inherited rules. An entity that declares `inherits` in a source without a `realm.json` cannot be
 resolved: warning `CHK003` says its inherited rules are not evaluated.
 
+**Relation notes.** The check reads realm-qualified references in the `supersedes`, `extends` and `related`
+notes of live rules, and exits 2 when the realm is not declared (`RR017`) or holds no such rule (`RR018`), also
+with `--static-only`. `strspc realm validate` does not run this check.
+
 **Configuration validation.** Before any source is resolved, the check rejects a config it cannot work
 with and exits 2: an empty `rules:` list (core rule SPCFG-004 requires at least one source; `strspc init`
 writes one), an unknown lifecycle state in `fail_on` or `evaluate_on` (allowed: `D`, `A`, `P`, `I`, `R`,
