@@ -206,6 +206,104 @@ func TestRefsSubRealm(t *testing.T) {
 	testutil.AssertContains(t, out, "RF002")
 }
 
+// writeRefsSubRealm adds the sub-realm dev.app.sub, holding SUBE-001 in state A,
+// to the project of setupRefsProject. deps are the sub-realm's own dependencies.
+func writeRefsSubRealm(t *testing.T, dir string, deps ...string) {
+	t.Helper()
+	sub := filepath.Join(dir, "rules", "sub")
+	writeRealmManifest(t, sub, "dev.app.sub", deps...)
+	writeInheritEntity(t, sub, "SUBE", "", inheritRule{id: "SUBE-001", state: "A"})
+	writeRefsFile(t, dir, "rules/realm.json",
+		`{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},
+		  "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}],
+		  "sub_realms": ["sub"]}`)
+}
+
+func TestRefsSubRealmQualifiers(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		code string
+	}{
+		{"unqualified", "SUBE-001", "RF002"},
+		{"its own realm", "dev.app.sub:SUBE-001", "RF002"},
+		{"the parent does not hold it", "dev.app:SUBE-001", "RF001"},
+		{"the sub-realm does not hold the parent's rule", "dev.app.sub:APP-002", "RF001"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := setupRefsProject(t)
+			writeRefsSubRealm(t, dir)
+			writeRefsFile(t, dir, "a.md", tt.text+"\n")
+			out, err := runRefsCmd(t)
+			assertExit(t, err, exitViolations)
+			testutil.AssertContains(t, out, tt.code)
+		})
+	}
+}
+
+// A project's own pin decides what a citation means, not a sub-realm's.
+func TestRefsProjectPinWinsOverSubRealmPin(t *testing.T) {
+	dir := setupRefsProject(t)
+	other := filepath.Join(dir, "lib2")
+	writeRefsFile(t, dir, "lib2/realm.json", `{"realm": {"id": "dev.lib", "title": "t", "version": "2.0.0"}}`)
+	writeInheritEntity(t, other, "ACCT", "", inheritRule{id: "ACCT-001", state: "A"}, inheritRule{id: "ACCT-002", state: "A"})
+	writeRefsSubRealm(t, dir, `{"realm_id": "dev.lib", "version": "2.0.0", "source": "../../lib2/"}`)
+	writeRefsFile(t, dir, "a.md", "ACCT-001\n")
+	out, err := runRefsCmd(t)
+	assertExit(t, err, exitOK)
+	if strings.Contains(out, "RF") {
+		t.Errorf("judged against the sub-realm's pin: %s", out)
+	}
+}
+
+func TestRefsSubRealmOfDependency(t *testing.T) {
+	dir := setupRefsProject(t)
+	inner := filepath.Join(dir, "lib", "inner")
+	writeRealmManifest(t, inner, "dev.lib.inner")
+	writeInheritEntity(t, inner, "INNR", "", inheritRule{id: "INNR-001", state: "I"})
+	writeRefsFile(t, dir, "lib/realm.json",
+		`{"realm": {"id": "dev.lib", "title": "t", "version": "1.0.0"}, "sub_realms": ["inner"]}`)
+	writeRefsFile(t, dir, "a.md", "INNR-001\n")
+	out, err := runRefsCmd(t)
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, out, "No errors or warnings found")
+}
+
+// A path that leaves the project through a link is outside it.
+func TestRefsRejectsPathsThroughLinksOutOfTheProject(t *testing.T) {
+	outside := t.TempDir()
+	writeRefsFile(t, outside, "secret.md", "APP-001\n")
+	tests := []struct {
+		name string
+		arg  string
+	}{
+		{"file below a link", filepath.Join("out", "secret.md")},
+		{"link to a directory", "out"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := setupRefsProject(t)
+			if err := os.Symlink(outside, filepath.Join(dir, "out")); err != nil {
+				t.Skip(err)
+			}
+			_, err := runRefsCmd(t, tt.arg)
+			assertExit(t, err, exitConfig)
+			testutil.AssertContains(t, err.Error(), "outside the project")
+		})
+	}
+}
+
+func TestRefsAcceptsLinksInsideTheProject(t *testing.T) {
+	dir := setupRefsProject(t)
+	writeRefsFile(t, dir, "docs/a.md", "APP-002\n")
+	if err := os.Symlink(filepath.Join(dir, "docs"), filepath.Join(dir, "guide")); err != nil {
+		t.Skip(err)
+	}
+	_, err := runRefsCmd(t, filepath.Join("guide", "a.md"))
+	assertExit(t, err, exitViolations)
+}
+
 func TestRefsRenderedForm(t *testing.T) {
 	dir := setupRefsProject(t)
 	writeRefsFile(t, dir, "rules/realm.json",

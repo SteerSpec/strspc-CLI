@@ -173,6 +173,7 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 		if t := r.realmTrees[e.Source]; t != nil {
 			s.RealmID = t.manifest.Realm.ID
 			s.Format = t.manifest.RuleIdentifierFormat
+			s.Entities = withoutSubRealms(s.Entities, t.resolved.SubRealms)
 		}
 		sources = append(sources, s)
 	}
@@ -184,19 +185,29 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 			sources = append(sources, resolvedRealmSource(realm, format))
 		}
 	}
+	// A sub-realm can pin another version of a dependency, so the project's own
+	// dependencies go first.
+	trees := make([]*realmTree, 0, len(r.entries))
 	for _, e := range r.entries {
-		t := r.realmTrees[e.Source]
-		if t == nil {
-			continue
+		if t := r.realmTrees[e.Source]; t != nil {
+			trees = append(trees, t)
 		}
+	}
+	for _, t := range trees {
 		for _, sub := range t.resolved.SubRealms {
 			add(sub, t.manifest.RuleIdentifierFormat) // a sub-realm renders like its parent (RLM-015)
+		}
+	}
+	for _, t := range trees {
+		for _, dep := range t.resolved.Dependencies {
+			add(dep, dep.Realm.RuleIdentifierFormat)
+		}
+	}
+	for _, t := range trees {
+		for _, sub := range t.resolved.SubRealms {
 			for _, dep := range sub.Dependencies {
 				add(dep, dep.Realm.RuleIdentifierFormat)
 			}
-		}
-		for _, dep := range t.resolved.Dependencies {
-			add(dep, dep.Realm.RuleIdentifierFormat)
 		}
 	}
 	return sources, nil
@@ -209,6 +220,17 @@ func writeRefsNotices(w io.Writer, notices []result.Diagnostic) {
 	for _, d := range withLineInPath(notices) {
 		writeln(w, descStyle.Render(printableText(d.String())))
 	}
+}
+
+// withoutSubRealms drops the entities of subs: a source is walked recursively,
+// but a sub-realm's rules belong to the sub-realm's own realm ID.
+func withoutSubRealms(entities []*entity.File, subs []*realmresolve.ResolvedRealm) []*entity.File {
+	return slices.DeleteFunc(slices.Clone(entities), func(ef *entity.File) bool {
+		return slices.ContainsFunc(subs, func(sub *realmresolve.ResolvedRealm) bool {
+			_, ok := sub.Entities[ef.Entity.ID]
+			return ok
+		})
+	})
 }
 
 // resolvedRealmSource converts a resolved Realm, in a stable order.
@@ -246,6 +268,9 @@ func refsFiles(cwd string, paths []string, o *refsOptions) ([]string, error) {
 		info, err := os.Stat(filepath.Join(cwd, rel))
 		if err != nil {
 			return nil, fmt.Errorf("accessing %s: %w", printableText(p), err)
+		}
+		if err := refsCheckInside(cwd, rel); err != nil {
+			return nil, err
 		}
 		if info.IsDir() {
 			roots = append(roots, rel)
@@ -290,10 +315,32 @@ func refsRelPath(cwd, p string) (string, error) {
 		abs = filepath.Join(cwd, p)
 	}
 	rel, err := filepath.Rel(cwd, abs)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if err != nil || refsEscapes(rel) {
 		return "", fmt.Errorf("path %s is outside the project", printableText(p))
 	}
 	return rel, nil
+}
+
+// refsCheckInside rejects a path that leaves cwd through a symbolic link.
+func refsCheckInside(cwd, rel string) error {
+	root, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		return fmt.Errorf("resolving %s: %w", printableText(cwd), err)
+	}
+	target, err := filepath.EvalSymlinks(filepath.Join(cwd, rel))
+	if err != nil {
+		return fmt.Errorf("resolving %s: %w", printableText(rel), err)
+	}
+	inside, err := filepath.Rel(root, target)
+	if err != nil || refsEscapes(inside) {
+		return fmt.Errorf("path %s is outside the project", printableText(rel))
+	}
+	return nil
+}
+
+// refsEscapes reports whether a relative path climbs out of its base.
+func refsEscapes(rel string) bool {
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // refsListFiles lists the files under roots. In a git repository it asks git, so
