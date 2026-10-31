@@ -49,6 +49,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newCheckCmd())
 	cmd.AddCommand(newLintCmd())
 	cmd.AddCommand(newRefsCmd())
+	cmd.AddCommand(newStatusCmd())
 	cmd.AddCommand(newDiffCmd())
 	cmd.AddCommand(newExplainCmd())
 	cmd.SetHelpFunc(customHelp)
