@@ -123,12 +123,12 @@ func runRefs(ctx context.Context, out, errOut io.Writer, cwd string, paths []str
 	for _, f := range files {
 		data, err := os.ReadFile(filepath.Join(cwd, filepath.FromSlash(f)))
 		if err != nil {
-			return withExitCode(exitConfig, fmt.Errorf("reading %s: %w", printablePath(f), err))
+			return withExitCode(exitConfig, fmt.Errorf("reading %s: %w", printableText(f), err))
 		}
 		if bytes.IndexByte(data[:min(len(data), refsBinaryProbe)], 0) >= 0 {
 			continue
 		}
-		res.Diagnostics = append(res.Diagnostics, checker.CheckText(printablePath(f), data).Diagnostics...)
+		res.Diagnostics = append(res.Diagnostics, checker.CheckText(printableText(f), data).Diagnostics...)
 	}
 
 	switch {
@@ -159,9 +159,7 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 	if err := r.resolveRules(); err != nil {
 		return nil, err
 	}
-	for _, d := range withLineInPath(r.notices) {
-		writeln(errOut, descStyle.Render(d.String()))
-	}
+	writeRefsNotices(errOut, r.notices)
 
 	byOrigin := make(map[string][]*entity.File)
 	for _, rf := range r.resolved {
@@ -202,6 +200,15 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 	return sources, nil
 }
 
+// writeRefsNotices writes non-fatal resolution diagnostics. Their text can come
+// from a remote dependency, so one line of it stays one printable line: a CI
+// runner reads stderr for workflow commands too.
+func writeRefsNotices(w io.Writer, notices []result.Diagnostic) {
+	for _, d := range withLineInPath(notices) {
+		writeln(w, descStyle.Render(printableText(d.String())))
+	}
+}
+
 // resolvedRealmSource converts a resolved Realm, in a stable order.
 func resolvedRealmSource(realm *realmresolve.ResolvedRealm, format *entity.RuleIdentifierFormat) rulerefs.Source {
 	euids := make([]string, 0, len(realm.Entities))
@@ -236,7 +243,7 @@ func refsFiles(cwd string, paths []string, o *refsOptions) ([]string, error) {
 		}
 		info, err := os.Stat(filepath.Join(cwd, rel))
 		if err != nil {
-			return nil, fmt.Errorf("accessing %s: %w", printablePath(p), err)
+			return nil, fmt.Errorf("accessing %s: %w", printableText(p), err)
 		}
 		if info.IsDir() {
 			roots = append(roots, rel)
@@ -282,7 +289,7 @@ func refsRelPath(cwd, p string) (string, error) {
 	}
 	rel, err := filepath.Rel(cwd, abs)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("path %s is outside the project", printablePath(p))
+		return "", fmt.Errorf("path %s is outside the project", printableText(p))
 	}
 	return rel, nil
 }
@@ -363,11 +370,11 @@ func refsGlobMatch(patterns []string, file string) bool {
 	return false
 }
 
-// printablePath quotes a path that would otherwise put control characters on
-// the terminal or in an annotation.
-func printablePath(p string) string {
-	if rejectControlChars("path", p) == nil {
-		return p
+// printableText quotes text that would otherwise put control characters on the
+// terminal or in an annotation.
+func printableText(s string) string {
+	if rejectControlChars("text", s) == nil {
+		return s
 	}
-	return strings.Trim(strconv.Quote(p), `"`)
+	return strings.Trim(strconv.Quote(s), `"`)
 }

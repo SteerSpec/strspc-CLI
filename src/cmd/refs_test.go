@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/result"
 )
 
 // setupRefsProject writes the realm dev.app in rules/, with APP rules in every
@@ -360,7 +361,7 @@ func TestRefsSkipsBinaryFiles(t *testing.T) {
 	assertExit(t, err, exitOK)
 }
 
-func TestPrintablePath(t *testing.T) {
+func TestPrintableText(t *testing.T) {
 	tests := []struct{ path, want string }{
 		{"docs/a.md", "docs/a.md"},
 		{"docs/é.md", "docs/é.md"},
@@ -368,9 +369,20 @@ func TestPrintablePath(t *testing.T) {
 		{"a\n.md", `a\n.md`},
 	}
 	for _, tt := range tests {
-		if got := printablePath(tt.path); got != tt.want {
-			t.Errorf("printablePath(%q) = %q, want %q", tt.path, got, tt.want)
+		if got := printableText(tt.path); got != tt.want {
+			t.Errorf("printableText(%q) = %q, want %q", tt.path, got, tt.want)
 		}
+	}
+}
+
+func TestWriteRefsNoticesStayOnOneLine(t *testing.T) {
+	var out bytes.Buffer
+	writeRefsNotices(&out, []result.Diagnostic{{
+		Code: "RR001", Severity: result.Warning, Message: "bad\n::error::forged \x1b[31mred",
+	}})
+	got := strings.TrimSuffix(out.String(), "\n")
+	if strings.ContainsAny(got, "\n\x1b") {
+		t.Errorf("control character in output: %q", got)
 	}
 }
 
