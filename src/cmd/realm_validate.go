@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -90,8 +91,19 @@ func fetchRealmDependency(ctx context.Context, realmDir string, dep entity.Realm
 	if err != nil {
 		return "", fmt.Errorf("locating user cache: %w", err)
 	}
-	fetcher := &remote.Fetcher{Token: remote.TokenFromEnv(), CacheDir: filepath.Join(cacheDir, "strspc", "realms")}
-	return fetcher.EnsureDir(ctx, ref)
+	return newRemoteFetcher(filepath.Join(cacheDir, "strspc", "realms"), 0).EnsureDir(ctx, ref)
+}
+
+// newRemoteFetcher returns a fetcher that sends the environment's token only to
+// the owners it allows, because a github:// source can come from a realm.json
+// the user only cloned.
+func newRemoteFetcher(cacheDir string, ttl time.Duration) *remote.Fetcher {
+	return &remote.Fetcher{
+		Token:       remote.TokenFromEnv(),
+		TokenOwners: remote.TokenOwnersFromEnv(),
+		CacheDir:    cacheDir,
+		TTL:         ttl,
+	}
 }
 
 func newRealmValidateCmd() *cobra.Command {
