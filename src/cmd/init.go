@@ -12,7 +12,7 @@ import (
 
 // defaultCoreSource is the global rule source written by `strspc init`.
 // Bumped on every strspc-rules release so fresh projects pin the current core realm.
-const defaultCoreSource = "github://SteerSpec/strspc-rules@v1.12.0/rules/core"
+const defaultCoreSource = "github://SteerSpec/strspc-rules@v1.13.0/rules/core"
 
 // readmeURL is the only documentation link the CLI prints; steerspec.dev/docs
 // pages do not exist yet (CFG-002).
