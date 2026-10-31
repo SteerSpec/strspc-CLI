@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.28.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.27.0...v1.28.0) (2026-10-31)
+
+
+### Features
+
+* **check:** report broken references in relation notes ([#174](https://github.com/SteerSpec/strspc-CLI/issues/174)) ([e5a9202](https://github.com/SteerSpec/strspc-CLI/commit/e5a9202076a21d36821537f120679649c8405a00))
+* **realm:** send the GitHub token only to allowed owners ([#172](https://github.com/SteerSpec/strspc-CLI/issues/172)) ([bcd3f3f](https://github.com/SteerSpec/strspc-CLI/commit/bcd3f3f776ee88acabe17455be523c655521c0cd))
+
+
+### Bug Fixes
+
+* **check:** run realm-resolve for every realm ([#173](https://github.com/SteerSpec/strspc-CLI/issues/173)) ([a716b0c](https://github.com/SteerSpec/strspc-CLI/commit/a716b0c6fa1ca180fa2b71cd30273bc2cccb579e))
+* **realm:** drop the false RM005 note from validate --recursive ([#171](https://github.com/SteerSpec/strspc-CLI/issues/171)) ([4af3eaa](https://github.com/SteerSpec/strspc-CLI/commit/4af3eaa1b0810bb53151b14d789dda252d0feccd))
+
 ## [1.27.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.26.0...v1.27.0) (2026-10-30)
 
 
