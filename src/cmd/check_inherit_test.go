@@ -157,9 +157,10 @@ func TestCheckStaticOnlyFailsOnMistypedInheritsWithoutDependencies(t *testing.T)
 	testutil.AssertContains(t, output, "RR013")
 }
 
-// A realm with no dependencies, sub-realms or inheritance can still hold a
-// relation note qualified with a realm it never declared, so realm-resolve
-// runs for every realm.
+// A realm with no dependencies, sub-realms or inheritance still reaches
+// realm-resolve: it can hold a relation note qualified with a realm it never
+// declared. That the diagnostics surface is covered by
+// TestCheckStaticOnlyFailsOnMistypedInheritsWithoutDependencies.
 func TestCheckResolvesRealmWithNothingToResolve(t *testing.T) {
 	dir := t.TempDir()
 	rules := filepath.Join(dir, "rules")
