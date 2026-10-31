@@ -107,7 +107,7 @@ strspc init --provider null .    # offline: static checks only, no API key neede
 
 ```yaml
 rules:
-  - source: github://SteerSpec/strspc-rules@v1.11.0/rules/core   # bumped per rules release
+  - source: github://SteerSpec/strspc-rules@v1.12.0/rules/core   # bumped per rules release
     scope: global
 evaluator:
   provider: claude          # requires ANTHROPIC_API_KEY; use "null" to skip AI evaluation
@@ -117,7 +117,7 @@ fail_on:
   - I                       # state codes (D, A, P, I, R, T), not words
 ```
 
-`fail_on` uses rule state codes as defined by `config.v1.schema.json`. It also writes `.strspc/.gitignore` (`cache.db`, `cache/`) so cache artifacts stay out of version control. `github://` sources are fetched through the GitHub tarball API and cached under `.strspc/cache/`; set `GITHUB_TOKEN` for private repositories or to avoid rate limits. The generated config pins `strspc-rules@v1.11.0`.
+`fail_on` uses rule state codes as defined by `config.v1.schema.json`. It also writes `.strspc/.gitignore` (`cache.db`, `cache/`) so cache artifacts stay out of version control. `github://` sources are fetched through the GitHub tarball API and cached under `.strspc/cache/`; set `GITHUB_TOKEN` for private repositories or to avoid rate limits. The token is sent only for sources owned by `SteerSpec`, by `GITHUB_REPOSITORY_OWNER` (set in GitHub Actions), or by an owner listed in the comma-separated `STRSPC_TOKEN_OWNERS`, because a source can come from a `realm.json` you only cloned. Other sources are fetched anonymously, so a private one returns 404 until you list its owner. The generated config pins `strspc-rules@v1.12.0`.
 
 ### Author rules
 
@@ -175,7 +175,7 @@ strspc realm dep upgrade                               # upgrade every dependenc
 strspc realm dep upgrade dev.steerspec.core --to 1.11.0
 ```
 
-If the new version breaks the realm, `realm.json` is restored and the command exits non-zero. Dependencies are never downgraded, and sources that are not `github://` references are skipped. Private sources need `GITHUB_TOKEN`.
+If the new version breaks the realm, `realm.json` is restored and the command exits non-zero. Dependencies are never downgraded, and sources that are not `github://` references are skipped. Private sources need `GITHUB_TOKEN`, and their owner listed in `STRSPC_TOKEN_OWNERS` unless it is `SteerSpec` or `GITHUB_REPOSITORY_OWNER`.
 
 ### Render entity files to Markdown
 
@@ -252,6 +252,10 @@ is not Published or Implemented is warning `RR016`. Such an entity is evaluated 
 the rules it inherits, minus those replaced by its own rules in `evaluate_on`, plus its own, so `rule_count`
 includes inherited rules. An entity that declares `inherits` in a source without a `realm.json` cannot be
 resolved: warning `CHK003` says its inherited rules are not evaluated.
+
+**Relation notes.** The check reads realm-qualified references in the `supersedes`, `extends` and `related`
+notes of live rules, and exits 2 when the realm is not declared (`RR017`) or holds no such rule (`RR018`), also
+with `--static-only`. `strspc realm validate` does not run this check.
 
 **Configuration validation.** Before any source is resolved, the check rejects a config it cannot work
 with and exits 2: an empty `rules:` list (core rule SPCFG-004 requires at least one source; `strspc init`

@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -89,8 +91,19 @@ func fetchRealmDependency(ctx context.Context, realmDir string, dep entity.Realm
 	if err != nil {
 		return "", fmt.Errorf("locating user cache: %w", err)
 	}
-	fetcher := &remote.Fetcher{Token: remote.TokenFromEnv(), CacheDir: filepath.Join(cacheDir, "strspc", "realms")}
-	return fetcher.EnsureDir(ctx, ref)
+	return newRemoteFetcher(filepath.Join(cacheDir, "strspc", "realms"), 0).EnsureDir(ctx, ref)
+}
+
+// newRemoteFetcher returns a fetcher that sends the environment's token only to
+// the owners it allows, because a github:// source can come from a realm.json
+// the user only cloned.
+func newRemoteFetcher(cacheDir string, ttl time.Duration) *remote.Fetcher {
+	return &remote.Fetcher{
+		Token:       remote.TokenFromEnv(),
+		TokenOwners: remote.TokenOwnersFromEnv(),
+		CacheDir:    cacheDir,
+		TTL:         ttl,
+	}
 }
 
 func newRealmValidateCmd() *cobra.Command {
@@ -122,6 +135,7 @@ func newRealmValidateCmd() *cobra.Command {
 			res := vs.realmLinter.Lint(cmd.Context(), dir)
 
 			if recursive {
+				dropSkippedEntityNotes(res)
 				realmRes := vs.ruleLinter.LintRealm(cmd.Context(), dir)
 				mergeDiagnostics(res, realmRes)
 			}
@@ -157,6 +171,15 @@ func newRealmValidateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&core, "core", false, "path is the core realm: validate it against its own _schema/")
 
 	return cmd
+}
+
+// dropSkippedEntityNotes removes realmlint's RM005 notes that it skipped entity
+// validation. They are false with --recursive, where LintRealm lints those files.
+// RM005 at Info means only this; its errors report unreadable paths and stay.
+func dropSkippedEntityNotes(res *result.Result) {
+	res.Diagnostics = slices.DeleteFunc(res.Diagnostics, func(d result.Diagnostic) bool {
+		return d.Code == "RM005" && d.Severity == result.Info
+	})
 }
 
 // diagKey identifies a diagnostic for deduplication.

@@ -324,7 +324,7 @@ func (r *checkRun) buildProvider() (int, error) {
 // a realm.json. Any error-severity diagnostic aborts the check.
 func (r *checkRun) resolveRules() error {
 	cacheDir := filepath.Join(r.cwd, ".strspc", "cache")
-	r.fetcher = &remote.Fetcher{Token: remote.TokenFromEnv(), CacheDir: cacheDir, TTL: r.ttl}
+	r.fetcher = newRemoteFetcher(cacheDir, r.ttl)
 
 	opts := []ruleresolve.Option{
 		ruleresolve.WithBaseDir(r.cwd),
@@ -344,7 +344,7 @@ func (r *checkRun) resolveRules() error {
 	if res.OK() {
 		// Only once every source is in place: a failed download must not be
 		// retried here (and time out twice).
-		diags = append(diags, r.resolveRealmDeps(cacheDir, resolved)...)
+		diags = append(diags, r.resolveRealmDeps(cacheDir)...)
 	}
 
 	var fatal int
@@ -368,8 +368,9 @@ func (r *checkRun) resolveRules() error {
 // own authoring (SPEC §2.8); their rules are not evaluated here, only
 // resolved so that a broken or colliding dependency surfaces in the check.
 // The exception is an entity's inheritance chain, kept for buildInputs: the
-// rules it inherits are that entity's rules (ENT-009).
-func (r *checkRun) resolveRealmDeps(cacheDir string, resolved []*ruleresolve.ResolvedFile) []result.Diagnostic {
+// rules it inherits are that entity's rules (ENT-009). Every realm is
+// resolved: one with nothing to fetch can still hold a broken reference.
+func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 	var diags []result.Diagnostic
 	r.chains = make(map[string]*realmresolve.Inheritance)
 	r.sourceRealms = make(map[string]string)
@@ -394,9 +395,6 @@ func (r *checkRun) resolveRealmDeps(cacheDir string, resolved []*ruleresolve.Res
 			continue
 		}
 		r.sourceRealms[e.Source] = rf.Realm.ID
-		if len(rf.Dependencies) == 0 && len(rf.SubRealms) == 0 && !sourceUsesInheritance(resolved, e.Source) {
-			continue // sub-realms may declare dependencies of their own
-		}
 		rrOpts := []realmresolve.Option{
 			realmresolve.WithCacheDir(cacheDir),
 			realmresolve.WithRemoteFetcher(r.fetcher),
@@ -419,18 +417,6 @@ func (r *checkRun) resolveRealmDeps(cacheDir string, resolved []*ruleresolve.Res
 		r.verbosef("realm %s: %d dependency(ies) resolved, %d inheritance chain(s)", rf.Realm.ID, len(out.Dependencies), len(out.Inheritance))
 	}
 	return diags
-}
-
-// sourceUsesInheritance reports whether an entity resolved from source
-// declares `inherits` or `overrides`, which need realm-resolve even without
-// dependencies.
-func sourceUsesInheritance(resolved []*ruleresolve.ResolvedFile, source string) bool {
-	for _, rf := range resolved {
-		if rf.Origin.Source == source && (usesInherits(rf.File) || usesOverrides(rf.File)) {
-			return true
-		}
-	}
-	return false
 }
 
 // sourceDir returns the local directory holding a source: the path itself

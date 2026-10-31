@@ -157,6 +157,40 @@ func TestCheckStaticOnlyFailsOnMistypedInheritsWithoutDependencies(t *testing.T)
 	testutil.AssertContains(t, output, "RR013")
 }
 
+// A realm with no dependencies, sub-realms or inheritance still reaches
+// realm-resolve: it can hold a relation note qualified with a realm it never
+// declared. That the diagnostics surface is covered by
+// TestCheckStaticOnlyFailsOnMistypedInheritsWithoutDependencies.
+func TestCheckResolvesRealmWithNothingToResolve(t *testing.T) {
+	dir := t.TempDir()
+	rules := filepath.Join(dir, "rules")
+	writeRealmManifest(t, rules, "dev.app")
+	writeInheritEntity(t, rules, "SAVACCT", "", inheritRule{id: "SAVACCT-001", state: "P"})
+	writeCheckConfig(t, dir, "./rules/", "null", nil, nil)
+
+	output, err := runCheckCmd(t, dir, "--static-only", "--verbose")
+	if err != nil {
+		t.Fatalf("check: %v\n%s", err, output)
+	}
+	testutil.AssertContains(t, output, "realm dev.app: 0 dependency(ies) resolved")
+}
+
+func TestCheckStaticOnlyFailsOnNoteToUndeclaredRealm(t *testing.T) {
+	dir := t.TempDir()
+	rules := filepath.Join(dir, "rules")
+	writeRealmManifest(t, rules, "dev.app")
+	body := inheritEntityJSON("SAVACCT", "", "", inheritRule{id: "SAVACCT-001", state: "P"})
+	body = strings.Replace(body, `"notes": []`, `"notes": [{"id": "SAVACCT-001/01", "rule_ref": "SAVACCT-001", "type": "related",`+
+		` "content": "See dev.other:OTHER-001.", "added_by": "@test", "added_at": "2026-01-01", "revision": 0}]`, 1)
+	writeInheritFile(t, rules, "SAVACCT", body)
+	writeCheckConfig(t, dir, "./rules/", "null", nil, nil)
+
+	output, err := runCheckCmd(t, dir, "--static-only")
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, output, "RR017")
+	testutil.AssertContains(t, output, "dev.other:OTHER-001")
+}
+
 func TestCheckStaticOnlyFailsOnUnknownOverrideTarget(t *testing.T) {
 	dir, _ := setupInheritProject(t, "null", "./rules/")
 	writeInheritEntity(t, filepath.Join(dir, "rules"), "SAVACCT", "dev.lib:ACCT",

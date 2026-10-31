@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
@@ -313,6 +314,63 @@ func TestRealmValidateRecursiveValid(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	testutil.AssertContains(t, output, "No errors or warnings")
+}
+
+// --recursive lints entities through LintRealm, so realmlint's note that entity
+// validation was skipped would be false.
+func TestRealmValidateRecursiveOmitsSkippedEntityNote(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{name: "text"},
+		{name: "json", args: []string{"--json"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupRealmValidateTest(t)
+			dir := t.TempDir()
+			setupValidRealmWithSubs(t, dir)
+
+			args := append([]string{"realm", "validate", dir, "--recursive"}, tc.args...)
+			output, err := testutil.ExecuteCommand(NewRootCmd(), args...)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			testutil.AssertNotContains(t, output, "RM005")
+		})
+	}
+}
+
+func TestRealmValidateRecursiveKeepsRM005Errors(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a file the current user cannot read")
+	}
+	setupRealmValidateTest(t)
+	dir := t.TempDir()
+	setupValidRealmWithSubs(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "SEC.json"), []byte(`{}`), 0o000); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir, "--recursive", "--json")
+	if err == nil {
+		t.Fatal("expected error for unreadable entity file, got nil")
+	}
+
+	var diags []result.Diagnostic
+	if jsonErr := json.Unmarshal([]byte(output), &diags); jsonErr != nil {
+		t.Fatalf("output is not valid JSON: %v\noutput: %s", jsonErr, output)
+	}
+	found := false
+	for _, d := range diags {
+		if d.Code == "RM005" && d.Severity == result.Error {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected RM005 error for unreadable entity file, got: %v", diags)
+	}
 }
 
 func TestRealmValidateRecursiveNoSubRealms(t *testing.T) {
