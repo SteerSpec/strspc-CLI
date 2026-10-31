@@ -44,16 +44,16 @@ const (
 // checkOutput is the JSON representation of a check run; it also feeds the
 // GitHub step summary.
 type checkOutput struct {
-	OK          bool                `json:"ok"`
-	ExitCode    int                 `json:"exit_code"`
-	StaticOnly  bool                `json:"static_only"`
-	Provider    string              `json:"provider,omitempty"`
-	Model       string              `json:"model,omitempty"`
-	RuleCount   int                 `json:"rule_count"`
-	SourceCount int                 `json:"source_count"`
-	Diff        string              `json:"diff,omitempty"`
-	Usage       *ruleeval.Usage     `json:"usage,omitempty"`
-	Diagnostics []result.Diagnostic `json:"diagnostics"`
+	OK          bool                  `json:"ok"`
+	ExitCode    int                   `json:"exit_code"`
+	StaticOnly  bool                  `json:"static_only"`
+	Provider    string                `json:"provider,omitempty"`
+	Model       string                `json:"model,omitempty"`
+	RuleCount   int                   `json:"rule_count"`
+	SourceCount int                   `json:"source_count"`
+	Diff        string                `json:"diff,omitempty"`
+	Usage       *ruleeval.Usage       `json:"usage,omitempty"`
+	Diagnostics []explainedDiagnostic `json:"diagnostics"`
 	// Error carries the fatal cause (configuration, resolution, provider) so
 	// JSON consumers do not have to parse stderr.
 	Error string `json:"error,omitempty"`
@@ -69,6 +69,7 @@ type checkOptions struct {
 	staticOnly bool
 	noCache    bool
 	verbose    bool
+	explain    bool
 	jsonAlias  bool // hidden --json, kept for scripts written against 1.x
 }
 
@@ -118,6 +119,7 @@ func newCheckCmd() *cobra.Command {
 	f.BoolVar(&o.staticOnly, "static-only", false, "skip AI evaluation; resolve sources and run structural checks only")
 	f.BoolVar(&o.noCache, "no-cache", false, "do not read or write the evaluation cache (.strspc/cache.db)")
 	f.BoolVar(&o.verbose, "verbose", false, "print resolution, cache and usage details to stderr")
+	f.BoolVar(&o.explain, "explain", false, "explain what each diagnostic code means and how to fix it (human and json formats)")
 	f.BoolVar(&o.jsonAlias, "json", false, "alias for --format json")
 	_ = f.MarkHidden("json")
 
@@ -174,6 +176,9 @@ func runCheck(ctx context.Context, out, errOut io.Writer, cwd string, o *checkOp
 	default:
 		return r.fail(exitConfig, fmt.Errorf("invalid --format %q: must be human, json or github", o.format))
 	}
+	if o.explain && o.format == formatGitHub {
+		return r.fail(exitConfig, errors.New("--explain cannot be used with --format github: annotations cannot carry explanations"))
+	}
 
 	if err := r.loadConfig(); err != nil {
 		return r.fail(exitConfig, err)
@@ -213,7 +218,7 @@ func (r *checkRun) fail(code int, err error, diags ...result.Diagnostic) error {
 		_ = appendGitHubStepSummary(os.Getenv("GITHUB_STEP_SUMMARY"), &out)
 	default:
 		if len(diags) > 0 {
-			outputText(r.out, &result.Result{Diagnostics: withLineInPath(diags)})
+			outputDiagnostics(r.out, &result.Result{Diagnostics: withLineInPath(diags)}, r.opts.explain)
 		}
 	}
 	return withExitCode(code, err)
@@ -670,7 +675,7 @@ func (r *checkRun) evaluate() error {
 			_, _ = fmt.Fprintf(r.errOut, "warning: writing GITHUB_STEP_SUMMARY: %v\n", err)
 		}
 	default:
-		outputText(r.out, &result.Result{Diagnostics: withLineInPath(diags)})
+		outputDiagnostics(r.out, &result.Result{Diagnostics: withLineInPath(diags)}, r.opts.explain)
 		writeln(r.out, brandStyle.Render(r.summaryLine(&out)))
 	}
 
@@ -681,16 +686,13 @@ func (r *checkRun) evaluate() error {
 }
 
 func (r *checkRun) output(code int, diags []result.Diagnostic) checkOutput {
-	if diags == nil {
-		diags = []result.Diagnostic{}
-	}
 	out := checkOutput{
 		OK:          code == exitOK,
 		ExitCode:    code,
 		StaticOnly:  r.static,
 		RuleCount:   len(r.inputs),
 		SourceCount: len(r.entries),
-		Diagnostics: diags,
+		Diagnostics: explainDiagnostics(diags, r.opts.explain),
 	}
 	if !r.static {
 		out.Provider = r.providerName

@@ -133,7 +133,7 @@ func runRefs(ctx context.Context, out, errOut io.Writer, cwd string, paths []str
 
 	switch {
 	case o.jsonOutput:
-		if err := writeJSON(out, res); err != nil {
+		if err := writeJSON(out, res, false); err != nil {
 			return err
 		}
 	case o.format == formatGitHub:
