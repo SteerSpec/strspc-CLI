@@ -46,6 +46,37 @@ func setupUpgradeTest(t *testing.T, latest string, validate func() *result.Resul
 	return dir
 }
 
+func TestPlanDepUpgradeLimitsTokenToAllowedOwners(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "secret")
+	t.Setenv("GITHUB_REPOSITORY_OWNER", "")
+	t.Setenv(remote.TokenOwnersEnv, "")
+
+	origTag := latestReleaseTag
+	t.Cleanup(func() { latestReleaseTag = origTag })
+	var token string
+	latestReleaseTag = func(_ context.Context, _ remote.Ref, got string) (string, error) {
+		token = got
+		return "v1.1.0", nil
+	}
+
+	tests := []struct {
+		owner string
+		want  string
+	}{
+		{"SteerSpec", "secret"},
+		{"acme", ""},
+	}
+	for _, tt := range tests {
+		dep := entity.RealmDep{RealmID: "dev.example.dep", Version: "1.0.0", Source: "github://" + tt.owner + "/specs@v1.0.0"}
+		if _, _, err := planDepUpgrade(context.Background(), dep, ""); err != nil {
+			t.Fatalf("%s: %v", tt.owner, err)
+		}
+		if token != tt.want {
+			t.Errorf("%s: token = %q, want %q", tt.owner, token, tt.want)
+		}
+	}
+}
+
 func TestRealmDepUpgradeRewritesVersionAndSource(t *testing.T) {
 	dir := setupUpgradeTest(t, "v9.9.9", nil)
 

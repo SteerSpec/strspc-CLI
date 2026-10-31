@@ -3,11 +3,28 @@ package cmd
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/remote"
 )
+
+func TestNewRemoteFetcherLimitsToken(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "secret")
+	t.Setenv("GITHUB_REPOSITORY_OWNER", "acme")
+	t.Setenv(remote.TokenOwnersEnv, "")
+
+	f := newRemoteFetcher(t.TempDir(), time.Hour)
+	if f.Token != "secret" || f.TTL != time.Hour {
+		t.Errorf("fetcher = %+v", f)
+	}
+	if want := []string{"SteerSpec", "acme"}; !slices.Equal(f.TokenOwners, want) {
+		t.Errorf("TokenOwners = %q, want %q", f.TokenOwners, want)
+	}
+}
 
 func TestFetchRealmDependency(t *testing.T) {
 	realmDir := filepath.Join("some", "realm")

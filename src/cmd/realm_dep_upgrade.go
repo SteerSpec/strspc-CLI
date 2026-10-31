@@ -72,7 +72,7 @@ func fetchLatestReleaseTag(ctx context.Context, ref remote.Ref, token string) (s
 	switch resp.StatusCode {
 	case http.StatusOK:
 	case http.StatusNotFound:
-		return "", fmt.Errorf("no release found for %s/%s (private repo without GITHUB_TOKEN, or no releases)", ref.Owner, ref.Repo)
+		return "", fmt.Errorf("no release found for %s/%s (no releases, or a private repo: set GITHUB_TOKEN and list the owner in %s)", ref.Owner, ref.Repo, remote.TokenOwnersEnv)
 	default:
 		return "", fmt.Errorf("resolving latest release of %s/%s: HTTP %d", ref.Owner, ref.Repo, resp.StatusCode)
 	}
@@ -117,7 +117,7 @@ func planDepUpgrade(ctx context.Context, dep entity.RealmDep, to string) (up *de
 	var tag string
 	if to != "" {
 		tag = "v" + strings.TrimPrefix(to, "v")
-	} else if tag, err = latestReleaseTag(ctx, ref, remote.TokenFromEnv()); err != nil {
+	} else if tag, err = latestReleaseTag(ctx, ref, remote.TokenForOwner(ref.Owner)); err != nil {
 		return nil, "", fmt.Errorf("%s: %w", id, err)
 	}
 	next, err := semver.NewVersion(tag)

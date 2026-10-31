@@ -324,7 +324,7 @@ func (r *checkRun) buildProvider() (int, error) {
 // a realm.json. Any error-severity diagnostic aborts the check.
 func (r *checkRun) resolveRules() error {
 	cacheDir := filepath.Join(r.cwd, ".strspc", "cache")
-	r.fetcher = &remote.Fetcher{Token: remote.TokenFromEnv(), CacheDir: cacheDir, TTL: r.ttl}
+	r.fetcher = newRemoteFetcher(cacheDir, r.ttl)
 
 	opts := []ruleresolve.Option{
 		ruleresolve.WithBaseDir(r.cwd),
