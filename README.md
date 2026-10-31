@@ -156,6 +156,7 @@ full data model.
 | `strspc lint` | Validate entity files against schema and rule constraints |
 | `strspc diff` | Validate rule lifecycle transitions between a git ref and the working tree |
 | `strspc check` | Evaluate a code diff against the rules in `.strspc/config.yaml` |
+| `strspc refs` | Validate rule citations in Markdown and other text files |
 | `strspc sync` | Resolve and cache the rule sources in `.strspc/config.yaml` |
 | `strspc render` | Convert entity JSON files to Markdown or normalized JSON |
 | `strspc realm init` | Scaffold a new Realm directory |
@@ -239,7 +240,7 @@ dependency, and a rule can override one inherited rule for that entity:
 ```bash
 strspc realm add SAVACCT --title "Savings Account" --inherits dev.globalbank.core:ACCT
 strspc rule add SAVACCT --body "Withdrawals MUST be capped." --added-by "@alice" \
-  --overrides dev.globalbank.core:ACCT-005
+  --overrides dev.globalbank.core:ACCT-005 # strspc-refs: ignore
 ```
 
 `entity add` also takes `--inherits`, and `rule supersede` takes `--overrides` to keep an override in
@@ -349,6 +350,47 @@ it against its own `_schema/`:
 strspc realm validate rules/core --recursive --strict --core
 strspc lint rules/core --strict --core
 ```
+
+### Validate rule citations
+
+`strspc refs` checks the rule identifiers that text files cite, such as agent prompts, READMEs and
+docs, against the rules in `.strspc/config.yaml` and the realm dependencies they pin:
+
+```bash
+strspc refs                                    # Markdown files, ignoring what .gitignore ignores
+strspc refs docs .claude --strict              # only these directories; warnings fail
+strspc refs --include '*.yml' --exclude 'docs/archive/**'
+strspc refs --ignore SHA-256 --allow-state R,T # strspc-refs: ignore
+strspc refs --format github                    # annotations; --json for diagnostics as JSON
+```
+
+| Code | Cited rule | Default | `--strict` |
+| ---- | ---------- | ------- | ---------- |
+| RF001 | Doesn't exist, or names a realm that isn't a dependency | error | error |
+| RF002 | Abandoned | error | error |
+| RF003 | Retired or Terminated, whether or not a rule replaces it | warning | error |
+| RF004 | Draft, Published or Implemented, replaced by a rule in I, R or T | error | error |
+| RF005 | Draft, Published or Implemented, replaced by a Published rule | warning | error |
+| RF006 | Draft | warning | error |
+
+The stored `<EUID>-<NNN>` form always matches, in text or code spans, and so does the realm's own
+rendered form. An unknown prefix is reported only when it is uppercase and starts with a letter, so
+<!-- strspc-refs: ignore -->
+`CLAMS-001` is reported and `feat-123` isn't. `SHA-256` has that shape too, so pass it to `--ignore`.
+URLs are skipped.
+
+A line holding `strspc-refs: ignore` exempts itself and the next line, for a historical mention. Any
+comment syntax can carry it:
+
+```markdown
+<!-- strspc-refs: ignore -->
+RUL-004 was retired in 2026.
+```
+
+`.strspc/` and `CHANGELOG.md` are always skipped. A pattern with no slash matches a file name in any
+directory, and `dir/**` matches everything under `dir`. A file named as an argument is scanned
+whatever its extension. `refs` exits 0 when clean, 1 on findings and 2 on a configuration or
+resolution error.
 
 ## Check code changes
 

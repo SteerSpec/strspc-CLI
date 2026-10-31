@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/Masterminds/semver/v3 v3.4.0
-	github.com/SteerSpec/strspc-manager v1.31.0
+	github.com/SteerSpec/strspc-manager v1.32.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/spf13/cobra v1.10.2

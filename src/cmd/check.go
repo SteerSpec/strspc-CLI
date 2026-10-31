@@ -124,6 +124,12 @@ func newCheckCmd() *cobra.Command {
 	return cmd
 }
 
+// realmTree is a source's manifest and what it resolved to.
+type realmTree struct {
+	manifest *entity.RealmFile
+	resolved *realmresolve.ResolveResult
+}
+
 // checkRun carries the state of one invocation across its phases.
 type checkRun struct {
 	ctx    context.Context
@@ -150,6 +156,7 @@ type checkRun struct {
 
 	chains       map[string]*realmresolve.Inheritance     // resolved chains by inheriting EUID, unique across sources (RSV005)
 	sourceRealms map[string]string                        // realm ID by source, for sources with a manifest
+	realmTrees   map[string]*realmTree                    // resolved manifest by source, for sources with a manifest
 	extended     map[string]map[string][]inherit.Extended // extends targets by source, then by qualified rule ID
 
 	repoDir    string
@@ -377,6 +384,7 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 	var diags []result.Diagnostic
 	r.chains = make(map[string]*realmresolve.Inheritance)
 	r.sourceRealms = make(map[string]string)
+	r.realmTrees = make(map[string]*realmTree)
 	r.extended = make(map[string]map[string][]inherit.Extended)
 	for _, e := range r.entries {
 		dir, err := r.sourceDir(e)
@@ -415,6 +423,7 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 		rr := realmresolve.New(rrOpts...)
 		out, res := rr.Resolve(r.ctx, rf, dir)
 		diags = append(diags, res.Diagnostics...)
+		r.realmTrees[e.Source] = &realmTree{manifest: rf, resolved: out}
 		for _, c := range out.Inheritance {
 			r.chains[c.Entity.Entity.Entity.ID] = c
 		}
