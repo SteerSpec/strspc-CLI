@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.30.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.29.0...v1.30.0) (2026-10-31)
+
+
+### Features
+
+* **check:** pick up entity visibility from strspc-manager 1.33.0 ([#184](https://github.com/SteerSpec/strspc-CLI/issues/184)) ([88b117c](https://github.com/SteerSpec/strspc-CLI/commit/88b117c2190161febf2e219e1fe1a6f3518f225b))
+* **explain:** add strspc explain and an --explain flag ([#183](https://github.com/SteerSpec/strspc-CLI/issues/183)) ([15ab276](https://github.com/SteerSpec/strspc-CLI/commit/15ab276789faf4d10da379bc470f8163bc3f0aca))
+* **refs:** validate rule citations in text files ([#182](https://github.com/SteerSpec/strspc-CLI/issues/182)) ([ca7bee6](https://github.com/SteerSpec/strspc-CLI/commit/ca7bee6b49199f4dab0b50ae66b5ec8abfbb00ac))
+
+
+### Documentation
+
+* rework the README against the manager spec ([#180](https://github.com/SteerSpec/strspc-CLI/issues/180)) ([ce0a359](https://github.com/SteerSpec/strspc-CLI/commit/ce0a359993ac89fda7a6eff6c1212723e7fac5f2))
+
 ## [1.29.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.28.0...v1.29.0) (2026-10-31)
 
 
