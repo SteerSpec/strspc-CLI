@@ -190,6 +190,53 @@ func TestStatusSourceStates(t *testing.T) {
 	}
 }
 
+// A damaged cache is reported, not a crash: a pointer can lack its timestamp.
+func TestStatusLatestWithoutTimestamp(t *testing.T) {
+	dir := statusProject(t, "1h", "github://o/r@latest/rules")
+	writeRefsFile(t, dir, ".strspc/cache/github/o/r/.meta/latest.json", `{"tag": "v2.0.0"}`)
+	writeCachedSource(t, dir, "v2.0.0", inheritRule{id: "CORE-001", state: "I"})
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "status", dir)
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, out, "latest is v2.0.0, resolved at an unknown time (stale)")
+	if s := runStatus(t, dir).Sources[0]; s.State != sourceStale || s.ResolvedAt != nil {
+		t.Errorf("got %+v", s)
+	}
+}
+
+func TestStatusBadLocalSources(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		state  string
+		text   string
+	}{
+		{"empty", `""`, sourceInvalid, "empty source"},
+		{"blank", `"   "`, sourceInvalid, "empty source"},
+		{"a file", "./file.txt", sourceInvalid, "not a directory"},
+		{"below a file", "./file.txt/rules", sourceInvalid, "invalid:"},
+		{"missing", "./gone/", sourceMissing, "directory not found"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := statusProject(t, "", tt.source)
+			writeRefsFile(t, dir, "file.txt", "x")
+			writeInheritEntity(t, filepath.Join(dir, "rules"), "APP", "", inheritRule{id: "APP-001", state: "I"})
+
+			report := runStatus(t, dir)
+			if s := report.Sources[0]; s.State != tt.state || s.Rules.Total != 0 {
+				t.Errorf("got %+v", s)
+			}
+			if report.Rules.Total != 0 {
+				t.Errorf("counted rules of a bad source: %+v", report.Rules)
+			}
+			out, err := testutil.ExecuteCommand(NewRootCmd(), "status", dir)
+			assertExit(t, err, exitOK)
+			testutil.AssertContains(t, out, tt.text)
+		})
+	}
+}
+
 // The configured TTL decides staleness, not the default.
 func TestStatusHonoursConfiguredTTL(t *testing.T) {
 	dir := statusProject(t, "48h", "github://o/r@latest/rules")

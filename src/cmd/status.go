@@ -187,6 +187,10 @@ func effectiveTTL(ttl time.Duration) time.Duration {
 func sourceStatus(cwd string, fetcher *remote.Fetcher, source string) (s statusSource, dir string) {
 	s = statusSource{Source: source}
 	switch {
+	case strings.TrimSpace(source) == "":
+		// It would otherwise resolve to the project itself.
+		s.State, s.Error = sourceInvalid, "empty source"
+		return s, ""
 	case strings.HasPrefix(source, remote.Scheme):
 		return remoteSourceStatus(source, fetcher)
 	case strings.Contains(source, "://"):
@@ -197,8 +201,16 @@ func sourceStatus(cwd string, fetcher *remote.Fetcher, source string) (s statusS
 	if !filepath.IsAbs(dir) {
 		dir = filepath.Join(cwd, dir)
 	}
-	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+	info, err := os.Stat(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		s.State = sourceMissing
+		return s, ""
+	case err != nil:
+		s.State, s.Error = sourceInvalid, err.Error()
+		return s, ""
+	case !info.IsDir():
+		s.State, s.Error = sourceInvalid, "not a directory"
 		return s, ""
 	}
 	s.State = sourceLocal
@@ -400,7 +412,11 @@ func sourceLine(s *statusSource, now time.Time) string {
 	case sourcePinned:
 		return head + ": pinned, cached" + rules
 	case sourceFresh, sourceStale:
-		state := fmt.Sprintf(": latest is %s, resolved %s", s.Ref, formatAge(now.Sub(*s.ResolvedAt)))
+		age := "at an unknown time" // a damaged pointer can lack its timestamp
+		if s.ResolvedAt != nil {
+			age = formatAge(now.Sub(*s.ResolvedAt))
+		}
+		state := fmt.Sprintf(": latest is %s, resolved %s", s.Ref, age)
 		if s.State == sourceStale {
 			state += " (stale)"
 		}
