@@ -143,6 +143,15 @@ func printableDiagnostic(s string) string {
 	return strings.Join(lines, "\n")
 }
 
+// printableJSON escapes the runner command prefixes in marshaled JSON, which a
+// CI step can print. A # only appears inside a string, so \u0023 leaves what
+// the document says unchanged.
+func printableJSON(data []byte) []byte {
+	return runnerCommandRe.ReplaceAllFunc(data, func(match []byte) []byte {
+		return append([]byte(`\u0023`), match[1:]...)
+	})
+}
+
 // writeWarning prints a warning, whose text can name a file or quote a
 // dependency, through printableDiagnostic.
 func writeWarning(w io.Writer, format string, args ...any) {

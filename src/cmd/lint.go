@@ -234,6 +234,6 @@ func writeJSON(w io.Writer, res *result.Result, explain bool) error {
 	if err != nil {
 		return fmt.Errorf("marshaling diagnostics: %w", err)
 	}
-	_, writeErr := w.Write(append(data, '\n'))
+	_, writeErr := w.Write(append(printableJSON(data), '\n'))
 	return writeErr
 }

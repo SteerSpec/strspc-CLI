@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -92,6 +93,65 @@ func TestChainResolverWarnIsSanitized(t *testing.T) {
 	}
 	if !strings.HasPrefix(got, "warning: ") {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestPrintableJSON(t *testing.T) {
+	values := []string{
+		"plain",
+		"a ##[error]b",
+		"a ##vso[task.setvariable]b",
+		"a ##VSO[x]b",
+		"a ###[error]b",
+		`back\slash ##[x]`,
+		"see ## heading",
+	}
+	for _, value := range values {
+		t.Run(value, func(t *testing.T) {
+			data, err := json.Marshal(map[string]string{"k": value})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := printableJSON(data)
+			if runnerCommandRe.Match(got) {
+				t.Errorf("runner command in %s", got)
+			}
+			var back map[string]string
+			if err := json.Unmarshal(got, &back); err != nil {
+				t.Fatalf("%s: %v", got, err)
+			}
+			if back["k"] != value {
+				t.Errorf("got %q, want %q", back["k"], value)
+			}
+		})
+	}
+}
+
+// Every JSON writer a CI step could print goes through printableJSON.
+func TestJSONWritersEscapeRunnerCommands(t *testing.T) {
+	report := &statusReport{Sources: []statusSource{{Source: "##vso[task.setvariable]x"}}}
+	diags := &result.Result{Diagnostics: []result.Diagnostic{{Code: "RF001", Message: "##[error]x"}}}
+	out := checkOutput{Error: "##[error]x"}
+
+	var buf bytes.Buffer
+	writers := map[string]func() error{
+		"status": func() error { return writeStatusJSON(&buf, report) },
+		"lint":   func() error { return writeJSON(&buf, diags, false) },
+		"check":  func() error { r := &checkRun{out: &buf}; return r.writeJSONOutput(&out) },
+	}
+	for name, write := range writers {
+		t.Run(name, func(t *testing.T) {
+			buf.Reset()
+			if err := write(); err != nil {
+				t.Fatal(err)
+			}
+			if runnerCommandRe.Match(buf.Bytes()) {
+				t.Errorf("runner command in %s", buf.String())
+			}
+			if !json.Valid(buf.Bytes()) {
+				t.Errorf("not JSON: %s", buf.String())
+			}
+		})
 	}
 }
 

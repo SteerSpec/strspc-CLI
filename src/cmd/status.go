@@ -309,7 +309,7 @@ func writeStatusJSON(w io.Writer, report *statusReport) error {
 	if err != nil {
 		return fmt.Errorf("marshaling status: %w", err)
 	}
-	_, err = w.Write(append(data, '\n'))
+	_, err = w.Write(append(printableJSON(data), '\n'))
 	return err
 }
 
