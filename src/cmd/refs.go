@@ -159,6 +159,9 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 	if err := r.resolveRules(); err != nil {
 		return nil, err
 	}
+	for _, d := range withLineInPath(r.notices) {
+		writeln(errOut, descStyle.Render(d.String()))
+	}
 
 	byOrigin := make(map[string][]*entity.File)
 	for _, rf := range r.resolved {

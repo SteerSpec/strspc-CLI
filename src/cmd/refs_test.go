@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -153,6 +155,23 @@ func TestRefsUnresolvedDependencyIsConfigurationError(t *testing.T) {
 	assertExit(t, err, exitConfig)
 	if strings.Contains(out, "RF001") {
 		t.Errorf("reported citations: %s", out)
+	}
+}
+
+// A non-fatal resolution warning reaches stderr, and stays out of the JSON.
+func TestRefsReportsResolutionNotices(t *testing.T) {
+	dir := setupRefsProject(t)
+	if err := os.MkdirAll(filepath.Join(dir, "empty"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeRawCheckConfig(t, dir, "rules:\n  - source: ./rules/\n    scope: local\n  - source: ./empty/\n    scope: local\n")
+
+	var out, errOut bytes.Buffer
+	err := runRefs(context.Background(), &out, &errOut, dir, nil, &refsOptions{format: formatHuman, jsonOutput: true})
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, errOut.String(), "RSV006")
+	if !json.Valid(out.Bytes()) {
+		t.Errorf("stdout is not JSON: %s", out.String())
 	}
 }
 
