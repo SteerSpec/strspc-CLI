@@ -112,6 +112,7 @@ func newRealmValidateCmd() *cobra.Command {
 		strict     bool
 		recursive  bool
 		core       bool
+		explain    bool
 	)
 
 	cmd := &cobra.Command{
@@ -143,7 +144,7 @@ func newRealmValidateCmd() *cobra.Command {
 			w := cmd.OutOrStdout()
 
 			if jsonOutput {
-				if err := writeJSON(w, res); err != nil {
+				if err := writeJSON(w, res, explain); err != nil {
 					return err
 				}
 				if !res.OK() {
@@ -153,9 +154,9 @@ func newRealmValidateCmd() *cobra.Command {
 			}
 
 			if recursive {
-				outputGroupedText(w, res, dir)
+				outputGroupedText(w, res, dir, explain)
 			} else {
-				outputText(w, res)
+				outputDiagnostics(w, res, explain)
 			}
 
 			if !res.OK() {
@@ -169,6 +170,7 @@ func newRealmValidateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&strict, "strict", false, "treat warnings as errors")
 	cmd.Flags().BoolVar(&recursive, "recursive", false, "validate sub-realms and check cross-entity references globally")
 	cmd.Flags().BoolVar(&core, "core", false, "path is the core realm: validate it against its own _schema/")
+	cmd.Flags().BoolVar(&explain, "explain", false, "explain what each diagnostic code means and how to fix it")
 
 	return cmd
 }
@@ -206,11 +208,12 @@ func mergeDiagnostics(base, extra *result.Result) {
 }
 
 // outputGroupedText prints diagnostics grouped by sub-realm with section headers.
-// Falls back to outputText if realm.json cannot be loaded or has no sub-realms.
-func outputGroupedText(w io.Writer, res *result.Result, dir string) {
+// Falls back to outputDiagnostics if realm.json cannot be loaded or has no
+// sub-realms.
+func outputGroupedText(w io.Writer, res *result.Result, dir string, explain bool) {
 	rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
 	if err != nil || len(rf.SubRealms) == 0 {
-		outputText(w, res)
+		outputDiagnostics(w, res, explain)
 		return
 	}
 
@@ -227,7 +230,7 @@ func outputGroupedText(w io.Writer, res *result.Result, dir string) {
 
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
-		outputText(w, res)
+		outputDiagnostics(w, res, explain)
 		return
 	}
 	for _, d := range res.Diagnostics {
@@ -261,7 +264,7 @@ func outputGroupedText(w io.Writer, res *result.Result, dir string) {
 	}
 
 	// Print each group.
-	var totalErrors, totalWarnings int
+	p := newDiagnosticPrinter(w, explain)
 	groups := make([]*group, 0, 1+len(rf.SubRealms))
 	groups = append(groups, rootGroup)
 	for _, sr := range rf.SubRealms {
@@ -273,28 +276,19 @@ func outputGroupedText(w io.Writer, res *result.Result, dir string) {
 			continue
 		}
 		writeln(w, brandStyle.Render(fmt.Sprintf("── %s ──", g.label)))
-		for _, d := range g.diags {
-			switch d.Severity {
-			case result.Error:
-				totalErrors++
-				writeln(w, brandStyle.Render(d.String()))
-			case result.Warning:
-				totalWarnings++
-				writeln(w, descStyle.Render(d.String()))
-			case result.Info:
-				writeln(w, descStyle.Render(d.String()))
-			}
+		for i := range g.diags {
+			p.print(&g.diags[i])
 		}
 		writeln(w)
 	}
 
-	if totalErrors == 0 && totalWarnings == 0 {
+	if p.errors == 0 && p.warnings == 0 {
 		writeln(w, brandStyle.Render("No errors or warnings found"))
 		return
 	}
 
-	summary := fmt.Sprintf("%d error(s), %d warning(s)", totalErrors, totalWarnings)
-	if totalErrors > 0 {
+	summary := fmt.Sprintf("%d error(s), %d warning(s)", p.errors, p.warnings)
+	if p.errors > 0 {
 		writeln(w, brandStyle.Render(summary))
 	} else {
 		writeln(w, descStyle.Render(summary))

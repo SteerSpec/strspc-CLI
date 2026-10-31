@@ -157,6 +157,7 @@ full data model.
 | `strspc diff` | Validate rule lifecycle transitions between a git ref and the working tree |
 | `strspc check` | Evaluate a code diff against the rules in `.strspc/config.yaml` |
 | `strspc refs` | Validate rule citations in Markdown and other text files |
+| `strspc explain` | Explain a diagnostic code, or list all of them with `--list` |
 | `strspc sync` | Resolve and cache the rule sources in `.strspc/config.yaml` |
 | `strspc render` | Convert entity JSON files to Markdown or normalized JSON |
 | `strspc realm init` | Scaffold a new Realm directory |
@@ -392,6 +393,18 @@ directory, and `dir/**` matches everything under `dir`. A file named as an argum
 whatever its extension. `refs` exits 0 when clean, 1 on findings and 2 on a configuration or
 resolution error.
 
+## Understand a diagnostic
+
+```bash
+strspc explain RM006                         # what a code means and how to fix it
+strspc explain --list                        # every code, with its title
+strspc lint rules/ --explain                 # explain findings as they are reported
+```
+
+`--explain` works on `lint`, `diff`, `realm validate` and `check`. Text output explains each code once,
+under its first occurrence. JSON output adds an `explanation` object to every diagnostic.
+`strspc check --format github` rejects the flag, because annotations cannot carry the text.
+
 ## Check code changes
 
 `strspc check` resolves the configured rule sources, collects a unified diff, and asks the AI provider
@@ -621,10 +634,10 @@ through the GitHub tarball API and cached under `.strspc/cache/`.
 
 ### Diagnostic codes
 
-Every code the manager emits (`RL`, `RD`, `RM`, `RR`, `RSV`, `RE`, `EC`) is listed in
+Every code the manager emits (`RL`, `RD`, `RM`, `RR`, `RSV`, `RE`, `EC`, `RF`) is listed in
 [SPEC §6.3](https://github.com/SteerSpec/strspc-manager/blob/main/docs/SPEC.md#63-diagnostic-codes).
 The CLI adds two warnings of its own, `CHK002` and `CHK003`, described under
-[check](#check-code-changes).
+[check](#check-code-changes). `strspc explain` covers all of them.
 
 ### Published files
 
