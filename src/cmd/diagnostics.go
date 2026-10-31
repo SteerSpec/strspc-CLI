@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/SteerSpec/strspc-manager/src/result"
 )
@@ -105,6 +107,30 @@ func plainText(s string) string {
 	return strings.ReplaceAll(s, "`", "")
 }
 
+// printableDiagnostic makes a diagnostic safe to print: its text can come from a
+// remote dependency. It keeps line breaks, so a multi-line message such as a
+// schema error stays readable, escapes every other control character, and marks
+// a line that a CI runner would otherwise read as a workflow command.
+func printableDiagnostic(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		var b strings.Builder
+		for _, r := range line {
+			if r != '\t' && unicode.IsControl(r) {
+				quoted := strconv.QuoteRune(r)
+				b.WriteString(quoted[1 : len(quoted)-1])
+			} else {
+				b.WriteRune(r)
+			}
+		}
+		lines[i] = b.String()
+		if strings.HasPrefix(strings.TrimSpace(lines[i]), "::") {
+			lines[i] = "> " + lines[i]
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 // diagnosticPrinter writes diagnostics as text and counts them. With explain,
 // each code is explained under its first occurrence only, so a run with many
 // identical findings stays readable.
@@ -124,12 +150,12 @@ func (p *diagnosticPrinter) print(d *result.Diagnostic) {
 	switch d.Severity {
 	case result.Error:
 		p.errors++
-		writeln(p.w, brandStyle.Render(d.String()))
+		writeln(p.w, brandStyle.Render(printableDiagnostic(d.String())))
 	case result.Warning:
 		p.warnings++
-		writeln(p.w, descStyle.Render(d.String()))
+		writeln(p.w, descStyle.Render(printableDiagnostic(d.String())))
 	case result.Info:
-		writeln(p.w, descStyle.Render(d.String()))
+		writeln(p.w, descStyle.Render(printableDiagnostic(d.String())))
 	}
 
 	if !p.explain || p.seen[d.Code] {

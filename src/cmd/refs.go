@@ -215,12 +215,11 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 	return sources, nil
 }
 
-// writeRefsNotices writes resolution diagnostics. Their text can come
-// from a remote dependency, so one line of it stays one printable line: a CI
-// runner reads stderr for workflow commands too.
+// writeRefsNotices writes resolution diagnostics, which stay out of the citation
+// findings a run reports.
 func writeRefsNotices(w io.Writer, notices []result.Diagnostic) {
 	for _, d := range withLineInPath(notices) {
-		writeln(w, descStyle.Render(printableText(d.String())))
+		writeln(w, descStyle.Render(printableDiagnostic(d.String())))
 	}
 }
 

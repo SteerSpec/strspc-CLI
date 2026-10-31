@@ -171,7 +171,7 @@ func (c *chainResolver) resolve(root locatedRealm) (map[string]render.Chain, err
 	out, res := realmresolve.New(realmresolve.WithCacheDir(cacheDir)).Resolve(c.ctx, root.RealmFile, root.dir)
 	for _, d := range res.Diagnostics {
 		if d.Severity == result.Error {
-			_, _ = fmt.Fprintf(c.errW, "warning: realm %s: %s: %s\n", root.Realm.ID, d.Code, d.Message)
+			_, _ = fmt.Fprintf(c.errW, "warning: realm %s: %s: %s\n", root.Realm.ID, d.Code, printableDiagnostic(d.Message))
 		}
 	}
 	chains := make(map[string]render.Chain, len(out.Inheritance))
