@@ -150,13 +150,15 @@ func runRefs(ctx context.Context, out, errOut io.Writer, cwd string, paths []str
 // refsSources resolves the configured sources the way check does, then turns
 // them and the realms they depend on into what the citations are judged
 // against. The sources come first, so a project's own rules win. Resolution
-// problems go to errOut, which keeps the output a single JSON document.
+// problems go to errOut through writeRefsNotices, which keeps the output a single
+// JSON document; check's own report of them is discarded.
 func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.Source, error) {
-	r := &checkRun{ctx: ctx, out: errOut, errOut: errOut, cwd: cwd, opts: checkOptions{format: formatHuman}}
+	r := &checkRun{ctx: ctx, out: io.Discard, errOut: errOut, cwd: cwd, opts: checkOptions{format: formatHuman}}
 	if err := r.loadConfig(); err != nil {
 		return nil, err
 	}
 	if err := r.resolveRules(); err != nil {
+		writeRefsNotices(errOut, r.resolutionDiags)
 		return nil, err
 	}
 	writeRefsNotices(errOut, r.notices)
@@ -200,7 +202,7 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 	return sources, nil
 }
 
-// writeRefsNotices writes non-fatal resolution diagnostics. Their text can come
+// writeRefsNotices writes resolution diagnostics. Their text can come
 // from a remote dependency, so one line of it stays one printable line: a CI
 // runner reads stderr for workflow commands too.
 func writeRefsNotices(w io.Writer, notices []result.Diagnostic) {

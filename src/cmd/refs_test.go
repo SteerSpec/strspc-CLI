@@ -176,6 +176,21 @@ func TestRefsReportsResolutionNotices(t *testing.T) {
 	}
 }
 
+// A fatal resolution error names its cause on stderr, on printable lines only.
+func TestRefsReportsResolutionFailure(t *testing.T) {
+	dir := setupRefsProject(t)
+	if err := os.RemoveAll(filepath.Join(dir, "lib")); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	err := runRefs(context.Background(), &out, &errOut, dir, nil, &refsOptions{format: formatHuman, jsonOutput: true})
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, errOut.String(), "dev.lib")
+	if out.Len() != 0 {
+		t.Errorf("stdout: %s", out.String())
+	}
+}
+
 func TestRefsSubRealm(t *testing.T) {
 	dir := setupRefsProject(t)
 	sub := filepath.Join(dir, "rules", "sub")

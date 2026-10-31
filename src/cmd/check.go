@@ -154,6 +154,8 @@ type checkRun struct {
 	notices  []result.Diagnostic // non-fatal resolution and cache diagnostics
 	inputs   []ruleeval.RuleInput
 
+	resolutionDiags []result.Diagnostic // every resolution diagnostic, when resolution failed
+
 	chains       map[string]*realmresolve.Inheritance     // resolved chains by inheriting EUID, unique across sources (RSV005)
 	sourceRealms map[string]string                        // realm ID by source, for sources with a manifest
 	realmTrees   map[string]*realmTree                    // resolved manifest by source, for sources with a manifest
@@ -364,6 +366,7 @@ func (r *checkRun) resolveRules() error {
 		}
 	}
 	if fatal > 0 {
+		r.resolutionDiags = diags
 		return r.fail(exitConfig, fmt.Errorf("rule resolution failed with %d error(s)", fatal), diags...)
 	}
 	r.resolved = resolved
