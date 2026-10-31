@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -138,6 +139,58 @@ func TestRealmDepAddNoRealm(t *testing.T) {
 		t.Fatal("expected error for missing realm.json, got nil")
 	}
 	testutil.AssertContains(t, err.Error(), "realm.json")
+}
+
+func TestRealmDepRewriteKeepsLanguage(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	path := filepath.Join(dir, "realm.json")
+
+	var manifest map[string]any
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unmarshalErr := json.Unmarshal(data, &manifest); unmarshalErr != nil {
+		t.Fatal(unmarshalErr)
+	}
+	manifest["realm"].(map[string]any)["language"] = "en"
+	data, err = json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if writeErr := os.WriteFile(path, data, 0o600); writeErr != nil {
+		t.Fatal(writeErr)
+	}
+
+	if _, addErr := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@0.1.0", "--dir", dir); addErr != nil {
+		t.Fatalf("unexpected error: %v", addErr)
+	}
+
+	rf, err := entity.LoadRealm(path)
+	if err != nil {
+		t.Fatalf("loading realm.json: %v", err)
+	}
+	if rf.Realm.Language != "en" {
+		t.Errorf("language after rewrite = %q, want en", rf.Realm.Language)
+	}
+}
+
+func TestRealmDepRewriteLeavesLanguageAbsent(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@0.1.0", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "realm.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "language") {
+		t.Errorf("an absent language must stay absent:\n%s", data)
+	}
 }
 
 func TestRealmDepRemoveBasic(t *testing.T) {

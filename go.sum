@@ -6,8 +6,8 @@ cloud.google.com/go/compute/metadata v0.5.0 h1:Zr0eK8JbFv6+Wi4ilXAR8FJ3wyNdpxHKJ
 cloud.google.com/go/compute/metadata v0.5.0/go.mod h1:aHnloV2TPI38yx4s9+wAZhHykWvVCfu7hQbF+9CWoiY=
 github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1Xbatp0=
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
-github.com/SteerSpec/strspc-manager v1.33.0 h1:jaU1g2y/Xcv5sYYhumoPimq9HUBFRGYNmk7rw4cENAw=
-github.com/SteerSpec/strspc-manager v1.33.0/go.mod h1:4m2rPg6v7gMBTUgKIdJHk9oAj3cUXHe6WE2pOvdYUfY=
+github.com/SteerSpec/strspc-manager v1.34.0 h1:eUy8Sz7B+Yh+yBtgFWYIK7oj7/aUdWj4q7wgFHMzj30=
+github.com/SteerSpec/strspc-manager v1.34.0/go.mod h1:4m2rPg6v7gMBTUgKIdJHk9oAj3cUXHe6WE2pOvdYUfY=
 github.com/anthropics/anthropic-sdk-go v1.82.0 h1:A82J+yHEMbQ3+7ObCagOX4tVm1uyBhELCHd2dDYZYuo=
 github.com/anthropics/anthropic-sdk-go v1.82.0/go.mod h1:GThfYqPJoaQ/6pmibCI98Cr4y5su2FXMUHn3NrSSnIc=
 github.com/aws/aws-sdk-go-v2 v1.38.0 h1:UCRQ5mlqcFk9HJDIqENSLR3wiG1VTWlyUfLDEvY7RxU=
