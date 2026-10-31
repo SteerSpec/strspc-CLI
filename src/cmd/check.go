@@ -148,8 +148,9 @@ type checkRun struct {
 	notices  []result.Diagnostic // non-fatal resolution and cache diagnostics
 	inputs   []ruleeval.RuleInput
 
-	chains       map[string]*realmresolve.Inheritance // resolved chains by inheriting EUID, unique across sources (RSV005)
-	sourceRealms map[string]string                    // realm ID by source, for sources with a manifest
+	chains       map[string]*realmresolve.Inheritance     // resolved chains by inheriting EUID, unique across sources (RSV005)
+	sourceRealms map[string]string                        // realm ID by source, for sources with a manifest
+	extended     map[string]map[string][]inherit.Extended // extends targets by source, then by qualified rule ID
 
 	repoDir    string
 	diffSource diffSource
@@ -367,13 +368,16 @@ func (r *checkRun) resolveRules() error {
 // has a manifest. Dependencies are read-only references for the realm's
 // own authoring (SPEC §2.8); their rules are not evaluated here, only
 // resolved so that a broken or colliding dependency surfaces in the check.
-// The exception is an entity's inheritance chain, kept for buildInputs: the
-// rules it inherits are that entity's rules (ENT-009). Every realm is
-// resolved: one with nothing to fetch can still hold a broken reference.
+// The exceptions, kept for buildInputs, are an entity's inheritance chain, as
+// the rules it inherits are that entity's rules (ENT-009), and the rules an
+// `extends` note names, which are read with the rule that extends them. Every
+// realm is resolved: one with nothing to fetch can still hold a broken
+// reference.
 func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 	var diags []result.Diagnostic
 	r.chains = make(map[string]*realmresolve.Inheritance)
 	r.sourceRealms = make(map[string]string)
+	r.extended = make(map[string]map[string][]inherit.Extended)
 	for _, e := range r.entries {
 		dir, err := r.sourceDir(e)
 		if err != nil || dir == "" {
@@ -414,6 +418,7 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 		for _, c := range out.Inheritance {
 			r.chains[c.Entity.Entity.Entity.ID] = c
 		}
+		r.extended[e.Source] = out.Extended
 		r.verbosef("realm %s: %d dependency(ies) resolved, %d inheritance chain(s)", rf.Realm.ID, len(out.Dependencies), len(out.Inheritance))
 	}
 	return diags
@@ -473,8 +478,9 @@ func (r *checkRun) collectDiff() error {
 // buildInputs flattens the resolved files into rule inputs, tagging each
 // with its source and scope so the provider can restrict local rules to
 // their own directory and the cache key reflects both. An entity with an
-// inheritance chain contributes its effective rule set, and a rule of a
-// configured source that inheriting entities replace is annotated as such.
+// inheritance chain contributes its effective rule set, a rule of a configured
+// source that inheriting entities replace is annotated as such, and a rule
+// with an `extends` note carries the rules it names.
 func (r *checkRun) buildInputs() {
 	labelBase := r.repoDir
 	if labelBase == "" {
@@ -497,6 +503,7 @@ func (r *checkRun) buildInputs() {
 		}
 		if realmID, ok := r.sourceRealms[rf.Origin.Source]; ok {
 			ruleeval.AnnotateOverriddenBy(ins, realmID, overriddenBy)
+			ruleeval.AnnotateExtended(ins, realmID, r.extended[rf.Origin.Source])
 		}
 		r.inputs = append(r.inputs, ins...)
 	}

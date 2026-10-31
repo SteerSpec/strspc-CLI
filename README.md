@@ -255,7 +255,10 @@ resolved: warning `CHK003` says its inherited rules are not evaluated.
 
 **Relation notes.** The check reads realm-qualified references in the `supersedes`, `extends` and `related`
 notes of live rules, and exits 2 when the realm is not declared (`RR017`) or holds no such rule (`RR018`), also
-with `--static-only`. `strspc realm validate` does not run this check.
+with `--static-only`. It warns when a note or a rule body names a rule that is not live (`RR019`), and when a
+rule body names an undeclared realm (`RR020`) or a rule that realm does not hold (`RR021`). `strspc realm validate`
+does not run this check. Rules named in an `extends` note are sent to the evaluator with the rule that extends
+them, so the rule is read in full; the verdict is still for that rule alone.
 
 **Configuration validation.** Before any source is resolved, the check rejects a config it cannot work
 with and exits 2: an empty `rules:` list (core rule SPCFG-004 requires at least one source; `strspc init`
