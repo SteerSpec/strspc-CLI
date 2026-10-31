@@ -225,8 +225,9 @@ strspc entity rehash --all                                     # fix hashes afte
 CLI scans `sub_entities[]` of every entity file under `--dir` and refreshes the parent hash.
 
 **Superseding.** Rules that have left Draft are immutable, so `rule supersede` creates a Draft that
-replaces them. It leaves the original unchanged: when the new rule reaches Implemented, move the old
-one to Retired with `rule retire`, or `strspc diff` warns (`RD006`).
+replaces them. It leaves the original unchanged: when the new rule reaches Implemented, the old one
+must be Retired, or `strspc diff` warns (`RD006`). `rule retire` only works from Implemented, so
+promote a Published rule first. A rule that's already Retired needs nothing.
 
 **Notes.** Types are `rationale`, `example`, `counter_example`, `reference`, `applies_to`, `changelog`,
 `clarification`, `deprecation_notice`, `supersedes`, `extends` and `related`. A note can be revised
@@ -262,9 +263,9 @@ doesn't declare it in the parent: add the directory name to `sub_realms` in the 
 or `realm validate --recursive` skips it.
 
 **Keep dependencies current.** Dependabot and Renovate can't read `realm.json`, so a pinned dependency
-drifts silently. `strspc realm dep upgrade` moves each `github://` dependency to the latest release of
-its repository, rewrites `version` and the `@vX.Y.Z` in `source`, then validates the realm (strict,
-recursive).
+drifts silently. `strspc realm dep upgrade` moves each `github://` dependency pinned to a release tag
+to the latest release of its repository, rewrites `version` and the `@vX.Y.Z` in `source`, then
+validates the realm (strict, recursive).
 
 ```bash
 strspc realm dep upgrade --check    # exit 1 if an upgrade is available; writes nothing
@@ -273,8 +274,8 @@ strspc realm dep upgrade dev.steerspec.core --to 1.12.0
 ```
 
 If the new version breaks the realm, `realm.json` is restored and the command exits non-zero.
-Dependencies are never downgraded, and sources that aren't `github://` references are skipped. See
-[GitHub sources](#github-sources) for private repositories.
+Dependencies are never downgraded. Sources that aren't `github://` references, and those on `@latest`,
+a branch or a commit SHA, are skipped. See [GitHub sources](#github-sources) for private repositories.
 
 ## Configure a project
 
