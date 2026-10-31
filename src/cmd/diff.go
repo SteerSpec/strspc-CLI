@@ -20,6 +20,7 @@ func newDiffCmd() *cobra.Command {
 		prNumber   int
 		jsonOutput bool
 		strict     bool
+		explain    bool
 	)
 
 	cmd := &cobra.Command{
@@ -73,7 +74,7 @@ func newDiffCmd() *cobra.Command {
 			w := cmd.OutOrStdout()
 
 			if jsonOutput {
-				if writeErr := writeJSON(w, res); writeErr != nil {
+				if writeErr := writeJSON(w, res, explain); writeErr != nil {
 					return writeErr
 				}
 				if !res.OK() {
@@ -82,7 +83,7 @@ func newDiffCmd() *cobra.Command {
 				return nil
 			}
 
-			outputText(w, res)
+			outputDiagnostics(w, res, explain)
 
 			if !res.OK() {
 				return fmt.Errorf("diff found %d error(s)", len(res.Errors()))
@@ -95,6 +96,7 @@ func newDiffCmd() *cobra.Command {
 	cmd.Flags().IntVar(&prNumber, "pr", 0, "GitHub PR number (resolves base ref via gh CLI; requires gh)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output diagnostics as JSON")
 	cmd.Flags().BoolVar(&strict, "strict", false, "treat warnings as errors")
+	cmd.Flags().BoolVar(&explain, "explain", false, "explain what each diagnostic code means and how to fix it")
 
 	return cmd
 }

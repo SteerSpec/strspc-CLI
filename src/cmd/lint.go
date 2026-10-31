@@ -36,6 +36,7 @@ func newLintCmd() *cobra.Command {
 		jsonOutput    bool
 		strict        bool
 		core          bool
+		explain       bool
 		schemaVersion string
 	)
 
@@ -91,7 +92,7 @@ func newLintCmd() *cobra.Command {
 			w := cmd.OutOrStdout()
 
 			if jsonOutput {
-				if err := writeJSON(w, res); err != nil {
+				if err := writeJSON(w, res, explain); err != nil {
 					return err
 				}
 				if !res.OK() {
@@ -100,7 +101,7 @@ func newLintCmd() *cobra.Command {
 				return nil
 			}
 
-			outputText(w, res)
+			outputDiagnostics(w, res, explain)
 
 			if !res.OK() {
 				errs := res.Errors()
@@ -115,6 +116,7 @@ func newLintCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output diagnostics as JSON")
 	cmd.Flags().BoolVar(&strict, "strict", false, "treat warnings as errors")
 	cmd.Flags().BoolVar(&core, "core", false, "the path is in the core realm: validate against its own _schema/")
+	cmd.Flags().BoolVar(&explain, "explain", false, "explain what each diagnostic code means and how to fix it")
 	cmd.Flags().StringVar(&schemaVersion, "schema-version", "v1", "entity schema version")
 
 	return cmd
@@ -199,43 +201,36 @@ func lintDirPerFile(ctx context.Context, linter *rulelint.Linter, dir string) *r
 }
 
 func outputText(w io.Writer, res *result.Result) {
-	var errors, warnings int
-	for _, d := range res.Diagnostics {
-		switch d.Severity {
-		case result.Error:
-			errors++
-			writeln(w, brandStyle.Render(d.String()))
-		case result.Warning:
-			warnings++
-			writeln(w, descStyle.Render(d.String()))
-		case result.Info:
-			writeln(w, descStyle.Render(d.String()))
-		}
+	outputDiagnostics(w, res, false)
+}
+
+// outputDiagnostics prints diagnostics and a summary, explaining each code when
+// explain is set.
+func outputDiagnostics(w io.Writer, res *result.Result, explain bool) {
+	p := newDiagnosticPrinter(w, explain)
+	for i := range res.Diagnostics {
+		p.print(&res.Diagnostics[i])
 	}
 
-	if errors == 0 && warnings == 0 {
+	if p.errors == 0 && p.warnings == 0 {
 		writeln(w, brandStyle.Render("No errors or warnings found"))
 		return
 	}
 
 	writeln(w)
-	summary := fmt.Sprintf("%d error(s), %d warning(s)", errors, warnings)
-	if errors > 0 {
+	summary := fmt.Sprintf("%d error(s), %d warning(s)", p.errors, p.warnings)
+	if p.errors > 0 {
 		writeln(w, brandStyle.Render(summary))
 	} else {
 		writeln(w, descStyle.Render(summary))
 	}
 }
 
-// writeJSON writes diagnostics as a JSON array. It does not inspect result
-// severity — callers are responsible for returning an appropriate error.
-func writeJSON(w io.Writer, res *result.Result) error {
-	diags := res.Diagnostics
-	if diags == nil {
-		diags = []result.Diagnostic{}
-	}
-
-	data, err := json.MarshalIndent(diags, "", "  ")
+// writeJSON writes diagnostics as a JSON array, with an explanation on each
+// when explain is set. It does not inspect result severity — callers are
+// responsible for returning an appropriate error.
+func writeJSON(w io.Writer, res *result.Result, explain bool) error {
+	data, err := json.MarshalIndent(explainDiagnostics(res.Diagnostics, explain), "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshaling diagnostics: %w", err)
 	}
