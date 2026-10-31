@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -340,7 +341,24 @@ func TestRefsSkipsBinaryFiles(t *testing.T) {
 	assertExit(t, err, exitOK)
 }
 
+func TestPrintablePath(t *testing.T) {
+	tests := []struct{ path, want string }{
+		{"docs/a.md", "docs/a.md"},
+		{"docs/é.md", "docs/é.md"},
+		{"a\x1b[31m.md", `a\x1b[31m.md`},
+		{"a\n.md", `a\n.md`},
+	}
+	for _, tt := range tests {
+		if got := printablePath(tt.path); got != tt.want {
+			t.Errorf("printablePath(%q) = %q, want %q", tt.path, got, tt.want)
+		}
+	}
+}
+
 func TestRefsPathWithControlCharacters(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows file names can't hold control characters")
+	}
 	dir := setupRefsProject(t)
 	name := "a\x1b[31m.md"
 	writeRefsFile(t, dir, name, "APP-002\n")
