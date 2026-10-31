@@ -58,7 +58,7 @@ flowchart LR
 Dependencies point one way, and releases land in the same order. Rule logic lives in the manager;
 the CLI presents its results. [strspc-spec](https://github.com/SteerSpec/strspc-spec) holds the rules
 that govern these tiers, and this repository owns the `dev.steerspec.cli` realm in [`rules/`](rules)
-(`CFG`, `CMD`, `CONV`), pinned to `dev.steerspec.core` 1.12.0.
+(`CFG`, `CMD`, `CONV`), which pins `dev.steerspec.core` in [`rules/realm.json`](rules/realm.json).
 
 | Command | Manager modules (SPEC §6.2) |
 | ------- | --------------------------- |
@@ -272,7 +272,7 @@ validates the realm (strict, recursive).
 ```bash
 strspc realm dep upgrade --check    # exit 1 if an upgrade is available; writes nothing
 strspc realm dep upgrade            # upgrade every dependency
-strspc realm dep upgrade dev.steerspec.core --to 1.12.0
+strspc realm dep upgrade dev.steerspec.core --to X.Y.Z
 ```
 
 If the new version breaks the realm, `realm.json` is restored and the command exits non-zero.
