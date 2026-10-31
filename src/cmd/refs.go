@@ -180,9 +180,11 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 
 	seen := make(map[string]bool)
 	add := func(realm *realmresolve.ResolvedRealm, format *entity.RuleIdentifierFormat) {
-		if id := realm.Realm.Realm.ID; !seen[id] {
-			seen[id] = true
-			sources = append(sources, resolvedRealmSources(realm, format)...)
+		for _, s := range resolvedRealmSources(realm, format) {
+			if !seen[s.RealmID] {
+				seen[s.RealmID] = true
+				sources = append(sources, s)
+			}
 		}
 	}
 	// A sub-realm can pin another version of a dependency, so the project's own
@@ -269,20 +271,24 @@ type refsSubRealmDir struct {
 	realmID string
 }
 
-// refsSubRealmDirs reads the sub-realms realm declares. A dependency's manifest
-// isn't this project's, so a name that leaves the Realm is ignored. So is one
-// with no readable manifest: its rules stay with the Realm, where an unqualified
-// citation still finds them.
+// refsSubRealmDirs reads the sub-realms realm declares. realm-resolve doesn't
+// check the sub-realms of a dependency, whose manifest isn't this project's, so
+// its rules apply here: a clean directory name (RR007), the ID
+// <parent>.<directory> (RR009), and no nesting (RR010). A sub-realm that breaks
+// one can't claim another Realm's ID: its rules stay with the Realm, where an
+// unqualified citation still finds them.
 func refsSubRealmDirs(realm *realmresolve.ResolvedRealm) []refsSubRealmDir {
 	var subs []refsSubRealmDir
 	for _, name := range realm.Realm.SubRealms {
-		if !filepath.IsLocal(name) {
+		if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) || !filepath.IsLocal(name) {
 			continue
 		}
 		dir := filepath.Join(realm.Dir, name)
-		if rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json")); err == nil {
-			subs = append(subs, refsSubRealmDir{dir: dir, realmID: rf.Realm.ID})
+		rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
+		if err != nil || rf.Realm.ID != realm.Realm.Realm.ID+"."+name || len(rf.SubRealms) > 0 {
+			continue
 		}
+		subs = append(subs, refsSubRealmDir{dir: dir, realmID: rf.Realm.ID})
 	}
 	return subs
 }

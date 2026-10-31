@@ -288,23 +288,37 @@ func TestRefsSubRealmOfDependency(t *testing.T) {
 	}
 }
 
-// A dependency names its sub-realms in a manifest this project doesn't control,
-// so a name can't reach a manifest outside the dependency.
-func TestResolvedRealmSourcesStaysInsideTheRealm(t *testing.T) {
-	dir := t.TempDir()
-	writeRealmManifest(t, filepath.Join(dir, "evil"), "dev.evil")
-	root := filepath.Join(dir, "lib")
-	file := &entity.File{Entity: entity.Entity{ID: "ACCT"}}
-	realm := &realmresolve.ResolvedRealm{
-		Realm:    &entity.RealmFile{SubRealms: []string{"../evil"}},
-		Dir:      root,
-		EUIDs:    map[string]string{"ACCT": filepath.Join(root, "ACCT.json")},
-		Entities: map[string]*entity.File{"ACCT": file},
+// A dependency's manifest isn't this project's, so a sub-realm that breaks the
+// rules realm-resolve applies can't take a realm ID: its rules stay with the
+// dependency.
+func TestResolvedRealmSourcesRejectsBadSubRealms(t *testing.T) {
+	tests := []struct {
+		name     string
+		subRealm string
+		manifest string
+	}{
+		{"leaves the realm", "../evil", `{"realm": {"id": "dev.lib.evil", "title": "t", "version": "1.0.0"}}`},
+		{"more than one directory", "inner/deep", `{"realm": {"id": "dev.lib.inner/deep", "title": "t", "version": "1.0.0"}}`},
+		{"claims another realm", "inner", `{"realm": {"id": "dev.steerspec.core", "title": "t", "version": "1.0.0"}}`},
+		{"nests sub-realms", "inner", `{"realm": {"id": "dev.lib.inner", "title": "t", "version": "1.0.0"}, "sub_realms": ["more"]}`},
 	}
-	realm.Realm.Realm.ID = "dev.lib"
-	sources := resolvedRealmSources(realm, nil)
-	if len(sources) != 1 || sources[0].RealmID != "dev.lib" {
-		t.Errorf("got %+v", sources)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			root := filepath.Join(dir, "lib")
+			writeRefsFile(t, root, filepath.Join(tt.subRealm, "realm.json"), tt.manifest)
+			realm := &realmresolve.ResolvedRealm{
+				Realm:    &entity.RealmFile{SubRealms: []string{tt.subRealm}},
+				Dir:      root,
+				EUIDs:    map[string]string{"ACCT": filepath.Join(root, tt.subRealm, "ACCT.json")},
+				Entities: map[string]*entity.File{"ACCT": {Entity: entity.Entity{ID: "ACCT"}}},
+			}
+			realm.Realm.Realm.ID = "dev.lib"
+			sources := resolvedRealmSources(realm, nil)
+			if len(sources) != 1 || sources[0].RealmID != "dev.lib" || len(sources[0].Entities) != 1 {
+				t.Errorf("got %+v", sources)
+			}
+		})
 	}
 }
 
