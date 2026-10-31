@@ -174,6 +174,27 @@ func TestRenderWarnsWhenChainCannotBeResolved(t *testing.T) {
 	}
 }
 
+// A realm ID comes from a manifest as it is, and render prints it in a warning.
+func TestRenderRealmWarningIsSanitized(t *testing.T) {
+	dir, _ := setupInheritProject(t, "null", "./rules/")
+	rules := filepath.Join(dir, "rules")
+	writeInheritEntity(t, rules, "SAVACCT", "dev.lib:ACCNT", inheritRule{id: "SAVACCT-001", state: "P"})
+	manifest := `{"realm": {"id": "dev.app\u001b[31m\n::error::forged", "title": "t", "version": "1.0.0"},
+	  "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}]}`
+	if err := os.WriteFile(filepath.Join(rules, "realm.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "render", filepath.Join(rules, "SAVACCT.json"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, out, "RR013")
+	if strings.Contains(out, "\x1b[31m") || strings.Contains(out, "\n::") {
+		t.Errorf("control character or workflow command in output: %q", out)
+	}
+}
+
 func TestRenderWarnsWhenInheritsHasNoRealm(t *testing.T) {
 	dir := t.TempDir()
 	writeInheritEntity(t, dir, "SAVACCT", "dev.lib:ACCT", inheritRule{id: "SAVACCT-001", state: "P"})

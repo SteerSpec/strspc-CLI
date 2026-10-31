@@ -25,6 +25,10 @@ func TestPrintableDiagnostic(t *testing.T) {
 		{"indented workflow command", "bad\n  ::error::forged", "bad\n  |   ::error::forged"},
 		{"forged tool line", "bad\n[error] RL001: forged", "bad\n  | [error] RL001: forged"},
 		{"legacy command prefix", "a ##[error]b", `a #\#[error]b`},
+		{"azure command prefix", "a ##vso[task.setvariable]b", `a #\#vso[task.setvariable]b`},
+		{"azure prefix in any case", "a ##VSO[x]b", `a #\#VSO[x]b`},
+		{"a third hash", "a ###[error]b", `a ##\#[error]b`},
+		{"hashes on their own", "see ## heading", "see ## heading"},
 		{"right-to-left override", "a\u202eb", `a\u202eb`},
 		{"zero-width joiner", "a\u200db", `a\u200db`},
 	}

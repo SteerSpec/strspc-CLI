@@ -3,6 +3,7 @@ package cmd
 import (
 	"cmp"
 	"io"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -111,13 +112,16 @@ func plainText(s string) string {
 // diagnostic, so the text never decides how a line of output begins.
 const diagnosticContinuation = "  | "
 
+// runnerCommandRe matches the command prefixes of GitHub Actions (##[) and
+// Azure Pipelines (##vso[).
+var runnerCommandRe = regexp.MustCompile(`(?i)##(vso)?\[`)
+
 // printableDiagnostic makes a line of output safe to print: its text can come
 // from a remote dependency. A multi-line message such as a schema error stays
 // readable, but each line after the first starts with diagnosticContinuation,
 // so a CI runner can't read it as a workflow command. Control and format
-// characters are escaped, tabs aside, and so is the ##[ command prefix, which
-// runners accept anywhere in a line. The caller's own prefix starts the first
-// line.
+// characters are escaped, tabs aside, and so are the command prefixes runners
+// accept anywhere in a line. The caller's own prefix starts the first line.
 func printableDiagnostic(s string) string {
 	lines := strings.Split(s, "\n")
 	for i, line := range lines {
@@ -133,7 +137,7 @@ func printableDiagnostic(s string) string {
 				b.WriteRune(r)
 			}
 		}
-		lines[i] = strings.ReplaceAll(b.String(), "##[", `#\#[`)
+		lines[i] = runnerCommandRe.ReplaceAllString(b.String(), `#\#$1[`)
 	}
 	return strings.Join(lines, "\n")
 }
