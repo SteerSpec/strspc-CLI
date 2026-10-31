@@ -107,26 +107,33 @@ func plainText(s string) string {
 	return strings.ReplaceAll(s, "`", "")
 }
 
-// printableDiagnostic makes a diagnostic safe to print: its text can come from a
-// remote dependency. It keeps line breaks, so a multi-line message such as a
-// schema error stays readable, escapes every other control character, and marks
-// a line that a CI runner would otherwise read as a workflow command.
+// diagnosticContinuation starts every line after the first of a printed
+// diagnostic, so the text never decides how a line of output begins.
+const diagnosticContinuation = "  | "
+
+// printableDiagnostic makes a line of output safe to print: its text can come
+// from a remote dependency. A multi-line message such as a schema error stays
+// readable, but each line after the first starts with diagnosticContinuation,
+// so a CI runner can't read it as a workflow command. Control and format
+// characters are escaped, tabs aside, and so is the ##[ command prefix, which
+// runners accept anywhere in a line. The caller's own prefix starts the first
+// line.
 func printableDiagnostic(s string) string {
 	lines := strings.Split(s, "\n")
 	for i, line := range lines {
 		var b strings.Builder
+		if i > 0 {
+			b.WriteString(diagnosticContinuation)
+		}
 		for _, r := range line {
-			if r != '\t' && unicode.IsControl(r) {
+			if r != '\t' && (unicode.IsControl(r) || unicode.Is(unicode.Cf, r)) {
 				quoted := strconv.QuoteRune(r)
 				b.WriteString(quoted[1 : len(quoted)-1])
 			} else {
 				b.WriteRune(r)
 			}
 		}
-		lines[i] = b.String()
-		if strings.HasPrefix(strings.TrimSpace(lines[i]), "::") {
-			lines[i] = "> " + lines[i]
-		}
+		lines[i] = strings.ReplaceAll(b.String(), "##[", `#\#[`)
 	}
 	return strings.Join(lines, "\n")
 }
