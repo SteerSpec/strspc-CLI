@@ -157,6 +157,23 @@ func TestCheckStaticOnlyFailsOnMistypedInheritsWithoutDependencies(t *testing.T)
 	testutil.AssertContains(t, output, "RR013")
 }
 
+// A realm with no dependencies, sub-realms or inheritance can still hold a
+// relation note qualified with a realm it never declared, so realm-resolve
+// runs for every realm.
+func TestCheckResolvesRealmWithNothingToResolve(t *testing.T) {
+	dir := t.TempDir()
+	rules := filepath.Join(dir, "rules")
+	writeRealmManifest(t, rules, "dev.app")
+	writeInheritEntity(t, rules, "SAVACCT", "", inheritRule{id: "SAVACCT-001", state: "P"})
+	writeCheckConfig(t, dir, "./rules/", "null", nil, nil)
+
+	output, err := runCheckCmd(t, dir, "--static-only", "--verbose")
+	if err != nil {
+		t.Fatalf("check: %v\n%s", err, output)
+	}
+	testutil.AssertContains(t, output, "realm dev.app: 0 dependency(ies) resolved")
+}
+
 func TestCheckStaticOnlyFailsOnUnknownOverrideTarget(t *testing.T) {
 	dir, _ := setupInheritProject(t, "null", "./rules/")
 	writeInheritEntity(t, filepath.Join(dir, "rules"), "SAVACCT", "dev.lib:ACCT",
