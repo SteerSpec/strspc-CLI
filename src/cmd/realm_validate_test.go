@@ -440,7 +440,7 @@ func TestRealmValidateRecursiveCrossRef(t *testing.T) {
       "body": "A rule that supersedes a missing rule.",
       "added_by": "@test",
       "added_at": "2026-01-01",
-      "supersedes": "MISSING-999"
+      "supersedes": "SUB-999"
     }
   ],
   "notes": []
@@ -456,7 +456,7 @@ func TestRealmValidateRecursiveCrossRef(t *testing.T) {
 		t.Fatalf("expected realm validate to succeed despite RL012 warning, got error: %v", err)
 	}
 	testutil.AssertContains(t, output, "RL012")
-	testutil.AssertContains(t, output, "MISSING-999")
+	testutil.AssertContains(t, output, "SUB-999")
 }
 
 func TestRealmValidateRecursiveGroupedOutput(t *testing.T) {
