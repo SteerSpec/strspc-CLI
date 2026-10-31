@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/realmresolve"
 	"github.com/SteerSpec/strspc-manager/src/result"
 )
 
@@ -258,16 +260,52 @@ func TestRefsProjectPinWinsOverSubRealmPin(t *testing.T) {
 }
 
 func TestRefsSubRealmOfDependency(t *testing.T) {
-	dir := setupRefsProject(t)
-	inner := filepath.Join(dir, "lib", "inner")
-	writeRealmManifest(t, inner, "dev.lib.inner")
-	writeInheritEntity(t, inner, "INNR", "", inheritRule{id: "INNR-001", state: "I"})
-	writeRefsFile(t, dir, "lib/realm.json",
-		`{"realm": {"id": "dev.lib", "title": "t", "version": "1.0.0"}, "sub_realms": ["inner"]}`)
-	writeRefsFile(t, dir, "a.md", "INNR-001\n")
-	out, err := runRefsCmd(t)
-	assertExit(t, err, exitOK)
-	testutil.AssertContains(t, out, "No errors or warnings found")
+	tests := []struct {
+		name string
+		text string
+		exit int
+		code string
+	}{
+		{"unqualified", "INNR-001", exitOK, ""},
+		{"its own realm", "dev.lib.inner:INNR-001", exitOK, ""},
+		{"judged in its own realm", "dev.lib.inner:INNR-002", exitViolations, "RF002"},
+		{"the dependency does not hold it", "dev.lib:INNR-001", exitViolations, "RF001"},
+		{"the dependency keeps its own rules", "dev.lib:ACCT-001", exitOK, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := setupRefsProject(t)
+			inner := filepath.Join(dir, "lib", "inner")
+			writeRealmManifest(t, inner, "dev.lib.inner")
+			writeInheritEntity(t, inner, "INNR", "", inheritRule{id: "INNR-001", state: "I"}, inheritRule{id: "INNR-002", state: "A"})
+			writeRefsFile(t, dir, "lib/realm.json",
+				`{"realm": {"id": "dev.lib", "title": "t", "version": "1.0.0"}, "sub_realms": ["inner"]}`)
+			writeRefsFile(t, dir, "a.md", tt.text+"\n")
+			out, err := runRefsCmd(t)
+			assertExit(t, err, tt.exit)
+			testutil.AssertContains(t, out, tt.code)
+		})
+	}
+}
+
+// A dependency names its sub-realms in a manifest this project doesn't control,
+// so a name can't reach a manifest outside the dependency.
+func TestResolvedRealmSourcesStaysInsideTheRealm(t *testing.T) {
+	dir := t.TempDir()
+	writeRealmManifest(t, filepath.Join(dir, "evil"), "dev.evil")
+	root := filepath.Join(dir, "lib")
+	file := &entity.File{Entity: entity.Entity{ID: "ACCT"}}
+	realm := &realmresolve.ResolvedRealm{
+		Realm:    &entity.RealmFile{SubRealms: []string{"../evil"}},
+		Dir:      root,
+		EUIDs:    map[string]string{"ACCT": filepath.Join(root, "ACCT.json")},
+		Entities: map[string]*entity.File{"ACCT": file},
+	}
+	realm.Realm.Realm.ID = "dev.lib"
+	sources := resolvedRealmSources(realm, nil)
+	if len(sources) != 1 || sources[0].RealmID != "dev.lib" {
+		t.Errorf("got %+v", sources)
+	}
 }
 
 // A path that leaves the project through a link is outside it.

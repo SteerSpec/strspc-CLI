@@ -182,7 +182,7 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 	add := func(realm *realmresolve.ResolvedRealm, format *entity.RuleIdentifierFormat) {
 		if id := realm.Realm.Realm.ID; !seen[id] {
 			seen[id] = true
-			sources = append(sources, resolvedRealmSource(realm, format))
+			sources = append(sources, resolvedRealmSources(realm, format)...)
 		}
 	}
 	// A sub-realm can pin another version of a dependency, so the project's own
@@ -233,18 +233,58 @@ func withoutSubRealms(entities []*entity.File, subs []*realmresolve.ResolvedReal
 	})
 }
 
-// resolvedRealmSource converts a resolved Realm, in a stable order.
-func resolvedRealmSource(realm *realmresolve.ResolvedRealm, format *entity.RuleIdentifierFormat) rulerefs.Source {
+// resolvedRealmSources converts a resolved Realm, in a stable order. A dependency
+// is walked recursively, so its entities include those of its sub-realms, which
+// become sources of their own under their own realm IDs.
+func resolvedRealmSources(realm *realmresolve.ResolvedRealm, format *entity.RuleIdentifierFormat) []rulerefs.Source {
+	id := realm.Realm.Realm.ID
+	subs := refsSubRealmDirs(realm)
 	euids := make([]string, 0, len(realm.Entities))
 	for euid := range realm.Entities {
 		euids = append(euids, euid)
 	}
 	slices.Sort(euids)
-	entities := make([]*entity.File, 0, len(euids))
+
+	byRealm := make(map[string][]*entity.File)
 	for _, euid := range euids {
-		entities = append(entities, realm.Entities[euid])
+		owner := id
+		for _, sub := range subs {
+			if strings.HasPrefix(realm.EUIDs[euid], sub.dir+string(filepath.Separator)) {
+				owner = sub.realmID
+			}
+		}
+		byRealm[owner] = append(byRealm[owner], realm.Entities[euid])
 	}
-	return rulerefs.Source{RealmID: realm.Realm.Realm.ID, Format: format, Entities: entities}
+
+	sources := []rulerefs.Source{{RealmID: id, Format: format, Entities: byRealm[id]}}
+	for _, sub := range subs {
+		sources = append(sources, rulerefs.Source{RealmID: sub.realmID, Format: format, Entities: byRealm[sub.realmID]})
+	}
+	return sources
+}
+
+// refsSubRealmDir is a declared sub-realm of a resolved Realm.
+type refsSubRealmDir struct {
+	dir     string
+	realmID string
+}
+
+// refsSubRealmDirs reads the sub-realms realm declares. A dependency's manifest
+// isn't this project's, so a name that leaves the Realm is ignored. So is one
+// with no readable manifest: its rules stay with the Realm, where an unqualified
+// citation still finds them.
+func refsSubRealmDirs(realm *realmresolve.ResolvedRealm) []refsSubRealmDir {
+	var subs []refsSubRealmDir
+	for _, name := range realm.Realm.SubRealms {
+		if !filepath.IsLocal(name) {
+			continue
+		}
+		dir := filepath.Join(realm.Dir, name)
+		if rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json")); err == nil {
+			subs = append(subs, refsSubRealmDir{dir: dir, realmID: rf.Realm.ID})
+		}
+	}
+	return subs
 }
 
 // refsFiles returns the files to scan, relative to cwd with forward slashes,
