@@ -158,6 +158,7 @@ full data model.
 | `strspc check` | Evaluate a code diff against the rules in `.strspc/config.yaml` |
 | `strspc refs` | Validate rule citations in Markdown and other text files |
 | `strspc status` | Show the project's rule sources, rule counts and realm, without the network |
+| `strspc standards coverage` | Show how the rules map to the clauses of external standards |
 | `strspc explain` | Explain a diagnostic code, or list all of them with `--list` |
 | `strspc sync` | Resolve and cache the rule sources in `.strspc/config.yaml` |
 | `strspc render` | Convert entity JSON files to Markdown or normalized JSON |
@@ -353,6 +354,50 @@ It only reads: it makes no network call and fills no cache, so a source that was
 as `not synced`, and `strspc sync` fetches it. Only `@latest` can go stale, once it resolved longer ago
 than `cache.ttl`; a pinned source can't. `--json` prints the same report as one document. It exits 0,
 also in a project with no configuration, and 2 when the configuration can't be parsed.
+
+### Report coverage of a standard
+
+A realm or entity declares the external standards it cites under `standards`, and a `standard` note
+maps a rule to one clause, with content `<standard-id>:<clause>`:
+
+```bash
+strspc note add AUTH-004 --type standard --body "owasp.asvs:2.1.1" --added-by "@alice"
+```
+
+`strspc standards coverage` then lists each mapped clause, per standard and entity:
+
+```text
+$ strspc standards coverage
+Evaluator: claude, runs on Implemented rules
+
+ietf.rfc2119 (derived_from)
+  MUST  AUTH  cited  dev.acme:AUTH-004 (Implemented)
+
+owasp.asvs 4.0.3 (implements)
+  https://owasp.org/www-project-application-security-verification-standard/
+  2.1.1  AUTH  covered  dev.acme:AUTH-004 (Implemented)
+  2.1.2  AUTH  mapped   dev.acme:AUTH-005 (Published)
+  2.1.3  AUTH  lapsed   dev.acme:AUTH-001 (Retired)
+```
+
+| Status | Meaning |
+| ------ | ------- |
+| `covered` | An Implemented rule maps the clause |
+| `mapped` | A rule in another state maps it, and no Implemented rule does |
+| `lapsed` | The rule mapping it was retired or replaced, and nothing maps it now |
+| `cited` | The standard is a source (`derived_from`), so the rule claims no coverage |
+
+Each entity is measured over its own rules and those it inherits, less those replaced. An overriding
+rule doesn't take on the mapping of the rule it replaces, so a clause it drops shows as `lapsed`.
+Implemented is a rule's state: the first line shows the evaluator setting, which decides whether
+anything checks those rules. SteerSpec holds no clause lists, so a clause no rule maps isn't shown.
+
+The report covers the local sources in `.strspc/config.yaml` that have a `realm.json`, with their
+sub-realms, and `--all-sources` adds the remote ones. A source with no `realm.json` can't declare a
+standard, so its `standard` notes are left out with a warning. `--json` prints the same report as one
+document, or on failure `strspc check`'s document with its `error` field. It exits 0 when the report
+is printed, and 2 when the configuration can't be read or a source or dependency doesn't resolve, as a
+report would then understate the coverage.
 
 ## Validate rules
 
