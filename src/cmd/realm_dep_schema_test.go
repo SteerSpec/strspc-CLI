@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
@@ -112,6 +113,87 @@ func TestRealmDepUpgradeSchemaFetchFailureRestores(t *testing.T) {
 	after, _ := os.ReadFile(filepath.Join(dir, "realm.json"))
 	if !bytes.Equal(after, before) {
 		t.Error("realm.json not restored")
+	}
+}
+
+// addSubRealm declares a sub-realm of dir holding the given _schema/ files.
+func addSubRealm(t *testing.T, dir, name, manifest string, schemas map[string]string) {
+	t.Helper()
+	withSubs := strings.Replace(upgradeRealmJSON, `"rule_identifier_format"`, `"sub_realms": ["`+name+`"],
+  "rule_identifier_format"`, 1)
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(withSubs), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeFiles(t, filepath.Join(dir, name), map[string]string{"realm.json": manifest})
+	writeFiles(t, filepath.Join(dir, name, "_schema"), schemas)
+}
+
+func TestRealmDepUpgradeSyncsSubRealmSchemas(t *testing.T) {
+	const v1, v2 = `{"v":1}`, `{"v":2}`
+	schemas := map[string]string{"entity.v1.schema.json": v1}
+	core := map[string]string{"entity.v1.schema.json": v2}
+	subSchema := func(dir string) string {
+		return readFile(t, filepath.Join(dir, "auth", "_schema", "entity.v1.schema.json"))
+	}
+
+	t.Run("inherits the core pin", func(t *testing.T) {
+		dir := setupSchemaSyncTest(t, nil, schemas, core)
+		addSubRealm(t, dir, "auth", `{"realm": {"id": "dev.steerspec.test.auth"}}`, schemas)
+		out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
+		if err != nil {
+			t.Fatalf("upgrade failed: %v\n%s", err, out)
+		}
+		if got := subSchema(dir); got != v2 {
+			t.Errorf("sub-realm schema not synced: %s", got)
+		}
+		testutil.AssertContains(t, out, filepath.Join("auth", "_schema"))
+	})
+
+	t.Run("restored when validation fails", func(t *testing.T) {
+		failing := func() *result.Result {
+			res := &result.Result{}
+			res.Add(result.Diagnostic{Code: "RM099", Severity: result.Error, Message: "breaks"})
+			return res
+		}
+		dir := setupSchemaSyncTest(t, failing, schemas, core)
+		addSubRealm(t, dir, "auth", `{"realm": {"id": "dev.steerspec.test.auth"}}`, schemas)
+		if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err == nil {
+			t.Fatal("expected error when the upgrade breaks the realm")
+		}
+		if got := subSchema(dir); got != v1 {
+			t.Errorf("sub-realm schema not restored: %s", got)
+		}
+	})
+
+	t.Run("pins its own core", func(t *testing.T) {
+		dir := setupSchemaSyncTest(t, nil, schemas, core)
+		addSubRealm(t, dir, "auth", `{"dependencies": [{"realm_id": "`+coreRealmID+`", "version": "1.8.0"}]}`, schemas)
+		if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err != nil {
+			t.Fatal(err)
+		}
+		if got := subSchema(dir); got != v1 {
+			t.Errorf("a sub-realm with its own pin was synced: %s", got)
+		}
+	})
+}
+
+func TestSyncCoreSchemasRecordsAFileWhoseWriteFails(t *testing.T) {
+	const v1 = `{"v":1}`
+	dir := setupSchemaSyncTest(t, nil,
+		map[string]string{"entity.v1.schema.json": v1},
+		map[string]string{"entity.v1.schema.json": `{"v":2}`})
+	path := filepath.Join(dir, "_schema", "entity.v1.schema.json")
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
+
+	synced, err := syncCoreSchemas(context.Background(), dir, depUpgrade{realmID: coreRealmID}, nil)
+	if err == nil {
+		t.Skip("a read-only file was writable, as it is for root")
+	}
+	if len(synced) != 1 || string(synced[0].original) != v1 {
+		t.Errorf("a failed write can truncate its file, so it must be restored: %+v", synced)
 	}
 }
 

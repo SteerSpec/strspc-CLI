@@ -245,7 +245,7 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 				return restoreSchemas(dir, synced)
 			}
 			for _, up := range ups {
-				s, serr := syncCoreSchemas(cmd.Context(), dir, up)
+				s, serr := syncCoreSchemas(cmd.Context(), dir, up, rf.SubRealms)
 				synced = append(synced, s...)
 				if serr != nil {
 					if rerr := rollback(); rerr != nil {

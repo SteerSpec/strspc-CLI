@@ -277,8 +277,9 @@ strspc realm dep upgrade dev.steerspec.core --to X.Y.Z
 ```
 
 When `dev.steerspec.core` is upgraded, the `_schema/*.json` files that differ from the new release's
-copies are replaced by them, so the realm doesn't trip RM015 (schema drift). Files the core release
-doesn't hold are left alone. If the new version breaks the realm, `realm.json` and the schema files are
+copies are replaced by them, so the realm doesn't trip RM015 (schema drift). This covers sub-realms
+that inherit the pin; one that pins its own core is left alone. Files the core release doesn't hold
+are left alone too. If the new version breaks the realm, `realm.json` and the schema files are
 restored and the command exits non-zero.
 Dependencies are never downgraded. Sources that aren't `github://` references, and those on `@latest`,
 a branch or a commit SHA, are skipped. See [GitHub sources](#github-sources) for private repositories.
