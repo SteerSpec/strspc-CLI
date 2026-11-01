@@ -177,6 +177,11 @@ func TestRealmDepUpgradeValidatesAgainstTheNewPin(t *testing.T) {
 			t.Cleanup(func() { latestReleaseTag = originalTag })
 			latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) { return "v1.11.0", nil }
 
+			// The realm holds a _schema/, so the upgrade fetches the core release.
+			originalFetch := fetchUpgradeDep
+			t.Cleanup(func() { fetchUpgradeDep = originalFetch })
+			fetchUpgradeDep = func(context.Context, string, entity.RealmDep) (string, error) { return t.TempDir(), nil }
+
 			dir := t.TempDir()
 			setupValidRealm(t, dir)
 			writeRealmDeps(t, dir, entity.RealmDep{
