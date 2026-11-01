@@ -229,6 +229,9 @@ func TestRealmDepUpgradeSchemaSyncIgnoresSymlinks(t *testing.T) {
 
 	t.Run("directory", func(t *testing.T) {
 		dir := setupSchemaSyncTest(t, nil, nil, map[string]string{"victim.json": `{"v":2}`})
+		if err := os.Remove(filepath.Join(dir, "_schema")); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.Symlink(outside, filepath.Join(dir, "_schema")); err != nil {
 			t.Skipf("symlinks unavailable: %v", err)
 		}
