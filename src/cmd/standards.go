@@ -15,7 +15,6 @@ import (
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/realmresolve"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval"
-	"github.com/SteerSpec/strspc-manager/src/ruleeval/providers"
 	"github.com/SteerSpec/strspc-manager/src/ruleresolve"
 )
 
@@ -100,10 +99,11 @@ func runStandardsCoverage(ctx context.Context, out, errOut io.Writer, cwd string
 	if jsonOutput {
 		format = formatJSON
 	}
-	r := &checkRun{ctx: ctx, out: out, errOut: errOut, cwd: cwd, opts: checkOptions{format: format}, static: true}
+	r := &checkRun{ctx: ctx, out: out, errOut: errOut, cwd: cwd, opts: checkOptions{format: format}}
 	if err := r.loadConfig(); err != nil {
 		return r.fail(exitConfig, err)
 	}
+	evaluator := r.coverageEvaluator()
 	r.entries = coverageEntries(r.entries, allSources)
 	if len(r.entries) == 0 {
 		return r.fail(exitConfig, errors.New("no local rule source in .strspc/config.yaml: pass --all-sources to report on the remote ones"))
@@ -112,7 +112,7 @@ func runStandardsCoverage(ctx context.Context, out, errOut io.Writer, cwd string
 		return r.fail(exitConfig, err)
 	}
 
-	report := r.coverageReport()
+	report := r.coverageReport(evaluator)
 	if jsonOutput {
 		return writeJSONOutput(out, report)
 	}
@@ -136,7 +136,7 @@ func coverageEntries(entries []ruleresolve.SourceEntry, all bool) []ruleresolve.
 
 // coverageReport builds the report from what resolveRules left. Every entity
 // counts once, also when a source is listed twice.
-func (r *checkRun) coverageReport() *coverageOutput {
+func (r *checkRun) coverageReport(evaluator coverageEvaluator) *coverageOutput {
 	var entities []*realmresolve.Inheritance
 	seen := make(map[string]bool)
 	for _, e := range r.entries {
@@ -154,7 +154,7 @@ func (r *checkRun) coverageReport() *coverageOutput {
 
 	report := coverage.Compute(entities)
 	out := &coverageOutput{
-		Evaluator:  r.coverageEvaluator(),
+		Evaluator:  evaluator,
 		Declared:   append([]entity.StandardRef{}, report.Declared...),
 		Clauses:    make([]coverageClause, 0, len(report.Clauses)),
 		Unresolved: coverageMappings(report.Unresolved),
@@ -182,22 +182,22 @@ func coverageMappings(mappings []coverage.Mapping) []coverageMapping {
 	return out
 }
 
-// coverageEvaluator reads the evaluator setting as check would. A provider that
-// lacks its API key here counts as usable: CI holds the key, not this machine.
+// coverageEvaluator reads the evaluator setting through check's own path. A
+// provider that lacks its API key here counts as usable: CI holds the key, not
+// this machine.
 func (r *checkRun) coverageEvaluator() coverageEvaluator {
-	name := strings.TrimSpace(r.cfg.Evaluator.Provider)
-	if isStaticProviderName(name) {
+	code, err := r.buildProvider()
+	switch {
+	case r.static:
 		return coverageEvaluator{Provider: "null"}
-	}
-	_, err := newEvalProvider(name, providers.Options{Model: r.cfg.Evaluator.Model, Effort: r.cfg.Evaluator.Effort})
-	if err != nil && !errors.Is(err, ruleeval.ErrUnavailable) {
-		return coverageEvaluator{Provider: name}
+	case err != nil && code != exitUnavailable:
+		return coverageEvaluator{Provider: r.providerName}
 	}
 	states := r.evaluateOn
 	if states == nil {
 		states = ruleeval.DefaultEvaluateStates
 	}
-	return coverageEvaluator{Provider: name, Usable: true, RunsOnImplemented: slices.Contains(states, entity.StateImplemented)}
+	return coverageEvaluator{Provider: r.providerName, Usable: true, RunsOnImplemented: slices.Contains(states, entity.StateImplemented)}
 }
 
 // coverageWarnings lists the resolution notices, and each source whose

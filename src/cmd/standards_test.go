@@ -148,27 +148,39 @@ func TestStandardsCoverageHuman(t *testing.T) {
 		},
 		{"evaluator not implemented", "openai", "Evaluator: openai, which strspc can't run, so nothing evaluates Implemented rules"},
 		{"evaluator unknown", "bogus", "Evaluator: bogus, which strspc can't run, so nothing evaluates Implemented rules"},
+		{
+			"endpoint check refuses", "claude\n  endpoint: http://example.com/",
+			"Evaluator: claude, which strspc can't run, so nothing evaluates Implemented rules",
+		},
+		{
+			"model check refuses", `claude` + "\n" + `  model: "a\tb"`,
+			"Evaluator: claude, which strspc can't run, so nothing evaluates Implemented rules",
+		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := setupCoverageProject(t, tt.config, "./rules/")
-			output, err := runCoverage(t, dir)
-			assertExit(t, err, exitOK)
-			for _, want := range []string{
-				tt.evaluator,
-				"owasp.asvs 4.0.3 (implements)",
-				"https://owasp.org/asvs",
-				"2.1.1  AUTH  covered  dev.app:AUTH-001 (Implemented)",
-				"dev.app:AUTH-002 (Published)",
-				"dev.lib:ACCT-002 (Implemented)",
-				"nist.ssdf 1.1 (implements)",
-				"no clause mapped",
-				"dev.app:AUTH-004",
-				"a clause no rule maps isn't shown",
-			} {
-				testutil.AssertContains(t, output, want)
-			}
-		})
+		for _, key := range []string{"", "test-key"} {
+			t.Run(fmt.Sprintf("%s, key %q", tt.name, key), func(t *testing.T) {
+				t.Setenv("ANTHROPIC_API_KEY", key)
+				t.Setenv(envEvaluatorEndpoint, "")
+				dir := setupCoverageProject(t, tt.config, "./rules/")
+				output, err := runCoverage(t, dir)
+				assertExit(t, err, exitOK)
+				for _, want := range []string{
+					tt.evaluator,
+					"owasp.asvs 4.0.3 (implements)",
+					"https://owasp.org/asvs",
+					"2.1.1  AUTH  covered  dev.app:AUTH-001 (Implemented)",
+					"dev.app:AUTH-002 (Published)",
+					"dev.lib:ACCT-002 (Implemented)",
+					"nist.ssdf 1.1 (implements)",
+					"no clause mapped",
+					"dev.app:AUTH-004",
+					"a clause no rule maps isn't shown",
+				} {
+					testutil.AssertContains(t, output, want)
+				}
+			})
+		}
 	}
 }
 
@@ -250,7 +262,7 @@ func TestStandardsCoverageWarnsOnSourceWithoutManifest(t *testing.T) {
 	)
 	const want = "./loose/: 2 `standard` note(s) left out: the source has no realm.json"
 
-	for _, sources := range [][]string{{"./rules/", "./loose/"}, {"./rules/", "./loose/", "./loose/"}} {
+	for _, sources := range [][]string{{"./rules/", "./loose/"}, {"./rules/", "./loose/", "./loose/"}, {"./rules/", "./loose/", "loose"}} {
 		dir := setupCoverageProject(t, "null", sources...)
 		writeInheritFile(t, filepath.Join(dir, "loose"), "LOOSE", withStandardNotes(
 			inheritEntityJSON("LOOSE", "", "["+sub+"]", inheritRule{id: "LOOSE-001", state: "I"}),
@@ -270,6 +282,22 @@ func TestStandardsCoverageWarnsOnSourceWithoutManifest(t *testing.T) {
 	}
 }
 
+// TestStandardsCoverageEscapesSourceInWarning checks the warnings path, which
+// names a directory from the configuration.
+func TestStandardsCoverageEscapesSourceInWarning(t *testing.T) {
+	dir := setupCoverageProject(t, "null", "./rules/", "./##vso[x]/")
+	writeInheritFile(t, filepath.Join(dir, "##vso[x]"), "LOOSE", withStandardNotes(
+		inheritEntityJSON("LOOSE", "", "", inheritRule{id: "LOOSE-001", state: "I"}),
+		[2]string{"LOOSE-001", "owasp.asvs:9.9.9"},
+	))
+	output, err := runCoverage(t, dir)
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, output, "left out")
+	if runnerCommandRe.MatchString(output) {
+		t.Errorf("runner command in %s", output)
+	}
+}
+
 // TestStandardsCoverageEscapesRepositoryText checks that text from a rule file
 // can't drive a terminal or a CI runner, in either format.
 func TestStandardsCoverageEscapesRepositoryText(t *testing.T) {
@@ -279,14 +307,18 @@ func TestStandardsCoverageEscapesRepositoryText(t *testing.T) {
 		{"clause", "owasp.asvs:2.1.1", "owasp.asvs:::error::pwned"},
 		{"runner command in a clause", "owasp.asvs:2.1.2", "owasp.asvs:##[error]pwned"},
 		{"url", "https://owasp.org/asvs", "::error::pwned"},
+		{"url with a leading space", "https://owasp.org/asvs", " ::error::pwned"},
 		{"version", `"version": "4.0.3"`, `"version": "4.0.3\u202e##vso[x]"`},
 		{"entity", `"id": "AUTH", "title"`, `"id": "AU\u001b[31m\n::error::pwned", "title"`},
+		{"format character in an entity", `"id": "AUTH", "title"`, `"id": "AU\u202e##[error]x", "title"`},
+		{"rule and note", "AUTH-004", `AUTH-004\u202e##[error]x`},
+		{"provider", "provider: null", `provider: "##[error]x"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := setupCoverageProject(t, "null", "./rules/")
-			for _, file := range []string{"AUTH.json", "realm.json"} {
-				path := filepath.Join(dir, "rules", file)
+			for _, file := range []string{"rules/AUTH.json", "rules/realm.json", ".strspc/config.yaml"} {
+				path := filepath.Join(dir, filepath.FromSlash(file))
 				data, err := os.ReadFile(path)
 				if err != nil {
 					t.Fatal(err)
@@ -312,8 +344,8 @@ func TestStandardsCoverageEscapesRepositoryText(t *testing.T) {
 			if runnerCommandRe.MatchString(output) {
 				t.Errorf("runner command in %s", output)
 			}
-			if !json.Valid([]byte(output)) {
-				t.Errorf("not JSON: %s", output)
+			if !json.Valid([]byte(output)) || !strings.HasSuffix(output, "}\n") {
+				t.Errorf("not one JSON document with a final newline: %q", output)
 			}
 		})
 	}
