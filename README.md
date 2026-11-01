@@ -157,6 +157,7 @@ full data model.
 | `strspc diff` | Validate rule lifecycle transitions between a git ref and the working tree |
 | `strspc check` | Evaluate a code diff against the rules in `.strspc/config.yaml` |
 | `strspc refs` | Validate rule citations in Markdown and other text files |
+| `strspc status` | Show the project's rule sources, rule counts and realm, without the network |
 | `strspc explain` | Explain a diagnostic code, or list all of them with `--list` |
 | `strspc sync` | Resolve and cache the rule sources in `.strspc/config.yaml` |
 | `strspc render` | Convert entity JSON files to Markdown or normalized JSON |
@@ -318,6 +319,36 @@ fail_on:
 > Use `scope: global` for a local realm that governs your code, as the CLI's
 > [own config](.strspc/config.yaml) does. `strspc realm init` suggests `scope: local`, which limits
 > the rules to files under `rules/`, and those are never evaluated.
+
+### See how a project stands
+
+`strspc status` shows the configuration, each rule source, rule counts by state and the realm:
+
+```text
+$ strspc status
+SteerSpec CLI 1.31.0
+
+Config: .strspc/config.yaml
+  Evaluator: claude
+  Fail on: I
+  Cache TTL: 24h0m0s
+
+Sources:
+  - github://SteerSpec/strspc-rules@v1.13.0/rules/core (global): pinned, cached, 107 rule(s)
+  - ./rules/ (global): local, 11 rule(s)
+
+Rules: 118 total
+  6 Draft  3 Published  109 Implemented  0 Abandoned  0 Retired  0 Terminated
+
+Realm: dev.steerspec.cli 0.1.0
+  Entities: CFG, CMD, CONV
+  Sub-realms: none
+```
+
+It only reads: it makes no network call and fills no cache, so a source that was never fetched shows
+as `not synced`, and `strspc sync` fetches it. Only `@latest` can go stale, once it resolved longer ago
+than `cache.ttl`; a pinned source can't. `--json` prints the same report as one document. It exits 0,
+also in a project with no configuration, and 2 when the configuration can't be parsed.
 
 ## Validate rules
 

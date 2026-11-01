@@ -717,7 +717,7 @@ func (r *checkRun) writeJSONOutput(out *checkOutput) error {
 	if err != nil {
 		return fmt.Errorf("marshaling output: %w", err)
 	}
-	if _, err := r.out.Write(append(data, '\n')); err != nil {
+	if _, err := r.out.Write(append(printableJSON(data), '\n')); err != nil {
 		return fmt.Errorf("writing JSON output: %w", err)
 	}
 	return nil

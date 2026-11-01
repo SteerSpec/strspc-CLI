@@ -63,7 +63,7 @@ func writeJSONOutput(w io.Writer, v any) error {
 	if err != nil {
 		return fmt.Errorf("marshaling JSON output: %w", err)
 	}
-	_, err = w.Write(data)
+	_, err = w.Write(printableJSON(data))
 	return err
 }
 
