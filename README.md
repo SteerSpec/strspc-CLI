@@ -370,14 +370,14 @@ strspc note add AUTH-004 --type standard --body "owasp.asvs:2.1.1" --added-by "@
 $ strspc standards coverage
 Evaluator: claude, runs on Implemented rules
 
+ietf.rfc2119 (derived_from)
+  MUST  AUTH  cited  dev.acme:AUTH-004 (Implemented)
+
 owasp.asvs 4.0.3 (implements)
   https://owasp.org/www-project-application-security-verification-standard/
   2.1.1  AUTH  covered  dev.acme:AUTH-004 (Implemented)
   2.1.2  AUTH  mapped   dev.acme:AUTH-005 (Published)
   2.1.3  AUTH  lapsed   dev.acme:AUTH-001 (Retired)
-
-ietf.rfc2119 (derived_from)
-  MUST  AUTH  cited  dev.acme:AUTH-004 (Implemented)
 ```
 
 | Status | Meaning |
@@ -395,8 +395,9 @@ anything checks those rules. SteerSpec holds no clause lists, so a clause no rul
 The report covers the local sources in `.strspc/config.yaml` that have a `realm.json`, with their
 sub-realms, and `--all-sources` adds the remote ones. A source with no `realm.json` can't declare a
 standard, so its `standard` notes are left out with a warning. `--json` prints the same report as one
-document. It exits 0 when the report is printed, and 2 when the configuration can't be read or a source
-or dependency doesn't resolve, as a report would then understate the coverage.
+document, or on failure `strspc check`'s document with its `error` field. It exits 0 when the report
+is printed, and 2 when the configuration can't be read or a source or dependency doesn't resolve, as a
+report would then understate the coverage.
 
 ## Validate rules
 

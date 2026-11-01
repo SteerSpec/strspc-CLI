@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +15,7 @@ import (
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/realmresolve"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval"
+	"github.com/SteerSpec/strspc-manager/src/ruleeval/providers"
 	"github.com/SteerSpec/strspc-manager/src/ruleresolve"
 )
 
@@ -23,6 +23,7 @@ import (
 // amounts to in this project: a rule in that state may get no evaluator run.
 type coverageEvaluator struct {
 	Provider          string `json:"provider"`
+	Usable            bool   `json:"usable"`
 	RunsOnImplemented bool   `json:"runs_on_implemented"`
 }
 
@@ -99,7 +100,7 @@ func runStandardsCoverage(ctx context.Context, out, errOut io.Writer, cwd string
 	if jsonOutput {
 		format = formatJSON
 	}
-	r := &checkRun{ctx: ctx, out: out, errOut: errOut, cwd: cwd, opts: checkOptions{format: format}}
+	r := &checkRun{ctx: ctx, out: out, errOut: errOut, cwd: cwd, opts: checkOptions{format: format}, static: true}
 	if err := r.loadConfig(); err != nil {
 		return r.fail(exitConfig, err)
 	}
@@ -113,12 +114,7 @@ func runStandardsCoverage(ctx context.Context, out, errOut io.Writer, cwd string
 
 	report := r.coverageReport()
 	if jsonOutput {
-		data, err := json.MarshalIndent(report, "", "  ")
-		if err != nil {
-			return fmt.Errorf("marshaling report: %w", err)
-		}
-		writeln(out, string(data))
-		return nil
+		return writeJSONOutput(out, report)
 	}
 	for _, w := range report.Warnings {
 		writeWarning(errOut, "%s", w)
@@ -139,7 +135,7 @@ func coverageEntries(entries []ruleresolve.SourceEntry, all bool) []ruleresolve.
 }
 
 // coverageReport builds the report from what resolveRules left. Every entity
-// counts once, also when a source and its dependency are both configured.
+// counts once, also when a source is listed twice.
 func (r *checkRun) coverageReport() *coverageOutput {
 	var entities []*realmresolve.Inheritance
 	seen := make(map[string]bool)
@@ -186,16 +182,22 @@ func coverageMappings(mappings []coverage.Mapping) []coverageMapping {
 	return out
 }
 
+// coverageEvaluator reads the evaluator setting as check would. A provider that
+// lacks its API key here counts as usable: CI holds the key, not this machine.
 func (r *checkRun) coverageEvaluator() coverageEvaluator {
 	name := strings.TrimSpace(r.cfg.Evaluator.Provider)
 	if isStaticProviderName(name) {
 		return coverageEvaluator{Provider: "null"}
 	}
+	_, err := newEvalProvider(name, providers.Options{Model: r.cfg.Evaluator.Model, Effort: r.cfg.Evaluator.Effort})
+	if err != nil && !errors.Is(err, ruleeval.ErrUnavailable) {
+		return coverageEvaluator{Provider: name}
+	}
 	states := r.evaluateOn
 	if states == nil {
 		states = ruleeval.DefaultEvaluateStates
 	}
-	return coverageEvaluator{Provider: name, RunsOnImplemented: slices.Contains(states, entity.StateImplemented)}
+	return coverageEvaluator{Provider: name, Usable: true, RunsOnImplemented: slices.Contains(states, entity.StateImplemented)}
 }
 
 // coverageWarnings lists the resolution notices, and each source whose
@@ -207,14 +209,17 @@ func (r *checkRun) coverageWarnings() []string {
 		warnings = append(warnings, d.Code+": "+d.Message)
 	}
 	notes := make(map[string]int)
+	seen := make(map[string]bool)
 	for _, rf := range r.resolved {
-		if _, ok := r.sourceRealms[rf.Origin.Source]; !ok {
+		if _, ok := r.sourceRealms[rf.Origin.Source]; !ok && !seen[rf.Path] {
+			seen[rf.Path] = true
 			notes[rf.Origin.Source] += countStandardNotes(rf.File)
 		}
 	}
 	for _, e := range r.entries {
 		if n := notes[e.Source]; n > 0 {
 			warnings = append(warnings, fmt.Sprintf("%s: %d `standard` note(s) left out: the source has no realm.json", e.Source, n))
+			delete(notes, e.Source)
 		}
 	}
 	return warnings
@@ -272,6 +277,17 @@ func coverageGroups(report *coverageOutput) []*coverageGroup {
 	return groups
 }
 
+// coverageCell makes repository text safe in one cell of the report: on one
+// line, with no tab to break a column, and unable to drive a terminal or a CI
+// runner. A runner ignores leading spaces, so no cell can start a command.
+func coverageCell(s string) string {
+	s = printableDiagnostic(sanitizeLine(s))
+	if strings.HasPrefix(strings.TrimSpace(s), "::") {
+		return `\` + s
+	}
+	return s
+}
+
 func writeCoverage(w io.Writer, report *coverageOutput) {
 	writeln(w, coverageEvaluatorLine(report.Evaluator))
 	for _, g := range coverageGroups(report) {
@@ -280,9 +296,9 @@ func writeCoverage(w io.Writer, report *coverageOutput) {
 		if g.version != "" {
 			heading += " " + g.version
 		}
-		writeln(w, sanitizeLine(fmt.Sprintf("%s (%s)", heading, strings.Join(g.relations, ", "))))
+		writeln(w, coverageCell(fmt.Sprintf("%s (%s)", heading, strings.Join(g.relations, ", "))))
 		for _, u := range g.urls {
-			writeln(w, sanitizeLine("  "+u))
+			writeln(w, "  "+coverageCell(u))
 		}
 		if len(g.clauses) == 0 {
 			writeln(w, "  no clause mapped")
@@ -295,14 +311,14 @@ func writeCoverage(w io.Writer, report *coverageOutput) {
 			for _, m := range c.Rules {
 				rules = append(rules, fmt.Sprintf("%s (%s)", m.Rule, stateLabel(m.State)))
 			}
-			_, _ = fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", sanitizeLine(c.Clause), c.Entity, c.Status, sanitizeLine(strings.Join(rules, ", ")))
+			_, _ = fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", coverageCell(c.Clause), coverageCell(c.Entity), c.Status, coverageCell(strings.Join(rules, ", ")))
 		}
 		_ = tw.Flush()
 	}
 	if len(report.Unresolved) > 0 {
 		writeln(w, "\nNotes that resolve to no declared standard, not counted:")
 		for _, m := range report.Unresolved {
-			writeln(w, sanitizeLine(fmt.Sprintf("  %s (note %s)", m.Rule, m.Note)))
+			writeln(w, fmt.Sprintf("  %s (note %s)", coverageCell(m.Rule), coverageCell(m.Note)))
 		}
 	}
 	writeln(w, "\ncovered: an Implemented rule maps the clause. mapped: only a rule in another state does.\n"+
@@ -314,9 +330,11 @@ func coverageEvaluatorLine(e coverageEvaluator) string {
 	switch {
 	case e.Provider == "null":
 		return "Evaluator: null, so nothing evaluates Implemented rules"
+	case !e.Usable:
+		return coverageCell(fmt.Sprintf("Evaluator: %s, which strspc can't run, so nothing evaluates Implemented rules", e.Provider))
 	case e.RunsOnImplemented:
-		return sanitizeLine(fmt.Sprintf("Evaluator: %s, runs on Implemented rules", e.Provider))
+		return coverageCell(fmt.Sprintf("Evaluator: %s, runs on Implemented rules", e.Provider))
 	default:
-		return sanitizeLine(fmt.Sprintf("Evaluator: %s, not run on Implemented rules (evaluate_on)", e.Provider))
+		return coverageCell(fmt.Sprintf("Evaluator: %s, not run on Implemented rules (evaluate_on)", e.Provider))
 	}
 }

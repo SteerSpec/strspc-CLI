@@ -11,7 +11,6 @@ import (
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/entity"
-	"github.com/SteerSpec/strspc-manager/src/ruleresolve"
 )
 
 const (
@@ -89,17 +88,21 @@ func runCoverage(t *testing.T, dir string, args ...string) (string, error) {
 	return testutil.ExecuteCommand(NewRootCmd(), append([]string{"standards", "coverage"}, args...)...)
 }
 
-// TestStandardsCoverageJSON checks each class of clause, a declared standard
-// nothing maps, and a note that resolves to nothing.
-func TestStandardsCoverageJSON(t *testing.T) {
-	dir := setupCoverageProject(t, "claude", "./rules/")
+func coverageJSON(t *testing.T, dir string) coverageOutput {
+	t.Helper()
 	output, err := runCoverage(t, dir, "--json")
 	assertExit(t, err, exitOK)
-
 	var got coverageOutput
 	if err := json.Unmarshal([]byte(output), &got); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, output)
 	}
+	return got
+}
+
+// TestStandardsCoverageJSON checks each class of clause, a declared standard
+// nothing maps, and a note that resolves to nothing.
+func TestStandardsCoverageJSON(t *testing.T) {
+	got := coverageJSON(t, setupCoverageProject(t, "claude", "./rules/"))
 	want := []string{
 		"ietf.rfc2119 / MUST AUTH cited",
 		"iso.iec27001 2022 A.5 BILL covered",
@@ -143,6 +146,8 @@ func TestStandardsCoverageHuman(t *testing.T) {
 			"evaluator skips Implemented", "claude\nevaluate_on: [P]",
 			"Evaluator: claude, not run on Implemented rules (evaluate_on)",
 		},
+		{"evaluator not implemented", "openai", "Evaluator: openai, which strspc can't run, so nothing evaluates Implemented rules"},
+		{"evaluator unknown", "bogus", "Evaluator: bogus, which strspc can't run, so nothing evaluates Implemented rules"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -189,56 +194,154 @@ func TestStandardsCoverageSources(t *testing.T) {
 	})
 
 	t.Run("all sources", func(t *testing.T) {
-		entries := []ruleresolve.SourceEntry{{Source: unreachable}, {Source: "./rules/"}}
-		if got := coverageEntries(entries, false); len(got) != 1 || got[0].Source != "./rules/" {
-			t.Errorf("local entries = %+v, want ./rules/ alone", got)
-		}
-		if got := coverageEntries(entries, true); len(got) != 2 {
-			t.Errorf("all entries = %+v, want both", got)
-		}
+		dir := setupCoverageProject(t, "null", "s3://bucket/rules", "./rules/")
+		_, err := runCoverage(t, dir)
+		assertExit(t, err, exitOK)
+		_, err = runCoverage(t, dir, "--all-sources")
+		assertExit(t, err, exitConfig)
 	})
 
 	t.Run("a source listed twice counts once", func(t *testing.T) {
-		dir := setupCoverageProject(t, "null", "./rules/", "./lib/")
-		output, err := runCoverage(t, dir, "--json")
-		assertExit(t, err, exitOK)
-		var got coverageOutput
-		if err := json.Unmarshal([]byte(output), &got); err != nil {
-			t.Fatalf("invalid JSON: %v\n%s", err, output)
+		dir := setupCoverageProject(t, "null", "./rules/", "./rules/")
+		got := coverageJSON(t, dir)
+		if len(got.Clauses) != 5 {
+			t.Errorf("clauses = %+v, want 5", got.Clauses)
 		}
-		var acct int
-		for _, c := range got.Clauses {
-			if c.Entity == "ACCT" {
-				acct++
-			}
+	})
+
+	t.Run("a resolution notice is a warning", func(t *testing.T) {
+		dir := setupCoverageProject(t, "null", "./rules/", "./empty/")
+		writeStandardsManifest(t, filepath.Join(dir, "empty"), "dev.empty", coverageLibStandards)
+		got := coverageJSON(t, dir)
+		if !slices.ContainsFunc(got.Warnings, func(w string) bool { return strings.HasPrefix(w, "RSV006") }) {
+			t.Errorf("warnings = %q, want RSV006", got.Warnings)
 		}
-		if acct != 2 {
-			t.Errorf("ACCT has %d clauses, want 2: %+v", acct, got.Clauses)
+	})
+
+	t.Run("a sub-realm's notes resolve against its parent", func(t *testing.T) {
+		dir := setupCoverageProject(t, "null", "./rules/")
+		rules := filepath.Join(dir, "rules")
+		writeEntityFile(t, rules, "realm.json", fmt.Sprintf(
+			`{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0", %s}, "dependencies": [%s], "sub_realms": ["sub"]}`,
+			coverageAppStandards, `{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}`,
+		))
+		sub := filepath.Join(rules, "sub")
+		writeEntityFile(t, sub, "realm.json", `{"realm": {"id": "dev.app.sub", "title": "t", "version": "1.0.0"}, "dependencies": []}`)
+		writeInheritFile(t, sub, "SUB", withStandardNotes(
+			inheritEntityJSON("SUB", "", "", inheritRule{id: "SUB-001", state: "I"}),
+			[2]string{"SUB-001", "owasp.asvs:3.1.1"},
+		))
+		got := coverageJSON(t, dir)
+		if !slices.ContainsFunc(got.Clauses, func(c coverageClause) bool {
+			return c.Clause == "3.1.1" && c.Entity == "SUB" && c.Status == "covered" && c.Version == "4.0.3"
+		}) {
+			t.Errorf("clauses = %+v, want 3.1.1 covered in SUB", got.Clauses)
 		}
 	})
 }
 
 // TestStandardsCoverageWarnsOnSourceWithoutManifest checks that mappings the
-// report can't reach are named, not dropped in silence.
+// report can't reach are named, not dropped in silence: each note once, also
+// on a sub-entity, and also when the source is listed twice.
 func TestStandardsCoverageWarnsOnSourceWithoutManifest(t *testing.T) {
-	dir := setupCoverageProject(t, "null", "./rules/", "./loose/")
-	writeInheritFile(t, filepath.Join(dir, "loose"), "LOOSE", withStandardNotes(
-		inheritEntityJSON("LOOSE", "", "", inheritRule{id: "LOOSE-001", state: "I"}),
-		[2]string{"LOOSE-001", "owasp.asvs:9.9.9"},
-	))
+	sub := withStandardNotes(
+		inheritEntityJSON("LOOSESUB", "", "", inheritRule{id: "LOOSESUB-001", state: "I"}),
+		[2]string{"LOOSESUB-001", "owasp.asvs:9.9.8"},
+	)
+	const want = "./loose/: 2 `standard` note(s) left out: the source has no realm.json"
 
-	output, err := runCoverage(t, dir)
-	assertExit(t, err, exitOK)
-	testutil.AssertContains(t, output, "./loose/: 1 `standard` note(s) left out: the source has no realm.json")
+	for _, sources := range [][]string{{"./rules/", "./loose/"}, {"./rules/", "./loose/", "./loose/"}} {
+		dir := setupCoverageProject(t, "null", sources...)
+		writeInheritFile(t, filepath.Join(dir, "loose"), "LOOSE", withStandardNotes(
+			inheritEntityJSON("LOOSE", "", "["+sub+"]", inheritRule{id: "LOOSE-001", state: "I"}),
+			[2]string{"LOOSE-001", "owasp.asvs:9.9.9"},
+		))
 
-	output, err = runCoverage(t, dir, "--json")
-	assertExit(t, err, exitOK)
-	var got coverageOutput
-	if err := json.Unmarshal([]byte(output), &got); err != nil {
-		t.Fatalf("invalid JSON: %v\n%s", err, output)
+		output, err := runCoverage(t, dir)
+		assertExit(t, err, exitOK)
+		if got := strings.Count(output, want); got != 1 {
+			t.Errorf("sources %q: warning printed %d times, want once:\n%s", sources, got, output)
+		}
+
+		got := coverageJSON(t, dir)
+		if !slices.Equal(got.Warnings, []string{want}) {
+			t.Errorf("sources %q: warnings = %q, want %q", sources, got.Warnings, want)
+		}
 	}
-	if len(got.Warnings) != 1 || !strings.Contains(got.Warnings[0], "./loose/") {
-		t.Errorf("warnings = %q, want ./loose/", got.Warnings)
+}
+
+// TestStandardsCoverageEscapesRepositoryText checks that text from a rule file
+// can't drive a terminal or a CI runner, in either format.
+func TestStandardsCoverageEscapesRepositoryText(t *testing.T) {
+	tests := []struct {
+		name, from, to string
+	}{
+		{"clause", "owasp.asvs:2.1.1", "owasp.asvs:::error::pwned"},
+		{"runner command in a clause", "owasp.asvs:2.1.2", "owasp.asvs:##[error]pwned"},
+		{"url", "https://owasp.org/asvs", "::error::pwned"},
+		{"version", `"version": "4.0.3"`, `"version": "4.0.3\u202e##vso[x]"`},
+		{"entity", `"id": "AUTH", "title"`, `"id": "AU\u001b[31m\n::error::pwned", "title"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := setupCoverageProject(t, "null", "./rules/")
+			for _, file := range []string{"AUTH.json", "realm.json"} {
+				path := filepath.Join(dir, "rules", file)
+				data, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte(strings.ReplaceAll(string(data), tt.from, tt.to)), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			output, err := runCoverage(t, dir)
+			assertExit(t, err, exitOK)
+			if strings.ContainsAny(output, "\x1b\u202e") || runnerCommandRe.MatchString(output) {
+				t.Errorf("unsafe output: %q", output)
+			}
+			for line := range strings.SplitSeq(output, "\n") {
+				if strings.HasPrefix(strings.TrimSpace(line), "::") {
+					t.Errorf("repository text starts a line: %q", line)
+				}
+			}
+
+			output, err = runCoverage(t, dir, "--json")
+			assertExit(t, err, exitOK)
+			if runnerCommandRe.MatchString(output) {
+				t.Errorf("runner command in %s", output)
+			}
+			if !json.Valid([]byte(output)) {
+				t.Errorf("not JSON: %s", output)
+			}
+		})
+	}
+}
+
+// TestCoverageGroups checks that references differing only in relation or url
+// share a standard's group, as clause identity holds neither (STDREF-011).
+func TestCoverageGroups(t *testing.T) {
+	groups := coverageGroups(&coverageOutput{
+		Declared: []entity.StandardRef{
+			{ID: "owasp.asvs", Version: "4.0.3", Relation: "derived_from", URL: "https://a"},
+			{ID: "owasp.asvs", Version: "4.0.3", Relation: "implements", URL: "https://b"},
+			{ID: "owasp.asvs", Version: "4.0.3", Relation: "implements", URL: "https://b"},
+		},
+		Clauses: []coverageClause{{Standard: "owasp.asvs", Version: "4.0.3", Clause: "2.1.1"}},
+	})
+	if len(groups) != 1 {
+		t.Fatalf("groups = %d, want 1", len(groups))
+	}
+	g := groups[0]
+	if !slices.Equal(g.relations, []string{"derived_from", "implements"}) {
+		t.Errorf("relations = %q", g.relations)
+	}
+	if !slices.Equal(g.urls, []string{"https://a", "https://b"}) {
+		t.Errorf("urls = %q", g.urls)
+	}
+	if len(g.clauses) != 1 {
+		t.Errorf("clauses = %+v", g.clauses)
 	}
 }
 
