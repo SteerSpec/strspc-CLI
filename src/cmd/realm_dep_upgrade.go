@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -241,7 +242,7 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 				if rerr := os.WriteFile(realmPath, original, 0o644); rerr != nil {
 					return rerr
 				}
-				return restoreSchemas(synced)
+				return restoreSchemas(dir, synced)
 			}
 			for _, up := range ups {
 				s, serr := syncCoreSchemas(cmd.Context(), dir, up)
@@ -254,7 +255,7 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 				}
 			}
 			for _, s := range synced {
-				writeln(w, cmdStyle.Render(sanitizeLine("  synced "+s.path)))
+				writeln(w, cmdStyle.Render(sanitizeLine("  synced "+filepath.Join(dir, s.path))))
 			}
 
 			res := validateUpgradedRealm(cmd.Context(), dir)

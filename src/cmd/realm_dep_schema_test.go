@@ -121,3 +121,40 @@ func TestRealmDepUpgradeNoSchemaDirIsFine(t *testing.T) {
 		t.Fatalf("a realm without _schema/ should upgrade: %v", err)
 	}
 }
+
+func TestRealmDepUpgradeSchemaSyncIgnoresSymlinks(t *testing.T) {
+	outside := t.TempDir()
+	victim := filepath.Join(outside, "victim.json")
+	if err := os.WriteFile(victim, []byte(`{"v":1}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("entry", func(t *testing.T) {
+		dir := setupSchemaSyncTest(t, nil, nil, map[string]string{"entity.v1.schema.json": `{"v":2}`})
+		if err := os.MkdirAll(filepath.Join(dir, "_schema"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(victim, filepath.Join(dir, "_schema", "entity.v1.schema.json")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err != nil {
+			t.Fatal(err)
+		}
+		if got := readFile(t, victim); got != `{"v":1}` {
+			t.Errorf("file behind the symlink was overwritten: %s", got)
+		}
+	})
+
+	t.Run("directory", func(t *testing.T) {
+		dir := setupSchemaSyncTest(t, nil, nil, map[string]string{"victim.json": `{"v":2}`})
+		if err := os.Symlink(outside, filepath.Join(dir, "_schema")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err != nil {
+			t.Fatal(err)
+		}
+		if got := readFile(t, victim); got != `{"v":1}` {
+			t.Errorf("file behind the _schema symlink was overwritten: %s", got)
+		}
+	})
+}
