@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.31.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.30.0...v1.31.0) (2026-11-01)
+
+
+### Features
+
+* **realm:** keep realm.language when rewriting realm.json ([#193](https://github.com/SteerSpec/strspc-CLI/issues/193)) ([8366da3](https://github.com/SteerSpec/strspc-CLI/commit/8366da3c3d1cfe46e54f451a3a03115c1c7e0413))
+* **status:** show how a project's rules stand ([#192](https://github.com/SteerSpec/strspc-CLI/issues/192)) ([8b03ad2](https://github.com/SteerSpec/strspc-CLI/commit/8b03ad2c3e304d73529d3c3cc4dd887b9aa4406b))
+
+
+### Bug Fixes
+
+* **output:** make printed diagnostics safe to show ([#189](https://github.com/SteerSpec/strspc-CLI/issues/189)) ([ef51cc0](https://github.com/SteerSpec/strspc-CLI/commit/ef51cc04bcb6a94728c56d57f189034250aefff3))
+
+
+### Documentation
+
+* **readme:** drop core versions the pin tool does not move ([#188](https://github.com/SteerSpec/strspc-CLI/issues/188)) ([0086442](https://github.com/SteerSpec/strspc-CLI/commit/00864428e0506dcb137de1b7b031c197253e99d4))
+* **readme:** list the refs input of strspc-lint.yml ([#191](https://github.com/SteerSpec/strspc-CLI/issues/191)) ([d0b02f4](https://github.com/SteerSpec/strspc-CLI/commit/d0b02f4eb2ebbdce5a0e8967fe75626ca2ca6e76))
+
 ## [1.30.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.29.0...v1.30.0) (2026-10-31)
 
 
