@@ -85,8 +85,8 @@ func TestExplainList(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(output), "\n")
-	if len(lines) != 110 {
-		t.Fatalf("listed %d codes, want 110", len(lines))
+	if len(lines) != 120 {
+		t.Fatalf("listed %d codes, want 120", len(lines))
 	}
 	// CHK codes sort ahead of the manager's, which start at EC001.
 	if !strings.HasPrefix(lines[0], "CHK002") || !strings.HasPrefix(lines[1], "CHK003") {
@@ -130,8 +130,8 @@ func TestExplainListJSON(t *testing.T) {
 	if jsonErr := json.Unmarshal([]byte(output), &got); jsonErr != nil {
 		t.Fatalf("output is not valid JSON: %v\noutput: %s", jsonErr, output)
 	}
-	if len(got) != 110 {
-		t.Fatalf("listed %d codes, want 110", len(got))
+	if len(got) != 120 {
+		t.Fatalf("listed %d codes, want 120", len(got))
 	}
 	for _, entry := range got {
 		for _, key := range []string{"code", "title", "description", "fix", "docs", "module", "severity"} {

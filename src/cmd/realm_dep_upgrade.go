@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -149,8 +150,9 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 		Use:   "upgrade [realm_id]",
 		Short: "Upgrade Realm dependencies to their latest release",
 		Long: "Resolve the latest release of each dependency's github:// source, rewrite its version and\n" +
-			"source in realm.json, and validate the realm (strict, recursive). If validation fails,\n" +
-			"realm.json is restored and the command exits non-zero.\n\n" +
+			"source in realm.json, and validate the realm (strict, recursive). When dev.steerspec.core is\n" +
+			"upgraded, _schema/*.json files that differ from the new release's copies are replaced by\n" +
+			"them (RM015). If validation fails, every file is restored and the command exits non-zero.\n\n" +
 			"Without realm_id every dependency is considered. Dependencies are never downgraded,\n" +
 			"and sources that are not github:// references are skipped. Private sources need GITHUB_TOKEN.\n\n" +
 			"With --check nothing is written; the command exits non-zero when an upgrade is available.\n\n" +
@@ -235,13 +237,34 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 				return err
 			}
 
+			var synced []schemaSync
+			rollback := func() error {
+				if rerr := os.WriteFile(realmPath, original, 0o644); rerr != nil {
+					return rerr
+				}
+				return restoreSchemas(dir, synced)
+			}
+			for _, up := range ups {
+				s, serr := syncCoreSchemas(cmd.Context(), dir, up, rf.SubRealms)
+				synced = append(synced, s...)
+				if serr != nil {
+					if rerr := rollback(); rerr != nil {
+						return fmt.Errorf("syncing schemas failed (%v) and restoring files failed: %w", serr, rerr)
+					}
+					return fmt.Errorf("%w; files left unchanged", serr)
+				}
+			}
+			for _, s := range synced {
+				writeln(w, cmdStyle.Render(sanitizeLine("  synced "+filepath.Join(dir, s.path))))
+			}
+
 			res := validateUpgradedRealm(cmd.Context(), dir)
 			if !res.OK() {
 				outputText(w, res)
-				if rerr := os.WriteFile(realmPath, original, 0o644); rerr != nil {
-					return fmt.Errorf("upgrade breaks the realm and restoring realm.json failed: %w", rerr)
+				if rerr := rollback(); rerr != nil {
+					return fmt.Errorf("upgrade breaks the realm and restoring files failed: %w", rerr)
 				}
-				return fmt.Errorf("upgrade breaks the realm (%d error(s)); realm.json left unchanged", len(res.Errors()))
+				return fmt.Errorf("upgrade breaks the realm (%d error(s)); files left unchanged", len(res.Errors()))
 			}
 
 			writeln(w, brandStyle.Render(fmt.Sprintf("Upgraded %d dependency(ies); realm validates", len(ups))))
