@@ -181,7 +181,7 @@ func renderDirectory(cmd *cobra.Command, newRenderer rendererFactory, dir, outpu
 
 		ef, loadErr := entity.Load(path)
 		if loadErr != nil {
-			_, _ = fmt.Fprintf(errW, "warning: skipping %s: %v\n", path, loadErr)
+			writeWarning(errW, "skipping %s: %v", path, loadErr)
 			return nil
 		}
 
@@ -191,7 +191,7 @@ func renderDirectory(cmd *cobra.Command, newRenderer rendererFactory, dir, outpu
 				seen--
 				return nil
 			}
-			_, _ = fmt.Fprintf(errW, "warning: skipping %s: %v\n", path, valErr)
+			writeWarning(errW, "skipping %s: %v", path, valErr)
 			return nil
 		}
 
@@ -279,7 +279,7 @@ func renderFileJSON(cmd *cobra.Command, chains *chainResolver, path, outputDir, 
 	}
 
 	if outputDir == "" {
-		_, err = cmd.OutOrStdout().Write(append(data, '\n'))
+		_, err = cmd.OutOrStdout().Write(append(printableJSON(data), '\n'))
 		return err
 	}
 
@@ -335,7 +335,7 @@ func renderDirectoryJSON(cmd *cobra.Command, chains *chainResolver, dir, outputD
 
 		ef, loadErr := entity.Load(path)
 		if loadErr != nil {
-			_, _ = fmt.Fprintf(errW, "warning: skipping %s: %v\n", path, loadErr)
+			writeWarning(errW, "skipping %s: %v", path, loadErr)
 			return nil
 		}
 
@@ -344,7 +344,7 @@ func renderDirectoryJSON(cmd *cobra.Command, chains *chainResolver, dir, outputD
 				seen--
 				return nil
 			}
-			_, _ = fmt.Fprintf(errW, "warning: skipping %s: %v\n", path, valErr)
+			writeWarning(errW, "skipping %s: %v", path, valErr)
 			return nil
 		}
 

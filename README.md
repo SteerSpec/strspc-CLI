@@ -58,7 +58,7 @@ flowchart LR
 Dependencies point one way, and releases land in the same order. Rule logic lives in the manager;
 the CLI presents its results. [strspc-spec](https://github.com/SteerSpec/strspc-spec) holds the rules
 that govern these tiers, and this repository owns the `dev.steerspec.cli` realm in [`rules/`](rules)
-(`CFG`, `CMD`, `CONV`), pinned to `dev.steerspec.core` 1.12.0.
+(`CFG`, `CMD`, `CONV`), which pins `dev.steerspec.core` in [`rules/realm.json`](rules/realm.json).
 
 | Command | Manager modules (SPEC §6.2) |
 | ------- | --------------------------- |
@@ -118,7 +118,7 @@ strspc init
 
 # Author rules in your own realm, pinned to the core realm
 strspc realm init --dir rules --id com.acme.app --title "Acme App" \
-  --dependency dev.steerspec.core@1.12.0=github://SteerSpec/strspc-rules@v1.12.0/rules/core
+  --dependency dev.steerspec.core@1.13.0=github://SteerSpec/strspc-rules@v1.13.0/rules/core
 strspc realm add CFG --title "Configuration"
 strspc rule add CFG --body "The CLI MUST write a config file." --added-by "@alice"
 
@@ -157,6 +157,7 @@ full data model.
 | `strspc diff` | Validate rule lifecycle transitions between a git ref and the working tree |
 | `strspc check` | Evaluate a code diff against the rules in `.strspc/config.yaml` |
 | `strspc refs` | Validate rule citations in Markdown and other text files |
+| `strspc status` | Show the project's rule sources, rule counts and realm, without the network |
 | `strspc explain` | Explain a diagnostic code, or list all of them with `--list` |
 | `strspc sync` | Resolve and cache the rule sources in `.strspc/config.yaml` |
 | `strspc render` | Convert entity JSON files to Markdown or normalized JSON |
@@ -272,7 +273,7 @@ validates the realm (strict, recursive).
 ```bash
 strspc realm dep upgrade --check    # exit 1 if an upgrade is available; writes nothing
 strspc realm dep upgrade            # upgrade every dependency
-strspc realm dep upgrade dev.steerspec.core --to 1.12.0
+strspc realm dep upgrade dev.steerspec.core --to X.Y.Z
 ```
 
 If the new version breaks the realm, `realm.json` is restored and the command exits non-zero.
@@ -288,7 +289,7 @@ a branch or a commit SHA, are skipped. See [GitHub sources](#github-sources) for
 
 ```yaml
 rules:
-  - source: github://SteerSpec/strspc-rules@v1.12.0/rules/core   # bumped per rules release
+  - source: github://SteerSpec/strspc-rules@v1.13.0/rules/core   # bumped per rules release
     scope: global
   - source: ./rules/
     scope: global
@@ -318,6 +319,36 @@ fail_on:
 > Use `scope: global` for a local realm that governs your code, as the CLI's
 > [own config](.strspc/config.yaml) does. `strspc realm init` suggests `scope: local`, which limits
 > the rules to files under `rules/`, and those are never evaluated.
+
+### See how a project stands
+
+`strspc status` shows the configuration, each rule source, rule counts by state and the realm:
+
+```text
+$ strspc status
+SteerSpec CLI 1.31.0
+
+Config: .strspc/config.yaml
+  Evaluator: claude
+  Fail on: I
+  Cache TTL: 24h0m0s
+
+Sources:
+  - github://SteerSpec/strspc-rules@v1.13.0/rules/core (global): pinned, cached, 107 rule(s)
+  - ./rules/ (global): local, 11 rule(s)
+
+Rules: 118 total
+  6 Draft  3 Published  109 Implemented  0 Abandoned  0 Retired  0 Terminated
+
+Realm: dev.steerspec.cli 0.1.0
+  Entities: CFG, CMD, CONV
+  Sub-realms: none
+```
+
+It only reads: it makes no network call and fills no cache, so a source that was never fetched shows
+as `not synced`, and `strspc sync` fetches it. Only `@latest` can go stale, once it resolved longer ago
+than `cache.ttl`; a pinned source can't. `--json` prints the same report as one document. It exits 0,
+also in a project with no configuration, and 2 when the configuration can't be parsed.
 
 ## Validate rules
 
@@ -569,7 +600,7 @@ jobs:
 
 | Workflow | Runs | Notable inputs |
 | -------- | ---- | -------------- |
-| `strspc-lint.yml` | `realm validate`, `lint` and `diff` | `diff: false` for release PRs that aggregate promotions; `core: true` for the core realm |
+| `strspc-lint.yml` | `realm validate`, `lint` and `diff`, and optionally `refs` | `diff: false` for release PRs that aggregate promotions; `core: true` for the core realm; `refs: true` to check rule citations, which needs `.strspc/config.yaml` and strspc 1.30.0 or later; `refs-allow-state` lists the rule states a citation may name, `D` by default and none when empty; `STRSPC_GITHUB_TOKEN` for private rule sources |
 | `strspc-check.yml` | `check`, or `check --static-only` without a key | `cache: true` only where every rule source is public: the cache stores explanations that fork PRs can restore |
 | `strspc-deps-bump.yml` | `realm dep upgrade`, then opens one pull request | Run it on a schedule; it never merges |
 

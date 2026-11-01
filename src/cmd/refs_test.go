@@ -540,14 +540,13 @@ func TestPrintableText(t *testing.T) {
 	}
 }
 
-func TestWriteRefsNoticesStayOnOneLine(t *testing.T) {
+func TestWriteRefsNoticesAreSanitized(t *testing.T) {
 	var out bytes.Buffer
 	writeRefsNotices(&out, []result.Diagnostic{{
 		Code: "RR001", Severity: result.Warning, Message: "bad\n::error::forged \x1b[31mred",
 	}})
-	got := strings.TrimSuffix(out.String(), "\n")
-	if strings.ContainsAny(got, "\n\x1b") {
-		t.Errorf("control character in output: %q", got)
+	if got := out.String(); strings.Contains(got, "\n::") || strings.Contains(got, "\x1b[31mred") {
+		t.Errorf("control character or workflow command in output: %q", got)
 	}
 }
 

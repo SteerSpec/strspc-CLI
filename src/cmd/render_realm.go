@@ -171,7 +171,7 @@ func (c *chainResolver) resolve(root locatedRealm) (map[string]render.Chain, err
 	out, res := realmresolve.New(realmresolve.WithCacheDir(cacheDir)).Resolve(c.ctx, root.RealmFile, root.dir)
 	for _, d := range res.Diagnostics {
 		if d.Severity == result.Error {
-			_, _ = fmt.Fprintf(c.errW, "warning: realm %s: %s: %s\n", root.Realm.ID, d.Code, d.Message)
+			writeWarning(c.errW, "realm %s: %s: %s", root.Realm.ID, d.Code, d.Message)
 		}
 	}
 	chains := make(map[string]render.Chain, len(out.Inheritance))
@@ -184,7 +184,7 @@ func (c *chainResolver) resolve(root locatedRealm) (map[string]render.Chain, err
 
 func (c *chainResolver) warnUnresolved(path string, f *entity.File, chains map[string]render.Chain) {
 	if _, ok := chains[f.Entity.ID]; !ok && f.Entity.Inherits != "" {
-		_, _ = fmt.Fprintf(c.errW, "warning: %s: rendering %s without the rules it inherits: %q did not resolve\n", path, f.Entity.ID, f.Entity.Inherits)
+		writeWarning(c.errW, "%s: rendering %s without the rules it inherits: %q did not resolve", path, f.Entity.ID, f.Entity.Inherits)
 	}
 	for i := range f.SubEntities {
 		c.warnUnresolved(path, &f.SubEntities[i], chains)

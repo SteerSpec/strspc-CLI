@@ -29,9 +29,10 @@ func SetVersionInfo(v VersionInfo) {
 // NewRootCmd creates a fresh root command with all subcommands registered.
 func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "strspc",
-		Short: "SteerSpec CLI",
-		Long:  "SteerSpec CLI — manage steering specifications from the command line.",
+		Use:           "strspc",
+		SilenceErrors: true, // Execute prints the error, sanitized
+		Short:         "SteerSpec CLI",
+		Long:          "SteerSpec CLI — manage steering specifications from the command line.",
 		// Enables the --version flag; `strspc version` prints the full details.
 		Version: versionInfo.Version,
 	}
@@ -48,6 +49,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newCheckCmd())
 	cmd.AddCommand(newLintCmd())
 	cmd.AddCommand(newRefsCmd())
+	cmd.AddCommand(newStatusCmd())
 	cmd.AddCommand(newDiffCmd())
 	cmd.AddCommand(newExplainCmd())
 	cmd.SetHelpFunc(customHelp)
@@ -63,7 +65,7 @@ func Execute() {
 	err := NewRootCmd().ExecuteContext(ctx)
 	stop()
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, "Error:", err)
+		_, _ = fmt.Fprintln(os.Stderr, printableDiagnostic("Error: "+err.Error()))
 		os.Exit(exitCodeOf(err))
 	}
 }
