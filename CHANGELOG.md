@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.32.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.31.0...v1.32.0) (2026-11-01)
+
+
+### Features
+
+* **realm:** sync _schema files when upgrading dev.steerspec.core ([#200](https://github.com/SteerSpec/strspc-CLI/issues/200)) ([e250ed3](https://github.com/SteerSpec/strspc-CLI/commit/e250ed39a040de7dde9f47da27a4349745738959))
+* **standards:** add strspc standards coverage ([#201](https://github.com/SteerSpec/strspc-CLI/issues/201)) ([d096cdf](https://github.com/SteerSpec/strspc-CLI/commit/d096cdf1356cc44742d7b75071acff1e7e1c88f5))
+
 ## [1.31.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.30.0...v1.31.0) (2026-11-01)
 
 
