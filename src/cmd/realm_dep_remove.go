@@ -21,8 +21,10 @@ func newRealmDepRemoveCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			realmID := args[0]
 
-			if !realmIDPattern.MatchString(realmID) {
-				return fmt.Errorf("invalid realm ID %q", realmID)
+			// Not checked against the realm ID grammar: an entry that doesn't fit
+			// it must still be removable. It only has to match one exactly.
+			if err := rejectControlChars("realm ID", realmID); err != nil {
+				return err
 			}
 
 			realmPath, checkErr := checkRealmJSON(dir)

@@ -41,9 +41,13 @@ type realmMeta struct {
 	Version string `json:"version"`
 }
 
-// realmIDPattern validates realm IDs: lowercase alphanumeric, dots, and hyphens.
-// Must not start or end with a dot or hyphen.
-var realmIDPattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9.\-]*[a-z0-9])?$`)
+// realmIDPattern is the realm ID grammar of realm.v1.schema.json (realm.id),
+// which realm-lint also checks: dot-separated segments, each a lowercase letter
+// followed by lowercase letters and digits.
+var realmIDPattern = regexp.MustCompile(`^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$`)
+
+// realmIDGrammar describes realmIDPattern in error messages.
+const realmIDGrammar = "dot-separated segments, each a lowercase letter followed by lowercase letters or digits"
 
 // semverPattern matches dependencies[].version in realm.v1.schema.json.
 var semverPattern = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$`)
@@ -82,7 +86,7 @@ func parseDependency(s string) (entity.RealmDep, error) {
 
 	// Validate realm ID against the established pattern.
 	if !realmIDPattern.MatchString(parts[0]) {
-		return dep, fmt.Errorf("invalid realm ID %q in dependency %q", parts[0], s)
+		return dep, fmt.Errorf("invalid realm ID %q in dependency %q: must be %s", parts[0], s, realmIDGrammar)
 	}
 
 	// Validate version against the realm schema's SemVer pattern.
@@ -123,21 +127,21 @@ func newRealmInitCmd() *cobra.Command {
 				}
 			}
 
-			// Default realm ID to directory name (no validation for defaults).
-			idExplicit := cmd.Flags().Changed("id")
+			// The realm ID defaults to the directory name, which must then fit
+			// the grammar too: realm validate would reject the realm otherwise.
 			if realmID == "" {
 				abs, err := filepath.Abs(dir)
 				if err != nil {
 					return fmt.Errorf("resolving directory path: %w", err)
 				}
-				realmID = filepath.Base(abs)
-			}
-
-			// Validate explicitly provided realm IDs.
-			if idExplicit {
-				if !realmIDPattern.MatchString(realmID) {
-					return fmt.Errorf("invalid realm ID %q: must be lowercase alphanumeric with dots and hyphens (e.g. com.acme.myproject)", realmID)
+				name := filepath.Base(abs)
+				if !realmIDPattern.MatchString(name) {
+					return fmt.Errorf("directory name %q is not a valid realm ID (%s): pass one with --id (e.g. com.acme.myproject)", name, realmIDGrammar)
 				}
+				realmID = name
+			}
+			if !realmIDPattern.MatchString(realmID) {
+				return fmt.Errorf("invalid realm ID %q: must be %s (e.g. com.acme.myproject)", realmID, realmIDGrammar)
 			}
 
 			// Parse and validate dependencies before any filesystem/network operations.
