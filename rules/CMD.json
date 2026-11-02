@@ -5,9 +5,9 @@
     "title": "Commands"
   },
   "rule_set": {
-    "version": "0.5.0",
-    "timestamp": "2026-10-20T05:45:07Z",
-    "hash": "blake3:77ba4a160f14b8d37f8fbfd60dc07cfd2c78fc51e8c51fe43eec6492183d4666"
+    "version": "0.8.0",
+    "timestamp": "2026-11-02T15:21:15Z",
+    "hash": "blake3:79b206812a4048ac5d0d51adc5b2b3c97cf88ed9e1fb47b3b604209296344fa8"
   },
   "rules": [
     {
@@ -31,7 +31,7 @@
     {
       "id": "CMD-003",
       "revision": 0,
-      "state": "P",
+      "state": "I",
       "body": "Command output MUST be written via cmd.OutOrStdout() and cmd.ErrOrStderr() to support testing with captured output buffers.",
       "added_by": "@pleberre",
       "added_at": "2026-03-25",
@@ -40,7 +40,7 @@
     {
       "id": "CMD-004",
       "revision": 0,
-      "state": "D",
+      "state": "I",
       "body": "MUST NOT call os.Exit outside the root command's error handler; a command returns an error and the exit code derives from it.",
       "added_by": "@pleberre",
       "added_at": "2026-10-19",
