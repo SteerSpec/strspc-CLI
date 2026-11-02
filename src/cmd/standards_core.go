@@ -10,6 +10,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/remote"
 )
 
 // standardsMinCore is the first dev.steerspec.core release whose entity and
@@ -26,6 +27,7 @@ type realmPin struct {
 	realmID string
 	dir     string
 	version string
+	source  string
 }
 
 // checkCoreAcceptsStandards refuses to declare a standard in the file at path
@@ -44,12 +46,38 @@ func checkCoreAcceptsStandards(dir, path string) error {
 		if err != nil || !v.LessThan(standardsMinCore) {
 			continue
 		}
-		return fmt.Errorf("realm %s pins %s %s, whose schemas reject `standards` (it needs %s or later): "+
-			"upgrade it first with `strspc realm dep upgrade %s --to %s --dir %s`",
-			printableRealmID(p.realmID), coreRealmID, p.version, standardsMinCore, coreRealmID, standardsMinCore,
-			coverageCell(shellQuote(p.dir)))
+		return fmt.Errorf("realm %s pins %s %s, whose schemas reject `standards` (it needs %s or later): %s",
+			printableRealmID(p.realmID), coreRealmID, p.version, standardsMinCore, corePinRemedy(p))
 	}
 	return nil
+}
+
+// corePinRemedy tells how to move p to standardsMinCore. `realm dep upgrade`
+// moves only a github:// source pinned to a release tag (planDepUpgrade); any
+// other source is re-pinned with `realm dep remove` and `realm dep add`,
+// keeping the source.
+func corePinRemedy(p realmPin) string {
+	dir := coverageCell(shellQuote(p.dir))
+	if depUpgradable(p.source) {
+		return fmt.Sprintf("upgrade it first with `strspc realm dep upgrade %s --to %s --dir %s`", coreRealmID, standardsMinCore, dir)
+	}
+	spec := fmt.Sprintf("%s@%s", coreRealmID, standardsMinCore)
+	if p.source != "" {
+		spec += "=" + p.source
+	}
+	return fmt.Sprintf("`realm dep upgrade` can't move its source, so re-pin it first with "+
+		"`strspc realm dep remove %s --dir %s` then `strspc realm dep add %s --dir %s`",
+		coreRealmID, dir, coverageCell(shellQuote(spec)), dir)
+}
+
+// depUpgradable reports whether `realm dep upgrade` can move a dependency with
+// this source: a github:// reference pinned to a release tag.
+func depUpgradable(source string) bool {
+	if !strings.HasPrefix(source, remote.Scheme) {
+		return false
+	}
+	ref, err := remote.ParseGitHub(source)
+	return err == nil && ref.Ref != remote.LatestRef && releaseTag.MatchString(ref.Ref)
 }
 
 // corePinsFor returns the core pins that apply to the file at path, nearest
@@ -61,8 +89,8 @@ func corePinsFor(dir, path string) []realmPin {
 	}
 	var pins []realmPin
 	add := func(r *entity.RealmFile, d string) {
-		if v := corePin(r); v != "" {
-			pins = append(pins, realmPin{realmID: r.Realm.ID, dir: d, version: v})
+		if dep := corePin(r); dep != nil {
+			pins = append(pins, realmPin{realmID: r.Realm.ID, dir: d, version: dep.Version, source: dep.Source})
 		}
 	}
 	if rel, err := filepath.Rel(dir, path); err == nil {
@@ -82,14 +110,14 @@ func corePinsFor(dir, path string) []realmPin {
 	return pins
 }
 
-// corePin returns the version of dev.steerspec.core rf depends on, or "".
-func corePin(rf *entity.RealmFile) string {
-	for _, d := range rf.Dependencies {
-		if d.RealmID == coreRealmID {
-			return d.Version
+// corePin returns rf's dependency on dev.steerspec.core, or nil.
+func corePin(rf *entity.RealmFile) *entity.RealmDep {
+	for i := range rf.Dependencies {
+		if rf.Dependencies[i].RealmID == coreRealmID {
+			return &rf.Dependencies[i]
 		}
 	}
-	return ""
+	return nil
 }
 
 // shellQuote returns s as one POSIX shell word: unchanged when it holds only

@@ -11,14 +11,21 @@ import (
 	"github.com/SteerSpec/strspc-manager/src/entity"
 )
 
-// pinCore sets the dev.steerspec.core dependency of the realm at dir, or
-// removes it when version is "".
+const coreSource = "github://SteerSpec/strspc-rules@v1.14.0/rules/core"
+
+// pinCore sets the dev.steerspec.core dependency of the realm at dir, from
+// coreSource, or removes it when version is "".
 func pinCore(t *testing.T, dir, version string) {
+	t.Helper()
+	pinCoreFrom(t, dir, version, coreSource)
+}
+
+func pinCoreFrom(t *testing.T, dir, version, source string) {
 	t.Helper()
 	err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 		rf.Dependencies = nil
 		if version != "" {
-			rf.Dependencies = []entity.RealmDep{{RealmID: coreRealmID, Version: version}}
+			rf.Dependencies = []entity.RealmDep{{RealmID: coreRealmID, Version: version, Source: source}}
 		}
 		return nil
 	})
@@ -117,6 +124,34 @@ func TestCheckCoreAcceptsStandards(t *testing.T) {
 	err := checkCoreAcceptsStandards(dir, subFile)
 	if err == nil || !strings.Contains(err.Error(), "--dir "+shellQuote(sub)+"`") {
 		t.Errorf("error = %v, want the upgrade to target %s", err, sub)
+	}
+}
+
+// The remedy names a command that can move the pin: realm dep upgrade only
+// moves a github:// source pinned to a release tag.
+func TestCoreAcceptsStandardsRemedy(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	upgrade := "`strspc realm dep upgrade dev.steerspec.core --to 1.15.0 --dir " + shellQuote(dir) + "`"
+	for _, tc := range []struct {
+		name, source, want string
+	}{
+		{"release tag", coreSource, upgrade},
+		{"no source", "", "`strspc realm dep add dev.steerspec.core@1.15.0 --dir " + shellQuote(dir) + "`"},
+		{"local", "./core", "`strspc realm dep add dev.steerspec.core@1.15.0=./core --dir " + shellQuote(dir) + "`"},
+		{"latest", "github://SteerSpec/strspc-rules@latest/rules/core", "dev.steerspec.core@1.15.0=github://SteerSpec/strspc-rules@latest/rules/core"},
+		{"branch", "github://SteerSpec/strspc-rules@main/rules/core", "dev.steerspec.core@1.15.0=github://SteerSpec/strspc-rules@main/rules/core"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pinCoreFrom(t, dir, "1.14.0", tc.source)
+			err := checkCoreAcceptsStandards(dir, filepath.Join(dir, "MYE.json"))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want it to contain %s", err, tc.want)
+			}
+			if tc.source != coreSource && !strings.Contains(err.Error(), "`strspc realm dep remove dev.steerspec.core --dir "+shellQuote(dir)+"`") {
+				t.Errorf("error = %v, want the remove step first", err)
+			}
+		})
 	}
 }
 
