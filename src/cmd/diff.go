@@ -382,6 +382,10 @@ type gitShowError struct {
 	cause error
 }
 
+// Unwrap returns the git failure, so callers can inspect it with errors.Is and
+// errors.As (CONV-004).
+func (e *gitShowError) Unwrap() error { return e.cause }
+
 func (e *gitShowError) Error() string {
 	var exitErr *exec.ExitError
 	if isExitError(e.cause, &exitErr) {
