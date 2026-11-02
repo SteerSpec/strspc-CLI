@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/result"
 	"github.com/SteerSpec/strspc-manager/src/rulelint"
 	"github.com/SteerSpec/strspc-manager/src/schema"
@@ -71,7 +72,13 @@ func newLintCmd() *cobra.Command {
 				if crossRef {
 					res = linter.LintDir(cmd.Context(), inputPath)
 				} else {
-					res = lintDirPerFile(cmd.Context(), linter, inputPath)
+					res = lintDirPerFile(cmd.Context(), linter, inputPath, func(subDir string) *rulelint.Linter {
+						return rulelint.New(
+							rulelint.WithSchemaFetcher(newSchemaFetcher(schema.ForRealm(subDir)...)),
+							rulelint.WithStrict(strict),
+							rulelint.WithSchemaVersion(schemaVersion),
+						)
+					})
 				}
 			} else {
 				data, readErr := os.ReadFile(inputPath)
@@ -125,9 +132,15 @@ func newLintCmd() *cobra.Command {
 // lintDirPerFile walks a directory tree and lints each entity JSON file
 // individually without cross-file checks. Skips underscore-prefixed
 // directories (e.g. _schema/) and files, as well as realm.json.
-func lintDirPerFile(ctx context.Context, linter *rulelint.Linter, dir string) *result.Result {
+//
+// The files of a sub-realm of dir that pins its own core are linted only with
+// the linter returned by sub for that sub-realm's directory, so they are
+// checked against its pin and not also against dir's (RLM-014), as realm
+// validate does. A sub-realm without a core dependency keeps dir's linter.
+func lintDirPerFile(ctx context.Context, linter *rulelint.Linter, dir string, sub rulelint.SubRealmLinter) *result.Result {
 	res := &result.Result{}
 	seen := 0
+	pinned := pinnedSubRealmLinters(dir, sub)
 
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -166,7 +179,13 @@ func lintDirPerFile(ctx context.Context, linter *rulelint.Linter, dir string) *r
 			return nil
 		}
 
-		fileRes := linter.LintBytes(ctx, data)
+		fileLinter := linter
+		if rel, err := filepath.Rel(dir, path); err == nil {
+			if first, _, nested := strings.Cut(filepath.ToSlash(rel), "/"); nested && pinned[first] != nil {
+				fileLinter = pinned[first]
+			}
+		}
+		fileRes := fileLinter.LintBytes(ctx, data)
 		for _, diag := range fileRes.Diagnostics {
 			if diag.Path == "" {
 				diag.Path = path
@@ -236,4 +255,26 @@ func writeJSON(w io.Writer, res *result.Result, explain bool) error {
 	}
 	_, writeErr := w.Write(append(printableJSON(data), '\n'))
 	return writeErr
+}
+
+// pinnedSubRealmLinters returns, by directory name, the linters of the
+// sub-realms of dir whose manifest depends on dev.steerspec.core. Without a
+// manifest at dir, or one that can't be loaded, there are none.
+func pinnedSubRealmLinters(dir string, sub rulelint.SubRealmLinter) map[string]*rulelint.Linter {
+	rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
+	if err != nil || sub == nil {
+		return nil
+	}
+	out := make(map[string]*rulelint.Linter)
+	for _, name := range rf.SubRealms {
+		subDir := filepath.Join(dir, name)
+		m, err := entity.LoadRealm(filepath.Join(subDir, "realm.json"))
+		if err != nil || !m.DependsOn(coreRealmID) {
+			continue
+		}
+		if l := sub(subDir); l != nil {
+			out[name] = l
+		}
+	}
+	return out
 }

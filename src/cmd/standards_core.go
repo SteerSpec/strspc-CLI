@@ -31,25 +31,21 @@ type realmPin struct {
 }
 
 // checkCoreAcceptsStandards refuses to declare a standard in the file at path
-// when a core pin that validates it predates standardsMinCore: lint would
-// reject the file (RL002, RM002). Every pin that applies is checked: that of
-// the sub-realm of dir holding the file, the Realm at dir's, and that Realm's
-// parent's, since a recursive `realm validate` lints a sub-realm's entities
-// against the parent's pin too. A pin that isn't an X.Y.Z release selects no
-// schemas and is skipped, as is a Realm with no manifest or no pin.
+// when the core pin that validates it predates standardsMinCore: lint would
+// reject the file (RL002, RM002). That pin is the nearest one (corePinFor). A
+// pin that isn't an X.Y.Z release selects no schemas and is skipped, as is a
+// Realm with no manifest or no pin.
 func checkCoreAcceptsStandards(dir, path string) error {
-	for _, p := range corePinsFor(dir, path) {
-		if !coreReleasePin.MatchString(p.version) {
-			continue
-		}
-		v, err := semver.StrictNewVersion(p.version)
-		if err != nil || !v.LessThan(standardsMinCore) {
-			continue
-		}
-		return fmt.Errorf("realm %s pins %s %s, whose schemas reject `standards` (it needs %s or later): %s",
-			printableRealmID(p.realmID), coreRealmID, p.version, standardsMinCore, corePinRemedy(p))
+	p := corePinFor(dir, path)
+	if p == nil || !coreReleasePin.MatchString(p.version) {
+		return nil
 	}
-	return nil
+	v, err := semver.StrictNewVersion(p.version)
+	if err != nil || !v.LessThan(standardsMinCore) {
+		return nil
+	}
+	return fmt.Errorf("realm %s pins %s %s, whose schemas reject `standards` (it needs %s or later): %s",
+		printableRealmID(p.realmID), coreRealmID, p.version, standardsMinCore, corePinRemedy(*p))
 }
 
 // corePinRemedy tells how to move p to standardsMinCore. `realm dep upgrade`
@@ -80,34 +76,41 @@ func depUpgradable(source string) bool {
 	return err == nil && ref.Ref != remote.LatestRef && releaseTag.MatchString(ref.Ref)
 }
 
-// corePinsFor returns the core pins that apply to the file at path, nearest
-// first: the sub-realm of dir holding it, the Realm at dir, and its parent.
-func corePinsFor(dir, path string) []realmPin {
+// corePinFor returns the core pin that validates the file at path, or nil: that
+// of the nearest Realm depending on dev.steerspec.core, among the sub-realm of
+// dir holding the file, the Realm at dir and that Realm's parent. A sub-realm
+// that pins its own core is linted only against that pin; one that doesn't uses
+// its parent's (RLM-014).
+func corePinFor(dir, path string) *realmPin {
 	rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
 	if err != nil {
 		return nil
 	}
-	var pins []realmPin
-	add := func(r *entity.RealmFile, d string) {
+	pin := func(r *entity.RealmFile, d string) *realmPin {
 		if dep := corePin(r); dep != nil {
-			pins = append(pins, realmPin{realmID: r.Realm.ID, dir: d, version: dep.Version, source: dep.Source})
+			return &realmPin{realmID: r.Realm.ID, dir: d, version: dep.Version, source: dep.Source}
 		}
+		return nil
 	}
 	if rel, err := filepath.Rel(dir, path); err == nil {
 		if first, _, nested := strings.Cut(filepath.ToSlash(rel), "/"); nested && slices.Contains(rf.SubRealms, first) {
 			subDir := filepath.Join(dir, first)
 			if sub, err := entity.LoadRealm(filepath.Join(subDir, "realm.json")); err == nil {
-				add(sub, subDir)
+				if p := pin(sub, subDir); p != nil {
+					return p
+				}
 			}
 		}
 	}
-	add(rf, dir)
+	if p := pin(rf, dir); p != nil {
+		return p
+	}
 	if parent := entity.ParentRealm(dir, rf.Realm.ID); parent != nil {
 		if abs, err := filepath.Abs(dir); err == nil {
-			add(parent, filepath.Dir(abs))
+			return pin(parent, filepath.Dir(abs))
 		}
 	}
-	return pins
+	return nil
 }
 
 // corePin returns rf's dependency on dev.steerspec.core, or nil.

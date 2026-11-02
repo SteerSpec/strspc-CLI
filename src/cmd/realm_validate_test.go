@@ -21,12 +21,8 @@ func setupRealmValidateTest(t *testing.T) {
 	original := newRealmValidator
 	newRealmValidator = func(_ string, strict, recursive, _ bool) *realmValidatorSet {
 		rl := rulelint.New(rulelint.WithStrict(strict))
-		realmOpts := []realmlint.Option{realmlint.WithStrict(strict)}
-		if !recursive {
-			realmOpts = append(realmOpts, realmlint.WithRuleLinter(rl))
-		}
 		return &realmValidatorSet{
-			realmLinter: realmlint.New(realmOpts...),
+			realmLinter: realmlint.New(realmlint.WithStrict(strict), entityLinting(recursive, rl)),
 			ruleLinter:  rl,
 		}
 	}

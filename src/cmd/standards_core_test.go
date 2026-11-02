@@ -105,9 +105,10 @@ func TestCheckCoreAcceptsStandards(t *testing.T) {
 		{"sub-realm inherits a recent root pin", "1.15.0", "", dir, false},
 		{"sub-realm inherits an old root pin", "1.14.0", "", dir, true},
 		{"sub-realm's own old pin", "1.15.0", "1.14.0", dir, true},
-		{"old root pin under a recent sub-realm pin", "1.14.0", "1.15.0", dir, true},
+		{"sub-realm's own recent pin under an old root pin", "1.14.0", "1.15.0", dir, false},
 		{"sub-realm as --dir with an old parent pin", "1.14.0", "", sub, true},
 		{"sub-realm as --dir with a recent parent pin", "1.15.0", "", sub, false},
+		{"sub-realm as --dir with its own recent pin under an old parent", "1.14.0", "1.15.0", sub, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pinCore(t, dir, tc.root)

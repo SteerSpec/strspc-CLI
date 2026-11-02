@@ -374,8 +374,9 @@ declared once per `standards` array. `update` changes its relation, version or u
 version names another edition, so `update` lists the notes that now map clauses of it. The entity
 commands patch-bump the entity and refresh its hash. `remove` is refused while a `standard` note would
 no longer resolve: withdraw the mapping first with `strspc note update <note_id> --type reference`.
-The `standards` field needs `dev.steerspec.core` 1.15.0 or later. `add` is refused while a core pin that
-validates the file is older: the sub-realm's own, the realm's or its parent's. Run `strspc realm dep upgrade` first.
+The `standards` field needs `dev.steerspec.core` 1.15.0 or later. `add` is refused while the core pin that
+validates the file is older: the nearest one among the sub-realm's own, the realm's and its parent's, since a
+sub-realm that pins its own core is checked only against that pin. The error names the command that moves it.
 
 `strspc standards coverage` then lists each mapped clause, per standard and entity:
 
@@ -431,7 +432,9 @@ violation.
 **Schemas.** `lint` and `realm validate` use the schemas of the `dev.steerspec.core` version the realm
 pins, so a schema change reaches a realm when it bumps its pin. A realm with no pin uses the latest
 published schemas, and a realm's own `_schema/` never decides validation. `lint` reads the pin from
-`realm.json` in the directory it's given, or in the file's directory.
+`realm.json` in the directory it's given, or in the file's directory. A sub-realm that pins its own core
+is checked only against that pin, also when linting or validating its parent; one with no pin uses its
+parent's.
 
 **Dependencies.** `realm validate` compares the realm with the dependencies it pins, so it fetches them
 and needs network access unless they're cached. It reports a pin that disagrees with its source tag or
