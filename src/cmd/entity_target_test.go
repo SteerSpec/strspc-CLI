@@ -39,6 +39,7 @@ func TestCommandsRejectPathEUID(t *testing.T) {
 		{"entity", "rehash", "../OUTSIDE"},
 		{"entity", "standards", "add", "../OUTSIDE", "--id", "iso.27001", "--relation", "implements"},
 		{"entity", "standards", "remove", "../OUTSIDE", "--id", "iso.27001"},
+		{"entity", "standards", "update", "../OUTSIDE", "--id", "iso.27001", "--version", "1"},
 		{"entity", "standards", "list", "../OUTSIDE"},
 	} {
 		name := strings.Join(args[:2], " ")

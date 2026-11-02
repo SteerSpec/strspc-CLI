@@ -13,12 +13,13 @@ func newRealmStandardsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "standards",
 		Short: "Declare the external standards a Realm cites",
-		Long: "Add, remove or list the Standard References in the `standards` array of realm.json\n" +
+		Long: "Add, update, remove or list the Standard References in the `standards` array of realm.json\n" +
 			"(RLMMNFST-007). The `standard` notes of the Realm's rules, and of its sub-realms' rules,\n" +
 			"resolve against them after the entities' own (NTE-016).",
 	}
 	cmd.AddCommand(newRealmStandardsAddCmd())
 	cmd.AddCommand(newRealmStandardsRemoveCmd())
+	cmd.AddCommand(newRealmStandardsUpdateCmd())
 	cmd.AddCommand(newRealmStandardsListCmd())
 	return cmd
 }
