@@ -53,6 +53,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newStandardsCmd())
 	cmd.AddCommand(newDiffCmd())
 	cmd.AddCommand(newExplainCmd())
+	cmd.AddCommand(newDoctorCmd())
 	cmd.SetHelpFunc(customHelp)
 	return cmd
 }
@@ -63,10 +64,11 @@ func NewRootCmd() *cobra.Command {
 // work (schema fetches, remote sources, evaluation) stops promptly.
 func Execute() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	err := NewRootCmd().ExecuteContext(ctx)
+	root := NewRootCmd()
+	err := root.ExecuteContext(ctx)
 	stop()
 	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, printableDiagnostic("Error: "+err.Error()))
+		_, _ = fmt.Fprintln(root.ErrOrStderr(), printableDiagnostic("Error: "+err.Error()))
 		os.Exit(exitCodeOf(err))
 	}
 }

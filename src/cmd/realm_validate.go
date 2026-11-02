@@ -32,36 +32,54 @@ type realmValidatorSet struct {
 // newRealmValidator creates linters for the realm in dir. Package-level so tests
 // can override it.
 var newRealmValidator = func(dir string, strict, recursive, core bool) *realmValidatorSet {
-	linters := func(opts []schema.Option) (*schema.Fetcher, *rulelint.Linter) {
-		fetcher := newSchemaFetcher(opts...)
-		return fetcher, rulelint.New(
+	return buildRealmValidator(dir, strict, recursive, core, nil, fetchRealmDependency)
+}
+
+// buildRealmValidator creates the linters of newRealmValidator. Every schema
+// fetcher also gets schemaOpts, and deps fetches the realm's dependencies: doctor
+// passes ones that never reach the network.
+func buildRealmValidator(dir string, strict, recursive, core bool, schemaOpts []schema.Option, deps realmlint.DependencyFetcher) *realmValidatorSet {
+	linters := func(opts []schema.Option, extra ...rulelint.Option) (*schema.Fetcher, *rulelint.Linter) {
+		fetcher := newSchemaFetcher(append(slices.Clone(opts), schemaOpts...)...)
+		return fetcher, rulelint.New(append([]rulelint.Option{
 			rulelint.WithSchemaFetcher(fetcher),
 			rulelint.WithStrict(strict),
-		)
+		}, extra...)...)
 	}
-	fetcher, rl := linters(realmSchemaOptions(dir, core))
+	// A sub-realm with its own core pin is checked only against that pin (by
+	// realm-lint here, and by rulelint.LintRealm when recursive), even with core.
+	subLinters := func(subDir string) (*schema.Fetcher, *rulelint.Linter) {
+		return linters(schema.ForRealm(subDir))
+	}
+	fetcher, rl := linters(realmSchemaOptions(dir, core),
+		rulelint.WithSubRealmLinters(func(subDir string) *rulelint.Linter {
+			_, l := subLinters(subDir)
+			return l
+		}))
 
 	realmOpts := []realmlint.Option{
 		realmlint.WithSchemaFetcher(fetcher),
 		realmlint.WithStrict(strict),
-		realmlint.WithDependencyFetcher(fetchRealmDependency),
-		// A sub-realm with its own core pin uses that pin, even with core. When
-		// recursive, rulelint.LintRealm also lints its entities with this realm's
-		// schemas, and mergeDiagnostics drops the duplicates.
-		realmlint.WithSubRealmLinters(func(subDir string) (*schema.Fetcher, *rulelint.Linter) {
-			return linters(schema.ForRealm(subDir))
-		}),
-	}
-	// When recursive, rulelint.LintRealm handles entity validation globally;
-	// skip per-file rule linting inside realmlint to avoid duplication.
-	if !recursive {
-		realmOpts = append(realmOpts, realmlint.WithRuleLinter(rl))
+		realmlint.WithDependencyFetcher(deps),
+		realmlint.WithSubRealmLinters(subLinters),
+		entityLinting(recursive, rl),
 	}
 
 	return &realmValidatorSet{
 		realmLinter: realmlint.New(realmOpts...),
 		ruleLinter:  rl,
 	}
+}
+
+// entityLinting says who lints the entity files during realm validate. When
+// recursive, rulelint.LintRealm lints them across the tree, so realm-lint
+// doesn't, and doesn't report skipping them (RM005 info); otherwise realm-lint
+// lints them with rl.
+func entityLinting(recursive bool, rl *rulelint.Linter) realmlint.Option {
+	if recursive {
+		return realmlint.WithEntityLintingDelegated()
+	}
+	return realmlint.WithRuleLinter(rl)
 }
 
 // fetchRealmDependency returns the directory holding a realm's dependency: a
@@ -136,7 +154,6 @@ func newRealmValidateCmd() *cobra.Command {
 			res := vs.realmLinter.Lint(cmd.Context(), dir)
 
 			if recursive {
-				dropSkippedEntityNotes(res)
 				realmRes := vs.ruleLinter.LintRealm(cmd.Context(), dir)
 				mergeDiagnostics(res, realmRes)
 			}
@@ -173,15 +190,6 @@ func newRealmValidateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&explain, "explain", false, "explain what each diagnostic code means and how to fix it")
 
 	return cmd
-}
-
-// dropSkippedEntityNotes removes realmlint's RM005 notes that it skipped entity
-// validation. They are false with --recursive, where LintRealm lints those files.
-// RM005 at Info means only this; its errors report unreadable paths and stay.
-func dropSkippedEntityNotes(res *result.Result) {
-	res.Diagnostics = slices.DeleteFunc(res.Diagnostics, func(d result.Diagnostic) bool {
-		return d.Code == "RM005" && d.Severity == result.Info
-	})
 }
 
 // diagKey identifies a diagnostic for deduplication.

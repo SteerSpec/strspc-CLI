@@ -40,15 +40,15 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			euid := args[0]
 
-			if !euidPattern.MatchString(euid) {
-				return fmt.Errorf("invalid EUID %q: must be 3-18 alphanumeric characters", euid)
+			if err := entityops.ValidateEUID(euid); err != nil {
+				return err
 			}
 			parent = strings.TrimSpace(parent)
 			if parent == "" {
 				return fmt.Errorf("--parent is required")
 			}
-			if !euidPattern.MatchString(parent) {
-				return fmt.Errorf("invalid --parent %q: must be 3-18 alphanumeric characters", parent)
+			if err := entityops.ValidateEUID(parent); err != nil {
+				return fmt.Errorf("invalid --parent: %w", err)
 			}
 			title = strings.TrimSpace(title)
 			if title == "" {

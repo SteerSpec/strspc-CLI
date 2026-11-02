@@ -118,7 +118,7 @@ strspc init
 
 # Author rules in your own realm, pinned to the core realm
 strspc realm init --dir rules --id com.acme.app --title "Acme App" \
-  --dependency dev.steerspec.core@1.14.0=github://SteerSpec/strspc-rules@v1.14.0/rules/core
+  --dependency dev.steerspec.core@1.15.0=github://SteerSpec/strspc-rules@v1.15.0/rules/core
 strspc realm add CFG --title "Configuration"
 strspc rule add CFG --body "The CLI MUST write a config file." --added-by "@alice"
 
@@ -158,6 +158,7 @@ full data model.
 | `strspc check` | Evaluate a code diff against the rules in `.strspc/config.yaml` |
 | `strspc refs` | Validate rule citations in Markdown and other text files |
 | `strspc status` | Show the project's rule sources, rule counts and realm, without the network |
+| `strspc doctor` | Diagnose the installation and the project, and suggest a fix for each problem |
 | `strspc standards coverage` | Show how the rules map to the clauses of external standards |
 | `strspc explain` | Explain a diagnostic code, or list all of them with `--list` |
 | `strspc sync` | Resolve and cache the rule sources in `.strspc/config.yaml` |
@@ -167,6 +168,7 @@ full data model.
 | `strspc realm add-subrealm` | Scaffold a sub-realm inside an existing Realm |
 | `strspc realm dep add\|remove\|list\|upgrade` | Manage Realm dependencies |
 | `strspc realm validate` | Validate Realm structure and EUID uniqueness |
+| `strspc realm standards add\|update\|remove\|list` | Declare the external standards a Realm cites |
 | `strspc rule add` | Add a Draft rule to an entity or sub-entity |
 | `strspc rule update` | Edit the body of a Draft rule |
 | `strspc rule promote` | Advance a rule D→P or P→I |
@@ -177,6 +179,7 @@ full data model.
 | `strspc note update` | Revise a note in place; notes are never removed |
 | `strspc entity add` | Add a sub-entity under an existing entity |
 | `strspc entity rehash` | Recompute null or stale `rule_set.hash` values |
+| `strspc entity standards add\|update\|remove\|list` | Declare the external standards an entity cites |
 | `strspc completion` | Generate a shell completion script (bash, fish, powershell, zsh) |
 | `strspc version` | Show version, commit and build info |
 
@@ -234,8 +237,11 @@ must be Retired, or `strspc diff` warns (`RD006`). `rule retire` moves a rule fr
 Retired, so promote a Published rule first. A rule that's already Retired needs nothing.
 
 **Notes.** Types are `rationale`, `example`, `counter_example`, `reference`, `applies_to`, `changelog`,
-`clarification`, `deprecation_notice`, `supersedes`, `extends` and `related`. A note can be revised
-but never removed. `changelog`, `supersedes`, `extends` and `related` notes can't change once added.
+`clarification`, `deprecation_notice`, `supersedes`, `extends`, `related` and `standard`. A note can be
+revised but never removed. `changelog`, `supersedes`, `extends` and `related` notes can't change once added.
+A `standard` note maps its rule to one clause of a declared standard (`<standard-id>:<clause>`). It can be
+added, revised, or retyped to `reference` and back in any rule state, without changing the rule's revision
+(NTE-017, NTE-018); retyping it to `reference` is how a mapping is withdrawn (NTE-019).
 
 **Inheritance.** An entity can inherit another entity's rule set, in the same Realm or in a declared
 dependency, and a rule can override one inherited rule for that entity:
@@ -294,7 +300,7 @@ a branch or a commit SHA, are skipped. See [GitHub sources](#github-sources) for
 
 ```yaml
 rules:
-  - source: github://SteerSpec/strspc-rules@v1.14.0/rules/core   # bumped per rules release
+  - source: github://SteerSpec/strspc-rules@v1.15.0/rules/core   # bumped per rules release
     scope: global
   - source: ./rules/
     scope: global
@@ -339,7 +345,7 @@ Config: .strspc/config.yaml
   Cache TTL: 24h0m0s
 
 Sources:
-  - github://SteerSpec/strspc-rules@v1.14.0/rules/core (global): pinned, cached, 107 rule(s)
+  - github://SteerSpec/strspc-rules@v1.15.0/rules/core (global): pinned, cached, 107 rule(s)
   - ./rules/ (global): local, 11 rule(s)
 
 Rules: 118 total
@@ -355,14 +361,67 @@ as `not synced`, and `strspc sync` fetches it. Only `@latest` can go stale, once
 than `cache.ttl`; a pinned source can't. `--json` prints the same report as one document. It exits 0,
 also in a project with no configuration, and 2 when the configuration can't be parsed.
 
+### Diagnose problems
+
+`status` reports; `strspc doctor` judges. Each check passes, warns or fails, and a warning or a
+failure comes with the command that fixes it:
+
+```text
+$ strspc doctor
+strspc doctor v1.42.0
+
+install
+  ✓ version    v1.42.0
+  ⚠ path       /usr/local/bin/strspc comes first on PATH, not this binary (/Users/me/go/bin/strspc)
+               → remove /usr/local/bin/strspc, or put /Users/me/go/bin before it on PATH
+...
+credentials
+  ⚠ provider   ANTHROPIC_API_KEY is not set: strspc check exits 3 until it is
+               → export ANTHROPIC_API_KEY, or set evaluator.provider: null
+...
+0 failed, 2 warning(s), 15 passed, 1 skipped, 1 info
+```
+
+| Group | Checks |
+| ----- | ------ |
+| `install` | The version is a release, the `strspc` on `PATH` is this binary, and the platform |
+| `tools` | `git` is on `PATH`; missing is a failure inside a git repository |
+| `config` | `.strspc/config.yaml` exists, parses, matches the cached `config.v1` schema, and has a valid `cache.ttl`, state codes, scopes and provider |
+| `credentials` | `ANTHROPIC_API_KEY` is set when the provider is `claude`, and a GitHub token is sent to the owner of each `github://` source. Values are never printed |
+| `sources` | Each source exists, or is cached and not stale |
+| `realm` | Each local realm passes `realm validate`, and its core pin accepts the standards it declares |
+| `project` | `.strspc/cache/` and `.strspc/cache.db` are git-ignored, and a workflow runs `strspc check` |
+
+Like `status`, doctor only reads: it makes no network call and fills no cache, so what was never
+fetched (a schema, a source, a realm dependency) is skipped or reported as not cached. Check IDs such as
+`credentials.provider` are stable and appear in `--json`, which prints
+`{"version", "checks": [{"id", "group", "subject", "status", "message", "remedy"}], "summary"}`.
+It exits 0 when no check failed, 1 when one did (or, with `--strict`, when one warned), and 2 when the
+path can't be read. A missing API key is a warning, since lint and realm validation work without it.
+
+`--online`, which compares the version with the latest release and checks that each `github://`
+source can be reached, is not implemented yet.
+
 ### Report coverage of a standard
 
 A realm or entity declares the external standards it cites under `standards`, and a `standard` note
 maps a rule to one clause, with content `<standard-id>:<clause>`:
 
 ```bash
+strspc realm standards add --id owasp.asvs --relation implements --version 4.0.3
+strspc entity standards add AUTH --id ietf.rfc2119 --relation derived_from --url https://www.rfc-editor.org/rfc/rfc2119
 strspc note add AUTH-004 --type standard --body "owasp.asvs:2.1.1" --added-by "@alice"
 ```
+
+`implements` claims coverage of the standard and `derived_from` only cites it as a source. An id is
+declared once per `standards` array. `update` changes its relation, version or url in place
+(`--clear-version` and `--clear-url` remove those), so the notes mapping it keep resolving. A new
+version names another edition, so `update` lists the notes that now map clauses of it. The entity
+commands patch-bump the entity and refresh its hash. `remove` is refused while a `standard` note would
+no longer resolve: withdraw the mapping first with `strspc note update <note_id> --type reference`.
+The `standards` field needs `dev.steerspec.core` 1.15.0 or later. `add` is refused while the core pin that
+validates the file is older: the nearest one among the sub-realm's own, the realm's and its parent's, since a
+sub-realm that pins its own core is checked only against that pin. The error names the command that moves it.
 
 `strspc standards coverage` then lists each mapped clause, per standard and entity:
 
@@ -418,7 +477,9 @@ violation.
 **Schemas.** `lint` and `realm validate` use the schemas of the `dev.steerspec.core` version the realm
 pins, so a schema change reaches a realm when it bumps its pin. A realm with no pin uses the latest
 published schemas, and a realm's own `_schema/` never decides validation. `lint` reads the pin from
-`realm.json` in the directory it's given, or in the file's directory.
+`realm.json` in the directory it's given, or in the file's directory. A sub-realm that pins its own core
+is checked only against that pin, also when linting or validating its parent; one with no pin uses its
+parent's.
 
 **Dependencies.** `realm validate` compares the realm with the dependencies it pins, so it fetches them
 and needs network access unless they're cached. It reports a pin that disagrees with its source tag or
@@ -784,6 +845,28 @@ Releases are automated with
 2. Merging `develop` into `main`, with a merge commit to keep the conventional commits, triggers a
    release pull request.
 3. Merging that pull request creates a tag, and the tag triggers goreleaser.
+
+> [!IMPORTANT]
+> Promote `develop` before merging a release pull request. release-please stops reading at the last
+> release commit, by date, so a `feat:` or `fix:` left on `develop` while a release merges is
+> dropped from the next release.
+
+The `Release changelog` workflow catches a dropped commit. After every Release Please run, and on
+each release pull request, it lists the commits `main` gained since the last release by ancestry,
+keeps the types the changelog shows, and checks that `CHANGELOG.md` names each one. Its verdict is
+the `release-changelog` status on the release pull request; with no release pull request open, the
+workflow run itself fails. Every other pull request into `main`, such as a promotion, gets a
+passing `release-changelog` status, so the status can be required on `main`. To restore a dropped
+commit, add it to the body of the latest promotion pull request and re-run Release Please:
+
+```text
+BEGIN_COMMIT_OVERRIDE
+fix(eval): example subject of the skipped commit (#123)
+END_COMMIT_OVERRIDE
+```
+
+release-please reads that block in place of the promotion's merge commit, so list each skipped
+commit, one per paragraph, ending in its `(#<pr>)`.
 
 ## License
 

@@ -53,7 +53,7 @@ Semantic Versioning (semver). Commit types drive version bumps:
 
 ### Linting
 
-golangci-lint v2 with: errcheck, gocritic, govet, ineffassign, staticcheck. Formatter: gofumpt.
+golangci-lint v2 with: errcheck, errorlint, gocritic, govet, ineffassign, staticcheck. Formatter: gofumpt.
 
 ### Releases
 

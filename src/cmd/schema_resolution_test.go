@@ -299,3 +299,64 @@ func TestRealmValidateRecursiveReportsSubRealmEntitiesOnce(t *testing.T) {
 		t.Errorf("RL003 reported %d times:\n%s", got, output)
 	}
 }
+
+// Paths of the core 1.11.0 release's schemas.
+const (
+	release111Entity = "/rules/v1.11.0/_schema/entity.v1.schema.json"
+	release111Realm  = "/rules/v1.11.0/_schema/realm.v1.schema.json"
+)
+
+// subRealmUnderOldRoot writes a realm pinning core 1.10.0, whose entity schema
+// rejects everything, with sub-realm auth holding one entity and pinning
+// subPin ("" for none). Core 1.11.0's schemas accept everything.
+func subRealmUnderOldRoot(t *testing.T, subPin string) string {
+	t.Helper()
+	dir := t.TempDir()
+	setupValidRealmWithSubs(t, dir)
+	writeRealmDeps(t, dir, entity.RealmDep{RealmID: schema.CoreRealmID, Version: "1.10.0", Source: "../core"})
+	sub := filepath.Join(dir, "auth")
+	if subPin != "" {
+		writeRealmDeps(t, sub, entity.RealmDep{RealmID: schema.CoreRealmID, Version: subPin, Source: "../../core"})
+	}
+	writeEntityFile(t, sub, "TST.json", validEntityJSON)
+	serveSchemas(t, map[string]string{
+		release110Realm:  allowSchema,
+		release110Entity: rejectSchema,
+		release111Realm:  allowSchema,
+		release111Entity: allowSchema,
+		latestRealm:      allowSchema,
+		latestEntity:     allowSchema,
+	})
+	return dir
+}
+
+// A sub-realm that pins its own core is checked only against that pin, so the
+// root's older schemas don't reject its entities (strspc-cli-dla).
+func TestPinnedSubRealmEntitiesSkipTheParentPin(t *testing.T) {
+	for _, args := range [][]string{
+		{"realm", "validate", "--recursive"},
+		{"lint"},
+	} {
+		dir := subRealmUnderOldRoot(t, "1.11.0")
+		output, err := testutil.ExecuteCommand(NewRootCmd(), append(args, dir)...)
+		if err != nil {
+			t.Errorf("%s: the root's pin rejected the sub-realm's entity: %v\n%s", args[0], err, output)
+		}
+	}
+}
+
+// A sub-realm without a core dependency keeps its parent's schemas (RLM-014).
+func TestUnpinnedSubRealmEntitiesUseTheParentPin(t *testing.T) {
+	for _, args := range [][]string{
+		{"realm", "validate", "--recursive"},
+		{"lint"},
+	} {
+		dir := subRealmUnderOldRoot(t, "")
+		output, err := testutil.ExecuteCommand(NewRootCmd(), append(args, dir)...)
+		if err == nil {
+			t.Errorf("%s: expected RL002 from the parent's pin, got:\n%s", args[0], output)
+			continue
+		}
+		testutil.AssertContains(t, output, "RL002")
+	}
+}

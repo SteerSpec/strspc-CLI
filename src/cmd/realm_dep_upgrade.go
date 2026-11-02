@@ -249,7 +249,7 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 				synced = append(synced, s...)
 				if serr != nil {
 					if rerr := rollback(); rerr != nil {
-						return fmt.Errorf("syncing schemas failed (%v) and restoring files failed: %w", serr, rerr)
+						return fmt.Errorf("syncing schemas failed (%w) and restoring files failed: %w", serr, rerr)
 					}
 					return fmt.Errorf("%w; files left unchanged", serr)
 				}
