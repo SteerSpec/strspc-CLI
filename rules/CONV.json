@@ -5,9 +5,9 @@
     "title": "Conventions"
   },
   "rule_set": {
-    "version": "0.1.5",
-    "timestamp": "2026-10-30T10:47:31Z",
-    "hash": "blake3:91660391a850931d3dcf3d315b5fe8732938bd58102571b1bc29c16e8c016e03"
+    "version": "0.2.1",
+    "timestamp": "2026-11-02T18:04:43Z",
+    "hash": "blake3:a8ef8cd6117ce1808c3e472a71f5ab7c6690e334c779fe59d212e15350c4df6c"
   },
   "rules": [
     {
@@ -30,9 +30,9 @@
     },
     {
       "id": "CONV-003",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "MUST pass golangci-lint v2 with the linters configured in .golangci.yml (errcheck, gocritic, govet, ineffassign, staticcheck).",
+      "body": "MUST pass golangci-lint v2 with the linters configured in .golangci.yml (errcheck, errorlint, gocritic, govet, ineffassign, staticcheck).",
       "added_by": "@pleberre",
       "added_at": "2026-10-19",
       "supersedes": null
@@ -40,7 +40,7 @@
     {
       "id": "CONV-004",
       "revision": 0,
-      "state": "D",
+      "state": "P",
       "body": "MUST wrap an underlying error with %w when returning it so callers can inspect the cause with errors.Is and errors.As.",
       "added_by": "@pleberre",
       "added_at": "2026-10-19",
