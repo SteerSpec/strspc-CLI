@@ -5,9 +5,9 @@
     "title": "Commands"
   },
   "rule_set": {
-    "version": "0.6.0",
-    "timestamp": "2026-11-02T15:34:03Z",
-    "hash": "blake3:d0113db5af89242e0b46441b32648b85b5d550808c7252839c5d867d4477ddc1"
+    "version": "0.7.0",
+    "timestamp": "2026-11-02T15:49:50Z",
+    "hash": "blake3:e6640b464f37d17eee33e777c111073cc9a3aff25ef8e9ac83f11a0acb8a8da4"
   },
   "rules": [
     {
@@ -40,7 +40,7 @@
     {
       "id": "CMD-004",
       "revision": 1,
-      "state": "D",
+      "state": "P",
       "body": "Code outside _test.go files MUST NOT call os.Exit except in the root command's error handler; a command returns an error and the exit code derives from it.",
       "added_by": "@pleberre",
       "added_at": "2026-10-19",
