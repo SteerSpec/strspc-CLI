@@ -73,7 +73,8 @@ func resolveEntityPath(dir, entityID string) string {
 }
 
 // entityIDFromRuleID extracts the entity ID prefix from a rule ID.
-// For example, "MYE-001" returns "MYE", "MY-ENT-001" returns "MY-ENT".
+// For example, "MYE-001" returns "MYE". The prefix isn't checked here:
+// resolveEntityTarget rejects one that isn't an EUID.
 func entityIDFromRuleID(ruleID string) (string, error) {
 	idx := strings.LastIndex(ruleID, "-")
 	if idx < 1 {
@@ -149,7 +150,12 @@ func findSubEntityChain(f *entity.File, euid string) []*entity.File {
 // resolveEntityTarget locates the entity with the given EUID under dir.
 // A top-level file <dir>/<euid>.json wins; otherwise every entity file under
 // dir is scanned for a sub-entity with that EUID. Exactly one match is required.
+// The EUID is checked first, so an argument such as ../x can't name a file
+// outside dir.
 func resolveEntityTarget(dir, euid string) (entityTarget, error) {
+	if err := entityops.ValidateEUID(euid); err != nil {
+		return entityTarget{}, err
+	}
 	topPath := resolveEntityPath(dir, euid)
 	if _, err := os.Stat(topPath); err == nil {
 		return entityTarget{path: topPath}, nil

@@ -4,16 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/entityops"
 )
-
-var euidPattern = regexp.MustCompile(`^[a-zA-Z0-9]{3,18}$`)
 
 func newRealmAddCmd() *cobra.Command {
 	var (
@@ -33,8 +31,8 @@ func newRealmAddCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			euid := args[0]
 
-			if !euidPattern.MatchString(euid) {
-				return fmt.Errorf("invalid EUID %q: must be 3-18 alphanumeric characters", euid)
+			if err := entityops.ValidateEUID(euid); err != nil {
+				return err
 			}
 
 			title = strings.TrimSpace(title)

@@ -160,6 +160,9 @@ Examples:
 					return err
 				}
 			} else {
+				if err := entityops.ValidateEUID(args[0]); err != nil {
+					return err
+				}
 				path := resolveEntityPath(dir, args[0])
 				data, err := os.ReadFile(path)
 				if err != nil {

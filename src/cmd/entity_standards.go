@@ -60,7 +60,7 @@ Examples:
 			if err != nil {
 				return err
 			}
-			target, err := resolveStandardsTarget(dir, args[0])
+			target, err := resolveEntityTarget(dir, args[0])
 			if err != nil {
 				return err
 			}
@@ -109,7 +109,7 @@ Example:
 			if id == "" {
 				return fmt.Errorf("--id is required")
 			}
-			target, err := resolveStandardsTarget(dir, args[0])
+			target, err := resolveEntityTarget(dir, args[0])
 			if err != nil {
 				return err
 			}
@@ -157,7 +157,7 @@ func newEntityStandardsListCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			target, err := resolveStandardsTarget(dir, args[0])
+			target, err := resolveEntityTarget(dir, args[0])
 			if err != nil {
 				return err
 			}
@@ -201,15 +201,6 @@ func bumpEntity(f *entity.File, change *entityStandardChange) error {
 	}
 	change.Version = v
 	return nil
-}
-
-// resolveStandardsTarget checks the EUID grammar before resolving it, so an
-// argument such as ../../outside can't name a file outside --dir.
-func resolveStandardsTarget(dir, euid string) (entityTarget, error) {
-	if !euidPattern.MatchString(euid) {
-		return entityTarget{}, fmt.Errorf("invalid EUID %q: must be 3-18 alphanumeric characters", euid)
-	}
-	return resolveEntityTarget(dir, euid)
 }
 
 func writeEntityStandardChange(cmd *cobra.Command, jsonOut bool, verb string, c *entityStandardChange) error {

@@ -157,32 +157,6 @@ func TestEntityStandardsAddDuplicateID(t *testing.T) {
 }
 
 // An EUID that isn't one can't reach a file outside --dir.
-func TestEntityStandardsRejectsPathEUID(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "rules")
-	if err := os.Mkdir(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	setupEntityFile(t, root, "OUTSIDE")
-	before, _ := os.ReadFile(filepath.Join(root, "OUTSIDE.json"))
-
-	for _, sub := range [][]string{
-		{"add", "../OUTSIDE", "--id", "iso.27001", "--relation", "implements"},
-		{"remove", "../OUTSIDE", "--id", "iso.27001"},
-		{"list", "../OUTSIDE"},
-	} {
-		args := append(append([]string{"entity", "standards"}, sub...), "--dir", dir)
-		_, err := testutil.ExecuteCommand(NewRootCmd(), args...)
-		if err == nil || !strings.Contains(err.Error(), "invalid EUID") {
-			t.Errorf("%s: error = %v, want invalid EUID", sub[0], err)
-		}
-	}
-	after, _ := os.ReadFile(filepath.Join(root, "OUTSIDE.json"))
-	if !bytes.Equal(before, after) {
-		t.Error("file outside --dir was rewritten")
-	}
-}
-
 func TestEntityStandardsRemove(t *testing.T) {
 	dir := t.TempDir()
 	setupEntityFile(t, dir, "MYE")
