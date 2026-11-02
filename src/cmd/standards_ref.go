@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/rulelint"
 )
 
 // standardFlags holds the flags that describe one Standard Reference, shared
@@ -115,4 +116,17 @@ func writeStandardsList(w io.Writer, scope string, refs []entity.StandardRef) {
 func unresolvedNotesError(id string, notes []string) error {
 	return fmt.Errorf("cannot remove standard %q: %d `standard` note(s) would no longer resolve (NTE-016): %s\n"+
 		"withdraw each mapping first with `strspc note update <note_id> --type reference`", id, len(notes), strings.Join(notes, ", "))
+}
+
+// notesNaming returns the ids of the unresolved notes that name the standard
+// id, once each. Notes failing on other ids are lint's to report and don't
+// block the change.
+func notesNaming(unresolved []rulelint.UnresolvedNote, id string) []string {
+	var notes []string
+	for _, u := range unresolved {
+		if u.StandardID == id && !slices.Contains(notes, u.NoteID) {
+			notes = append(notes, u.NoteID)
+		}
+	}
+	return notes
 }

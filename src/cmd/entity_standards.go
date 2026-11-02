@@ -2,14 +2,13 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/entityops"
+	"github.com/SteerSpec/strspc-manager/src/rulelint"
 )
 
 // entityStandardChange is the JSON output of `entity standards add|remove`.
@@ -118,7 +117,7 @@ Example:
 			if err != nil {
 				return err
 			}
-			scopes := slices.Concat(containing, realmStandardScopes(dir, target.path))
+			scopes := slices.Concat(containing, rulelint.RealmStandardScopes(dir, target.path))
 			change := entityStandardChange{Entity: args[0], Path: target.path}
 			err = modifyEntity(target, func(f *entity.File) error {
 				refs, removed, err := removeStandardRef(f.Entity.Standards, id)
@@ -126,7 +125,7 @@ Example:
 					return err
 				}
 				f.Entity.Standards = refs
-				if notes := unresolvedStandardNotes(f, scopes, id); len(notes) > 0 {
+				if notes := notesNaming(rulelint.UnresolvedEntityNotes(f, scopes, target.path), id); len(notes) > 0 {
 					return unresolvedNotesError(id, notes)
 				}
 				change.Standard = removed
@@ -242,53 +241,4 @@ func containingStandards(t entityTarget) ([][]entity.StandardRef, error) {
 		scopes = append(scopes, chain[i].Entity.Standards)
 	}
 	return append(scopes, f.Entity.Standards), nil
-}
-
-// realmStandardScopes returns the Realm declarations a `standard` note in the
-// entity file at path resolves against after its entities (NTE-016), as
-// rulelint.CheckRealmStandards finds them: the Realm at dir then its parent,
-// or, for a file inside one of dir's sub-realms, that sub-realm then dir's
-// Realm. Without a manifest there are none.
-func realmStandardScopes(dir, path string) [][]entity.StandardRef {
-	rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
-	if err != nil {
-		return nil
-	}
-	if rel, err := filepath.Rel(dir, path); err == nil {
-		if first, _, nested := strings.Cut(filepath.ToSlash(rel), "/"); nested && slices.Contains(rf.SubRealms, first) {
-			sub, err := entity.LoadRealm(filepath.Join(dir, first, "realm.json"))
-			if err != nil {
-				return [][]entity.StandardRef{rf.Realm.Standards}
-			}
-			return [][]entity.StandardRef{sub.Realm.Standards, rf.Realm.Standards}
-		}
-	}
-	var parent []entity.StandardRef
-	if p := entity.ParentRealm(dir, rf.Realm.ID); p != nil {
-		parent = p.Realm.Standards
-	}
-	return [][]entity.StandardRef{rf.Realm.Standards, parent}
-}
-
-// unresolvedStandardNotes returns the `standard` notes naming id, in f and the
-// entities it contains, that resolve to no declaration. outer holds the
-// declarations around f, nearest first.
-func unresolvedStandardNotes(f *entity.File, outer [][]entity.StandardRef, id string) []string {
-	scopes := append([][]entity.StandardRef{f.Entity.Standards}, outer...)
-	var out []string
-	for _, n := range f.Notes {
-		if n.Type != entity.NoteTypeStandard {
-			continue
-		}
-		if noteID, _, err := entity.ParseStandardNote(n.Content); err != nil || noteID != id {
-			continue
-		}
-		if entity.ResolveStandard(id, scopes...) == nil {
-			out = append(out, n.ID)
-		}
-	}
-	for i := range f.SubEntities {
-		out = append(out, unresolvedStandardNotes(&f.SubEntities[i], scopes, id)...)
-	}
-	return out
 }

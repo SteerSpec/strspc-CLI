@@ -2,13 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"slices"
-	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
-	"github.com/SteerSpec/strspc-manager/src/result"
 	"github.com/SteerSpec/strspc-manager/src/rulelint"
 )
 
@@ -112,7 +109,7 @@ Example:
 					return err
 				}
 				rf.Realm.Standards = refs
-				if notes := realmUnresolvedNotes(dir, rf, id); len(notes) > 0 {
+				if notes := notesNaming(rulelint.UnresolvedStandardNotes(dir, rf), id); len(notes) > 0 {
 					return unresolvedNotesError(id, notes)
 				}
 				realmID, removed = rf.Realm.ID, r
@@ -166,27 +163,6 @@ func newRealmStandardsListCmd() *cobra.Command {
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 	return cmd
-}
-
-// realmUnresolvedNotes runs lint's RL031 over the Realm at dir with rf as it
-// would be written, and returns the notes naming id that no longer resolve.
-// Entity files are read from disk, unchanged. Failures about other ids are
-// lint's to report and don't block the change.
-func realmUnresolvedNotes(dir string, rf *entity.RealmFile, id string) []string {
-	var res result.Result
-	rulelint.CheckRealmStandards(dir, rf, &res)
-	needle := fmt.Sprintf("standard %q is not declared", id)
-	var notes []string
-	for _, d := range res.Diagnostics {
-		if d.Code != "RL031" || !strings.Contains(d.Message, needle) {
-			continue
-		}
-		note, _, _ := strings.Cut(strings.TrimPrefix(d.Message, "note "), ":")
-		if !slices.Contains(notes, note) {
-			notes = append(notes, note)
-		}
-	}
-	return notes
 }
 
 func writeRealmStandardChange(cmd *cobra.Command, jsonOut bool, verb, realmID, path string, ref entity.StandardRef) error {
