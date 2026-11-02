@@ -167,7 +167,7 @@ full data model.
 | `strspc realm add-subrealm` | Scaffold a sub-realm inside an existing Realm |
 | `strspc realm dep add\|remove\|list\|upgrade` | Manage Realm dependencies |
 | `strspc realm validate` | Validate Realm structure and EUID uniqueness |
-| `strspc realm standards add\|remove\|list` | Declare the external standards a Realm cites |
+| `strspc realm standards add\|update\|remove\|list` | Declare the external standards a Realm cites |
 | `strspc rule add` | Add a Draft rule to an entity or sub-entity |
 | `strspc rule update` | Edit the body of a Draft rule |
 | `strspc rule promote` | Advance a rule D→P or P→I |
@@ -178,7 +178,7 @@ full data model.
 | `strspc note update` | Revise a note in place; notes are never removed |
 | `strspc entity add` | Add a sub-entity under an existing entity |
 | `strspc entity rehash` | Recompute null or stale `rule_set.hash` values |
-| `strspc entity standards add\|remove\|list` | Declare the external standards an entity cites |
+| `strspc entity standards add\|update\|remove\|list` | Declare the external standards an entity cites |
 | `strspc completion` | Generate a shell completion script (bash, fish, powershell, zsh) |
 | `strspc version` | Show version, commit and build info |
 
@@ -369,7 +369,9 @@ strspc note add AUTH-004 --type standard --body "owasp.asvs:2.1.1" --added-by "@
 ```
 
 `implements` claims coverage of the standard and `derived_from` only cites it as a source. An id is
-declared once per `standards` array; to change a reference, remove it and add it again. The entity
+declared once per `standards` array. `update` changes its relation, version or url in place
+(`--clear-version` and `--clear-url` remove those), so the notes mapping it keep resolving. A new
+version names another edition, so `update` lists the notes that now map clauses of it. The entity
 commands patch-bump the entity and refresh its hash. `remove` is refused while a `standard` note would
 no longer resolve: withdraw the mapping first with `strspc note update <note_id> --type reference`.
 The `standards` field needs `dev.steerspec.core` 1.15.0 or later. `add` is refused while a core pin that

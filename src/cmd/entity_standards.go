@@ -24,12 +24,13 @@ func newEntityStandardsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "standards",
 		Short: "Declare the external standards an entity cites",
-		Long: "Add, remove or list the Standard References in an entity's `standards` array (ENT-017).\n" +
+		Long: "Add, update, remove or list the Standard References in an entity's `standards` array (ENT-017).\n" +
 			"They apply to the entity and the entities it contains, and the `standard` notes of their rules\n" +
 			"resolve against them (NTE-016). Map a rule to a clause with `strspc note add --type standard`.",
 	}
 	cmd.AddCommand(newEntityStandardsAddCmd())
 	cmd.AddCommand(newEntityStandardsRemoveCmd())
+	cmd.AddCommand(newEntityStandardsUpdateCmd())
 	cmd.AddCommand(newEntityStandardsListCmd())
 	return cmd
 }
