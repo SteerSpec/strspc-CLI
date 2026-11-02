@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
@@ -76,6 +77,46 @@ func TestEntityStandardsUpdateVersion(t *testing.T) {
 	}
 }
 
+// The notes listed are those whose nearest declaration is the edited one, even
+// when an outer scope declares the same id: the Realm's declaration is farther.
+func TestEntityStandardsUpdateVersionOuterDeclaration(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+		rf.Realm.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	setupStandardsTree(t, dir, false)
+
+	for _, tc := range []struct {
+		euid string
+		want []string
+	}{
+		{"MYE", []string{"MYE-001/01", "SUB-001/01"}},
+		{"SUB", []string{"SUB-001/01"}},
+	} {
+		if tc.euid == "SUB" {
+			editEntityFile(t, dir, "MYE", func(f *entity.File) {
+				f.SubEntities[0].Entity.Standards = []entity.StandardRef{asvs4}
+			})
+		}
+		out, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "standards", "update", tc.euid,
+			"--id", "owasp.asvs", "--version", "9.9.9", "--dir", dir, "--json")
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", tc.euid, err)
+		}
+		var u standardUpdate
+		if err := json.Unmarshal([]byte(out), &u); err != nil {
+			t.Fatalf("parsing %q: %v", out, err)
+		}
+		if !slices.Equal(u.Notes, tc.want) {
+			t.Errorf("%s: notes = %v, want %v", tc.euid, u.Notes, tc.want)
+		}
+	}
+}
+
 func TestEntityStandardsUpdateFields(t *testing.T) {
 	dir := t.TempDir()
 	setupStandardsTree(t, dir, false)
@@ -116,6 +157,7 @@ func TestEntityStandardsUpdateValidation(t *testing.T) {
 		{"bad relation", []string{"--id", "owasp.asvs", "--relation", "nope"}},
 		{"bad url", []string{"--id", "owasp.asvs", "--url", "ftp://x.org"}},
 		{"control char", []string{"--id", "owasp.asvs", "--version", "5\x1b"}},
+		{"control char in id", []string{"--id", "owasp.asvs\n", "--version", "5"}},
 	} {
 		args := append([]string{"entity", "standards", "update", "MYE", "--dir", dir}, tc.args...)
 		if _, err := testutil.ExecuteCommand(NewRootCmd(), args...); err == nil {
@@ -125,6 +167,25 @@ func TestEntityStandardsUpdateValidation(t *testing.T) {
 	after, _ := os.ReadFile(path)
 	if !bytes.Equal(before, after) {
 		t.Error("entity file changed on error")
+	}
+}
+
+func TestEntityStandardsUpdateRejectsPathEUID(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "rules")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	setupStandardsTree(t, root, false)
+	before, _ := os.ReadFile(filepath.Join(root, "MYE.json"))
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "standards", "update", "../MYE",
+		"--id", "owasp.asvs", "--version", "5.0.0", "--dir", dir)
+	if err == nil || !strings.Contains(err.Error(), "invalid EUID") {
+		t.Errorf("error = %v, want invalid EUID", err)
+	}
+	after, _ := os.ReadFile(filepath.Join(root, "MYE.json"))
+	if !bytes.Equal(before, after) {
+		t.Error("file outside --dir was rewritten")
 	}
 }
 

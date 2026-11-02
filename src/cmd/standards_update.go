@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/entityops"
 	"github.com/SteerSpec/strspc-manager/src/rulelint"
 )
 
@@ -50,7 +51,7 @@ func (e *standardEdit) check(cmd *cobra.Command) error {
 	if changed("url") && e.url == "" {
 		return errors.New("--url must not be empty: use --clear-url to remove it")
 	}
-	for _, f := range [][2]string{{"--relation", e.relation}, {"--version", e.version}, {"--url", e.url}} {
+	for _, f := range [][2]string{{"--id", e.id}, {"--relation", e.relation}, {"--version", e.version}, {"--url", e.url}} {
 		if err := rejectControlChars(f[0], f[1]); err != nil {
 			return err
 		}
@@ -114,8 +115,10 @@ func standardChangeNotice(before, after entity.StandardRef, notes []string) stri
 
 // entityNotesUsing returns the `standard` notes naming id, in f and the entities
 // it contains, that resolve to f's own declaration of it. Resolution is nearest
-// first (NTE-016), so those are the notes that resolve to nothing once f's
-// declaration is gone and nothing beyond f is consulted.
+// first (NTE-016), and f's declaration is nearer to them than any containing
+// entity's or Realm's, so the scopes beyond f are left out on purpose: the notes
+// that resolve to nothing once f's declaration is gone are those with no nearer
+// declaration, which are exactly those f's declaration resolves.
 func entityNotesUsing(f *entity.File, id string) []string {
 	without := *f
 	without.Entity.Standards = slices.DeleteFunc(slices.Clone(f.Entity.Standards), func(r entity.StandardRef) bool { return r.ID == id })
@@ -206,6 +209,11 @@ Examples:
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := edit.check(cmd); err != nil {
+				return err
+			}
+			// Checked here as well as in resolveEntityTarget, so the command can't
+			// name a file outside --dir whichever lands first.
+			if err := entityops.ValidateEUID(args[0]); err != nil {
 				return err
 			}
 			target, err := resolveEntityTarget(dir, args[0])
