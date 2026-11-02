@@ -50,6 +50,9 @@ Example:
 			if err != nil {
 				return err
 			}
+			if err := checkCoreAcceptsStandards(dir, realmPath); err != nil {
+				return err
+			}
 			var realmID string
 			err = loadModifyWriteRealm(realmPath, func(rf *entity.RealmFile) error {
 				refs, err := addStandardRef(rf.Realm.Standards, ref)

@@ -34,7 +34,7 @@ func TestRealmStandardsAddListRemove(t *testing.T) {
 	}
 
 	// Writing deps afterwards keeps the standards.
-	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@0.1.0", "--dir", dir); err != nil {
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@1.15.0", "--dir", dir); err != nil {
 		t.Fatalf("dep add: %v", err)
 	}
 	if len(readRealmStandards(t, dir)) != 1 {
