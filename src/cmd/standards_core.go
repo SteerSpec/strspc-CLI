@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -15,51 +16,70 @@ import (
 // realm schemas accept a `standards` array.
 var standardsMinCore = semver.MustParse("1.15.0")
 
-// checkCoreAcceptsStandards refuses to declare a standard in the file at path
-// when the core pinned for it predates standardsMinCore: lint would reject the
-// file (RL002, RM002). The pin is the one lint validates the file against: that
-// of the sub-realm of dir holding it, else the Realm at dir, else that Realm's
-// parent. With no manifest, no pin, or a pin that isn't a version, there is
-// nothing to compare and the change goes ahead.
-func checkCoreAcceptsStandards(dir, path string) error {
-	realmID, pin := corePinFor(dir, path)
-	if pin == "" {
-		return nil
-	}
-	v, err := semver.NewVersion(pin)
-	if err != nil || !v.LessThan(standardsMinCore) {
-		return nil
-	}
-	return fmt.Errorf("realm %s pins %s %s, whose schemas reject `standards` (it needs %s or later): "+
-		"upgrade it first with `strspc realm dep upgrade %s --to %s`",
-		printableRealmID(realmID), coreRealmID, coverageCell(pin), standardsMinCore, coreRealmID, standardsMinCore)
+// coreReleasePin matches a pin that selects a core release's schemas, as the
+// manager's schema.WithCoreVersion reads it. Lint ignores any other form and
+// uses the latest schemas.
+var coreReleasePin = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
+// realmPin is one Realm's dev.steerspec.core pin.
+type realmPin struct {
+	realmID string
+	dir     string
+	version string
 }
 
-// corePinFor returns the Realm whose core pin applies to the file at path and
-// that pin, or "" when none applies.
-func corePinFor(dir, path string) (realmID, pin string) {
+// checkCoreAcceptsStandards refuses to declare a standard in the file at path
+// when a core pin that validates it predates standardsMinCore: lint would
+// reject the file (RL002, RM002). Every pin that applies is checked: that of
+// the sub-realm of dir holding the file, the Realm at dir's, and that Realm's
+// parent's, since a recursive `realm validate` lints a sub-realm's entities
+// against the parent's pin too. A pin that isn't an X.Y.Z release selects no
+// schemas and is skipped, as is a Realm with no manifest or no pin.
+func checkCoreAcceptsStandards(dir, path string) error {
+	for _, p := range corePinsFor(dir, path) {
+		if !coreReleasePin.MatchString(p.version) {
+			continue
+		}
+		v, err := semver.StrictNewVersion(p.version)
+		if err != nil || !v.LessThan(standardsMinCore) {
+			continue
+		}
+		return fmt.Errorf("realm %s pins %s %s, whose schemas reject `standards` (it needs %s or later): "+
+			"upgrade it first with `strspc realm dep upgrade %s --to %s --dir %s`",
+			printableRealmID(p.realmID), coreRealmID, p.version, standardsMinCore, coreRealmID, standardsMinCore,
+			coverageCell(shellQuote(p.dir)))
+	}
+	return nil
+}
+
+// corePinsFor returns the core pins that apply to the file at path, nearest
+// first: the sub-realm of dir holding it, the Realm at dir, and its parent.
+func corePinsFor(dir, path string) []realmPin {
 	rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
 	if err != nil {
-		return "", ""
+		return nil
+	}
+	var pins []realmPin
+	add := func(r *entity.RealmFile, d string) {
+		if v := corePin(r); v != "" {
+			pins = append(pins, realmPin{realmID: r.Realm.ID, dir: d, version: v})
+		}
 	}
 	if rel, err := filepath.Rel(dir, path); err == nil {
 		if first, _, nested := strings.Cut(filepath.ToSlash(rel), "/"); nested && slices.Contains(rf.SubRealms, first) {
-			if sub, err := entity.LoadRealm(filepath.Join(dir, first, "realm.json")); err == nil {
-				if p := corePin(sub); p != "" {
-					return sub.Realm.ID, p
-				}
+			subDir := filepath.Join(dir, first)
+			if sub, err := entity.LoadRealm(filepath.Join(subDir, "realm.json")); err == nil {
+				add(sub, subDir)
 			}
 		}
 	}
-	if p := corePin(rf); p != "" {
-		return rf.Realm.ID, p
-	}
+	add(rf, dir)
 	if parent := entity.ParentRealm(dir, rf.Realm.ID); parent != nil {
-		if p := corePin(parent); p != "" {
-			return parent.Realm.ID, p
+		if abs, err := filepath.Abs(dir); err == nil {
+			add(parent, filepath.Dir(abs))
 		}
 	}
-	return "", ""
+	return pins
 }
 
 // corePin returns the version of dev.steerspec.core rf depends on, or "".
@@ -70,4 +90,23 @@ func corePin(rf *entity.RealmFile) string {
 		}
 	}
 	return ""
+}
+
+// shellQuote returns s as one POSIX shell word: unchanged when it holds only
+// characters no shell treats specially, single-quoted otherwise.
+func shellQuote(s string) string {
+	if s != "" && !strings.ContainsFunc(s, unsafeShellRune) {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// unsafeShellRune reports whether r needs quoting in a POSIX shell word.
+func unsafeShellRune(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		return false
+	default:
+		return !strings.ContainsRune("_-./+:@,=", r)
+	}
 }

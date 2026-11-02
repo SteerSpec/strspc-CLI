@@ -372,8 +372,8 @@ strspc note add AUTH-004 --type standard --body "owasp.asvs:2.1.1" --added-by "@
 declared once per `standards` array; to change a reference, remove it and add it again. The entity
 commands patch-bump the entity and refresh its hash. `remove` is refused while a `standard` note would
 no longer resolve: withdraw the mapping first with `strspc note update <note_id> --type reference`.
-The `standards` field needs `dev.steerspec.core` 1.15.0 or later. `add` is refused on a realm pinned to an
-older core (its sub-realm's own pin, else the realm's, else its parent's), so run `strspc realm dep upgrade` first.
+The `standards` field needs `dev.steerspec.core` 1.15.0 or later. `add` is refused while a core pin that
+validates the file is older: the sub-realm's own, the realm's or its parent's. Run `strspc realm dep upgrade` first.
 
 `strspc standards coverage` then lists each mapped clause, per standard and entity:
 
