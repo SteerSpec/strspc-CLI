@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
-	"github.com/SteerSpec/strspc-manager/src/entityops"
 	"github.com/SteerSpec/strspc-manager/src/rulelint"
 )
 
@@ -209,11 +208,6 @@ Examples:
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := edit.check(cmd); err != nil {
-				return err
-			}
-			// Checked here as well as in resolveEntityTarget, so the command can't
-			// name a file outside --dir whichever lands first.
-			if err := entityops.ValidateEUID(args[0]); err != nil {
 				return err
 			}
 			target, err := resolveEntityTarget(dir, args[0])

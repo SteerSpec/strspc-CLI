@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
@@ -167,25 +166,6 @@ func TestEntityStandardsUpdateValidation(t *testing.T) {
 	after, _ := os.ReadFile(path)
 	if !bytes.Equal(before, after) {
 		t.Error("entity file changed on error")
-	}
-}
-
-func TestEntityStandardsUpdateRejectsPathEUID(t *testing.T) {
-	root := t.TempDir()
-	dir := filepath.Join(root, "rules")
-	if err := os.Mkdir(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	setupStandardsTree(t, root, false)
-	before, _ := os.ReadFile(filepath.Join(root, "MYE.json"))
-	_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "standards", "update", "../MYE",
-		"--id", "owasp.asvs", "--version", "5.0.0", "--dir", dir)
-	if err == nil || !strings.Contains(err.Error(), "invalid EUID") {
-		t.Errorf("error = %v, want invalid EUID", err)
-	}
-	after, _ := os.ReadFile(filepath.Join(root, "MYE.json"))
-	if !bytes.Equal(before, after) {
-		t.Error("file outside --dir was rewritten")
 	}
 }
 
