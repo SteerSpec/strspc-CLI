@@ -50,7 +50,7 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 
 			// Validate sub-realm ID format.
 			if !realmIDPattern.MatchString(realmID) {
-				return fmt.Errorf("invalid realm ID %q: must be lowercase alphanumeric with dots and hyphens (e.g. com.acme.myproject.sub)", realmID)
+				return fmt.Errorf("invalid realm ID %q: must be %s (e.g. com.acme.myproject.sub)", realmID, realmIDGrammar)
 			}
 
 			// Check target doesn't already have realm.json.
