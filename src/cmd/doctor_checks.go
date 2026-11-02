@@ -579,8 +579,9 @@ func doctorGitignoreCheck(env *doctorEnv) doctorResult {
 // quoted mention doesn't count.
 var strspcCheckRun = regexp.MustCompile(`(?m)(^|[;&|(]|&&|\|\|)\s*(\S*/)?strspc\s+check\b`)
 
-// strspcCheckUses matches a `uses:` of the org's reusable check workflow.
-var strspcCheckUses = regexp.MustCompile(`/strspc-check\.ya?ml@`)
+// strspcCheckUses matches a `uses:` of the org's reusable check workflow, the one
+// `strspc ci init` writes. GitHub matches owner and repository names in any case.
+var strspcCheckUses = regexp.MustCompile(`^\s*(?i:steerspec/\.github)/\.github/workflows/strspc-check\.ya?ml@\S+\s*$`)
 
 // workflowRunsCheck reports whether a workflow file has a step running strspc
 // check, or a job calling the reusable workflow. Only the values of run and
