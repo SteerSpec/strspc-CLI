@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/remote"
 	"github.com/SteerSpec/strspc-manager/src/result"
@@ -162,7 +164,7 @@ func doctorConfigChecks(env *doctorEnv) ([]doctorResult, *doctorProject) {
 			skipped(g, "no configuration", doctorConfigNames...)...), project
 	case err != nil:
 		return append([]doctorResult{doctorOutcome(g, "present", "", doctorFail,
-			"can't read .strspc/config.yaml: "+err.Error(), "")},
+			"can't read .strspc/config.yaml: "+err.Error(), "make .strspc/config.yaml a readable file")},
 			skipped(g, "no configuration", doctorConfigNames...)...), project
 	}
 	out := []doctorResult{doctorOutcome(g, "present", "", doctorPass, ".strspc/config.yaml", "")}
@@ -252,6 +254,9 @@ func doctorProviderCheck(env *doctorEnv, cfg *strspcConfig, project *doctorProje
 	}
 	if err := rejectControlChars("evaluator.provider", name); err != nil {
 		return doctorOutcome(g, "provider", "", doctorFail, err.Error(), remedy)
+	}
+	if err := rejectControlChars("evaluator.model", cfg.Evaluator.Model); err != nil {
+		return doctorOutcome(g, "provider", "", doctorFail, err.Error(), "fix evaluator.model in .strspc/config.yaml")
 	}
 	endpoint, err := resolveEndpoint(cfg.Evaluator.Endpoint, "", env.getenv(envEvaluatorEndpoint))
 	if err != nil {
@@ -569,9 +574,47 @@ func doctorGitignoreCheck(env *doctorEnv) doctorResult {
 	return doctorOutcome(g, "gitignore", "", doctorPass, "the caches are ignored by git", "")
 }
 
-// strspcCheckStep matches a workflow line that runs strspc check, directly or
-// through the org's reusable workflow.
-var strspcCheckStep = regexp.MustCompile(`strspc\s+check\b|strspc-check\.ya?ml`)
+// strspcCheckRun matches a `run:` script that invokes strspc check as a command:
+// at the start of a line or after a shell separator, so that an echo or a
+// quoted mention doesn't count.
+var strspcCheckRun = regexp.MustCompile(`(?m)(^|[;&|(]|&&|\|\|)\s*(\S*/)?strspc\s+check\b`)
+
+// strspcCheckUses matches a `uses:` of the org's reusable check workflow.
+var strspcCheckUses = regexp.MustCompile(`/strspc-check\.ya?ml@`)
+
+// workflowRunsCheck reports whether a workflow file has a step running strspc
+// check, or a job calling the reusable workflow. Only the values of run and
+// uses keys are read, so comments and other text don't count.
+func workflowRunsCheck(data []byte) bool {
+	var doc any
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return false
+	}
+	var walk func(v any) bool
+	walk = func(v any) bool {
+		switch t := v.(type) {
+		case map[string]any:
+			for k, val := range t {
+				if s, ok := val.(string); ok {
+					if (k == "run" && strspcCheckRun.MatchString(s)) || (k == "uses" && strspcCheckUses.MatchString(s)) {
+						return true
+					}
+				}
+				if walk(val) {
+					return true
+				}
+			}
+		case []any:
+			for _, e := range t {
+				if walk(e) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return walk(doc)
+}
 
 func doctorCICheck(env *doctorEnv) doctorResult {
 	const g = "project"
@@ -582,7 +625,7 @@ func doctorCICheck(env *doctorEnv) doctorResult {
 	}
 	for _, f := range files {
 		data, err := os.ReadFile(f)
-		if err == nil && strspcCheckStep.Match(data) {
+		if err == nil && workflowRunsCheck(data) {
 			return doctorOutcome(g, "ci", "", doctorPass, filepath.ToSlash(filepath.Join(".github", "workflows", filepath.Base(f))), "")
 		}
 	}

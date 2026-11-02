@@ -231,6 +231,7 @@ func TestDoctorConfigFailures(t *testing.T) {
 		{"scope", "rules:\n  - source: ./rules\n    scope: world\n", "config.scopes", "invalid scope"},
 		{"unknown provider", "evaluator:\n  provider: gpt\n", "config.provider", "not a known provider"},
 		{"unimplemented provider", "evaluator:\n  provider: ollama\n", "config.provider", "not implemented yet"},
+		{"model", "evaluator:\n  provider: claude\n  model: \"a\\nb\"\n", "config.provider", "evaluator.model contains a control character"},
 		{"endpoint", "evaluator:\n  provider: claude\n  endpoint: http://evil.example\n", "config.provider", "not an https URL"},
 	}
 	for _, tc := range cases {
@@ -466,6 +467,29 @@ func TestDoctorCI(t *testing.T) {
 	writeRefsFile(t, dir, ".github/workflows/rules.yaml", "steps:\n  - run: strspc check --static-only\n")
 	report, _ = runDoctorJSON(t, dir)
 	assertDoctorStatus(t, report, "project.ci", "", doctorPass)
+}
+
+func TestWorkflowRunsCheck(t *testing.T) {
+	cases := []struct {
+		name, workflow string
+		want           bool
+	}{
+		{"run", "jobs:\n  a:\n    steps:\n      - run: strspc check --diff origin/main\n", true},
+		{"run after cd", "jobs:\n  a:\n    steps:\n      - run: cd app && ./bin/strspc check\n", true},
+		{"multi-line run", "jobs:\n  a:\n    steps:\n      - run: |\n          strspc sync\n          strspc check\n", true},
+		{"reusable workflow", "jobs:\n  a:\n    uses: SteerSpec/.github/.github/workflows/strspc-check.yml@v1\n", true},
+		{"comment", "# runs strspc check\njobs:\n  a:\n    steps:\n      - run: make test\n", false},
+		{"echo", "jobs:\n  a:\n    steps:\n      - run: echo \"strspc check\"\n", false},
+		{"name only", "name: strspc check\njobs:\n  a:\n    steps:\n      - run: make test\n", false},
+		{"not yaml", "jobs: [\n", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := workflowRunsCheck([]byte(tc.workflow)); got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
 }
 
 // realmProject writes a project whose local source ./rules is a valid realm.
