@@ -236,8 +236,11 @@ must be Retired, or `strspc diff` warns (`RD006`). `rule retire` moves a rule fr
 Retired, so promote a Published rule first. A rule that's already Retired needs nothing.
 
 **Notes.** Types are `rationale`, `example`, `counter_example`, `reference`, `applies_to`, `changelog`,
-`clarification`, `deprecation_notice`, `supersedes`, `extends` and `related`. A note can be revised
-but never removed. `changelog`, `supersedes`, `extends` and `related` notes can't change once added.
+`clarification`, `deprecation_notice`, `supersedes`, `extends`, `related` and `standard`. A note can be
+revised but never removed. `changelog`, `supersedes`, `extends` and `related` notes can't change once added.
+A `standard` note maps its rule to one clause of a declared standard (`<standard-id>:<clause>`). It can be
+added, revised, or retyped to `reference` and back in any rule state, without changing the rule's revision
+(NTE-017, NTE-018); retyping it to `reference` is how a mapping is withdrawn (NTE-019).
 
 **Inheritance.** An entity can inherit another entity's rule set, in the same Realm or in a declared
 dependency, and a rule can override one inherited rule for that entity:
