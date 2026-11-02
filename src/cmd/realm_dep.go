@@ -51,16 +51,30 @@ func printableRealmID(id string) string {
 // loadAndWriteRealm is a helper that loads realm.json, applies a mutation
 // to its dependencies, and writes it back.
 func loadAndWriteRealm(realmPath string, mutate func([]entity.RealmDep) ([]entity.RealmDep, error)) error {
+	return loadModifyWriteRealm(realmPath, func(rf *entity.RealmFile) error {
+		deps, err := mutate(rf.Dependencies)
+		if err != nil {
+			return err
+		}
+		rf.Dependencies = deps
+		return nil
+	})
+}
+
+// loadModifyWriteRealm loads realm.json, applies mutate to the manifest, and
+// writes it back in the layout realm init uses. Nothing is written when mutate
+// fails.
+func loadModifyWriteRealm(realmPath string, mutate func(*entity.RealmFile) error) error {
 	rf, err := entity.LoadRealm(realmPath)
 	if err != nil {
 		return fmt.Errorf("loading realm.json: %w", err)
 	}
 
-	deps, err := mutate(rf.Dependencies)
-	if err != nil {
+	if err := mutate(rf); err != nil {
 		return err
 	}
 
+	deps := rf.Dependencies
 	if deps == nil {
 		deps = []entity.RealmDep{}
 	}

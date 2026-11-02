@@ -16,6 +16,7 @@ func newRealmCmd() *cobra.Command {
 	cmd.AddCommand(newRealmAddCmd())
 	cmd.AddCommand(newRealmDepCmd())
 	cmd.AddCommand(newRealmValidateCmd())
+	cmd.AddCommand(newRealmStandardsCmd())
 
 	return cmd
 }
