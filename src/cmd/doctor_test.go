@@ -464,7 +464,7 @@ func TestDoctorCI(t *testing.T) {
 		t.Errorf("message %q", c.Message)
 	}
 
-	writeRefsFile(t, dir, ".github/workflows/rules.yaml", "steps:\n  - run: strspc check --static-only\n")
+	writeRefsFile(t, dir, ".github/workflows/rules.yaml", "jobs:\n  check:\n    steps:\n      - run: strspc check --static-only\n")
 	report, _ = runDoctorJSON(t, dir)
 	assertDoctorStatus(t, report, "project.ci", "", doctorPass)
 }
@@ -482,6 +482,10 @@ func TestWorkflowRunsCheck(t *testing.T) {
 		{"another org's workflow", "jobs:\n  a:\n    uses: evil-org/tools/.github/workflows/strspc-check.yml@v1\n", false},
 		{"lookalike repo", "jobs:\n  a:\n    uses: SteerSpec/.github-fork/.github/workflows/strspc-check.yml@v1\n", false},
 		{"no ref", "jobs:\n  a:\n    uses: SteerSpec/.github/.github/workflows/strspc-check.yml\n", false},
+		{"action input run", "jobs:\n  a:\n    steps:\n      - uses: some/action@v1\n        with:\n          run: strspc check\n", false},
+		{"action input uses", "jobs:\n  a:\n    steps:\n      - uses: some/action@v1\n        with:\n          uses: SteerSpec/.github/.github/workflows/strspc-check.yml@v1\n", false},
+		{"step uses", "jobs:\n  a:\n    steps:\n      - uses: SteerSpec/.github/.github/workflows/strspc-check.yml@v1\n", false},
+		{"top-level run", "run: strspc check\n", false},
 		{"comment", "# runs strspc check\njobs:\n  a:\n    steps:\n      - run: make test\n", false},
 		{"echo", "jobs:\n  a:\n    steps:\n      - run: echo \"strspc check\"\n", false},
 		{"name only", "name: strspc check\njobs:\n  a:\n    steps:\n      - run: make test\n", false},

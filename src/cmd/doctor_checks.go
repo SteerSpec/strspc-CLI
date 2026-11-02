@@ -584,37 +584,32 @@ var strspcCheckRun = regexp.MustCompile(`(?m)(^|[;&|(]|&&|\|\|)\s*(\S*/)?strspc\
 var strspcCheckUses = regexp.MustCompile(`^\s*(?i:steerspec/\.github)/\.github/workflows/strspc-check\.ya?ml@\S+\s*$`)
 
 // workflowRunsCheck reports whether a workflow file has a step running strspc
-// check, or a job calling the reusable workflow. Only the values of run and
-// uses keys are read, so comments and other text don't count.
+// check, or a job calling the reusable workflow. Only what GitHub Actions
+// executes is read: jobs.<id>.uses and jobs.<id>.steps[*].run. Comments, names
+// and action inputs under with: don't count.
 func workflowRunsCheck(data []byte) bool {
-	var doc any
-	if err := yaml.Unmarshal(data, &doc); err != nil {
+	var wf struct {
+		Jobs map[string]struct {
+			Uses  string `yaml:"uses"`
+			Steps []struct {
+				Run string `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(data, &wf); err != nil {
 		return false
 	}
-	var walk func(v any) bool
-	walk = func(v any) bool {
-		switch t := v.(type) {
-		case map[string]any:
-			for k, val := range t {
-				if s, ok := val.(string); ok {
-					if (k == "run" && strspcCheckRun.MatchString(s)) || (k == "uses" && strspcCheckUses.MatchString(s)) {
-						return true
-					}
-				}
-				if walk(val) {
-					return true
-				}
-			}
-		case []any:
-			for _, e := range t {
-				if walk(e) {
-					return true
-				}
+	for _, job := range wf.Jobs {
+		if strspcCheckUses.MatchString(job.Uses) {
+			return true
+		}
+		for _, step := range job.Steps {
+			if strspcCheckRun.MatchString(step.Run) {
+				return true
 			}
 		}
-		return false
 	}
-	return walk(doc)
+	return false
 }
 
 func doctorCICheck(env *doctorEnv) doctorResult {
