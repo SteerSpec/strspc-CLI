@@ -5,9 +5,9 @@
     "title": "Commands"
   },
   "rule_set": {
-    "version": "0.8.0",
-    "timestamp": "2026-11-02T15:54:09Z",
-    "hash": "blake3:ee1631803e464608b8bcad2c390ee2b7ad09e51c14faf0feb91e5b9a4801ba45"
+    "version": "0.8.2",
+    "timestamp": "2026-11-02T20:21:54Z",
+    "hash": "blake3:af8a106759311cf3c781e4354e95496dc489dfc8ef41a31cb1751466ba0c0dc4"
   },
   "rules": [
     {
@@ -53,6 +53,24 @@
       "body": "Long descriptions SHOULD include at least one usage example invoking the command.",
       "added_by": "@pleberre",
       "added_at": "2026-10-19",
+      "supersedes": null
+    },
+    {
+      "id": "CMD-006",
+      "revision": 0,
+      "state": "D",
+      "body": "strspc doctor MUST NOT make a network call or write a file unless --online is given.",
+      "added_by": "@pleberre",
+      "added_at": "2026-11-02",
+      "supersedes": null
+    },
+    {
+      "id": "CMD-007",
+      "revision": 0,
+      "state": "D",
+      "body": "strspc doctor MUST exit 1 only when a check fails or, under --strict, warns, and 2 only when its flags are invalid or its path can't be read.",
+      "added_by": "@pleberre",
+      "added_at": "2026-11-02",
       "supersedes": null
     }
   ],

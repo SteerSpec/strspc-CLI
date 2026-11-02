@@ -158,6 +158,7 @@ full data model.
 | `strspc check` | Evaluate a code diff against the rules in `.strspc/config.yaml` |
 | `strspc refs` | Validate rule citations in Markdown and other text files |
 | `strspc status` | Show the project's rule sources, rule counts and realm, without the network |
+| `strspc doctor` | Diagnose the installation and the project, and suggest a fix for each problem |
 | `strspc standards coverage` | Show how the rules map to the clauses of external standards |
 | `strspc explain` | Explain a diagnostic code, or list all of them with `--list` |
 | `strspc sync` | Resolve and cache the rule sources in `.strspc/config.yaml` |
@@ -359,6 +360,47 @@ It only reads: it makes no network call and fills no cache, so a source that was
 as `not synced`, and `strspc sync` fetches it. Only `@latest` can go stale, once it resolved longer ago
 than `cache.ttl`; a pinned source can't. `--json` prints the same report as one document. It exits 0,
 also in a project with no configuration, and 2 when the configuration can't be parsed.
+
+### Diagnose problems
+
+`status` reports; `strspc doctor` judges. Each check passes, warns or fails, and a warning or a
+failure comes with the command that fixes it:
+
+```text
+$ strspc doctor
+strspc doctor v1.42.0
+
+install
+  ✓ version    v1.42.0
+  ⚠ path       /usr/local/bin/strspc comes first on PATH, not this binary (/Users/me/go/bin/strspc)
+               → remove /usr/local/bin/strspc, or put /Users/me/go/bin before it on PATH
+...
+credentials
+  ⚠ provider   ANTHROPIC_API_KEY is not set: strspc check exits 3 until it is
+               → export ANTHROPIC_API_KEY, or set evaluator.provider: null
+...
+0 failed, 2 warning(s), 15 passed, 1 skipped, 1 info
+```
+
+| Group | Checks |
+| ----- | ------ |
+| `install` | The version is a release, the `strspc` on `PATH` is this binary, and the platform |
+| `tools` | `git` is on `PATH`; missing is a failure inside a git repository |
+| `config` | `.strspc/config.yaml` exists, parses, matches the cached `config.v1` schema, and has a valid `cache.ttl`, state codes, scopes and provider |
+| `credentials` | `ANTHROPIC_API_KEY` is set when the provider is `claude`, and a GitHub token is sent to the owner of each `github://` source. Values are never printed |
+| `sources` | Each source exists, or is cached and not stale |
+| `realm` | Each local realm passes `realm validate`, and its core pin accepts the standards it declares |
+| `project` | `.strspc/cache/` and `.strspc/cache.db` are git-ignored, and a workflow runs `strspc check` |
+
+Like `status`, doctor only reads: it makes no network call and fills no cache, so what was never
+fetched (a schema, a source, a realm dependency) is skipped or reported as not cached. Check IDs such as
+`credentials.provider` are stable and appear in `--json`, which prints
+`{"version", "checks": [{"id", "group", "subject", "status", "message", "remedy"}], "summary"}`.
+It exits 0 when no check failed, 1 when one did (or, with `--strict`, when one warned), and 2 when the
+path can't be read. A missing API key is a warning, since lint and realm validation work without it.
+
+`--online`, which compares the version with the latest release and checks that each `github://`
+source can be reached, is not implemented yet.
 
 ### Report coverage of a standard
 

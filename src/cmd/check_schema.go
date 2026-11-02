@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -46,29 +47,36 @@ func (r *checkRun) validateConfigSchema(raw []byte) []result.Diagnostic {
 		return nil
 	}
 
-	compiled, err := compileConfigSchema(r, fetcher)
+	compiled, err := compileConfigSchema(r.ctx, fetcher)
 	if err != nil {
 		r.verbosef("config schema: validation skipped: %v", err)
 		return nil
 	}
 
+	var diags []result.Diagnostic
+	for _, msg := range configSchemaViolations(compiled, raw) {
+		diags = append(diags, configSchemaWarning(msg))
+	}
+	return diags
+}
+
+// configSchemaViolations validates the raw config.yaml against compiled and
+// returns one message per violation. A document that isn't YAML returns none:
+// parseStrspcConfig rejects it.
+func configSchemaViolations(compiled *jsonschema.Schema, raw []byte) []string {
 	var doc any
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return nil // parseStrspcConfig already rejected the document
+		return nil
 	}
 	if err := compiled.Validate(doc); err != nil {
-		var diags []result.Diagnostic
-		for _, msg := range schemaViolations(err) {
-			diags = append(diags, configSchemaWarning(msg))
-		}
-		return diags
+		return schemaViolations(err)
 	}
 	return nil
 }
 
 // compileConfigSchema fetches and compiles the config.v1 schema.
-func compileConfigSchema(r *checkRun, fetcher *schema.Fetcher) (*jsonschema.Schema, error) {
-	data, err := fetcher.Fetch(r.ctx, configV1SchemaPath)
+func compileConfigSchema(ctx context.Context, fetcher *schema.Fetcher) (*jsonschema.Schema, error) {
+	data, err := fetcher.Fetch(ctx, configV1SchemaPath)
 	if err != nil {
 		return nil, fmt.Errorf("fetching %s: %w", configV1SchemaPath, err)
 	}

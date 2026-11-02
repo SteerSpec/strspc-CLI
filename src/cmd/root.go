@@ -53,6 +53,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newStandardsCmd())
 	cmd.AddCommand(newDiffCmd())
 	cmd.AddCommand(newExplainCmd())
+	cmd.AddCommand(newDoctorCmd())
 	cmd.SetHelpFunc(customHelp)
 	return cmd
 }

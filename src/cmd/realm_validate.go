@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -31,8 +32,15 @@ type realmValidatorSet struct {
 // newRealmValidator creates linters for the realm in dir. Package-level so tests
 // can override it.
 var newRealmValidator = func(dir string, strict, recursive, core bool) *realmValidatorSet {
+	return buildRealmValidator(dir, strict, recursive, core, nil, fetchRealmDependency)
+}
+
+// buildRealmValidator creates the linters of newRealmValidator. Every schema
+// fetcher also gets schemaOpts, and deps fetches the realm's dependencies: doctor
+// passes ones that never reach the network.
+func buildRealmValidator(dir string, strict, recursive, core bool, schemaOpts []schema.Option, deps realmlint.DependencyFetcher) *realmValidatorSet {
 	linters := func(opts []schema.Option, extra ...rulelint.Option) (*schema.Fetcher, *rulelint.Linter) {
-		fetcher := newSchemaFetcher(opts...)
+		fetcher := newSchemaFetcher(append(slices.Clone(opts), schemaOpts...)...)
 		return fetcher, rulelint.New(append([]rulelint.Option{
 			rulelint.WithSchemaFetcher(fetcher),
 			rulelint.WithStrict(strict),
@@ -52,7 +60,7 @@ var newRealmValidator = func(dir string, strict, recursive, core bool) *realmVal
 	realmOpts := []realmlint.Option{
 		realmlint.WithSchemaFetcher(fetcher),
 		realmlint.WithStrict(strict),
-		realmlint.WithDependencyFetcher(fetchRealmDependency),
+		realmlint.WithDependencyFetcher(deps),
 		realmlint.WithSubRealmLinters(subLinters),
 		entityLinting(recursive, rl),
 	}
