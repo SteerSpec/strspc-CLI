@@ -98,8 +98,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # --head matches the branch name only, so a fork could use it too.
           head="$(gh pr list --base main --head release-please--branches--main \
-            --state open --json headRefOid --jq '.[0].headRefOid // empty')"
+            --state open --json headRefOid,isCrossRepository \
+            --jq '[.[] | select(.isCrossRepository | not)][0].headRefOid // empty')"
           ref=origin/main
           if [[ -n "$head" ]]; then
             git fetch --quiet origin "$head"
