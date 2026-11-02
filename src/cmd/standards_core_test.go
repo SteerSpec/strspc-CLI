@@ -41,7 +41,7 @@ func TestStandardsAddRefusesOldCore(t *testing.T) {
 	} {
 		args = append(args, "--id", "iso.27001", "--relation", "implements", "--dir", dir)
 		_, err := testutil.ExecuteCommand(NewRootCmd(), args...)
-		if err == nil || !strings.Contains(err.Error(), "1.14.0") || !strings.Contains(err.Error(), "realm dep upgrade dev.steerspec.core --to 1.15.0 --dir "+dir+"`") {
+		if err == nil || !strings.Contains(err.Error(), "1.14.0") || !strings.Contains(err.Error(), "realm dep upgrade dev.steerspec.core --to 1.15.0 --dir "+shellQuote(dir)+"`") {
 			t.Errorf("%s: error = %v, want a refusal naming the pin and the upgrade", args[0], err)
 		}
 	}
@@ -115,7 +115,7 @@ func TestCheckCoreAcceptsStandards(t *testing.T) {
 	pinCore(t, dir, "1.15.0")
 	pinCore(t, sub, "1.14.0")
 	err := checkCoreAcceptsStandards(dir, subFile)
-	if err == nil || !strings.Contains(err.Error(), "--dir "+sub+"`") {
+	if err == nil || !strings.Contains(err.Error(), "--dir "+shellQuote(sub)+"`") {
 		t.Errorf("error = %v, want the upgrade to target %s", err, sub)
 	}
 }
