@@ -13,6 +13,7 @@ func newEntityCmd() *cobra.Command {
 
 	cmd.AddCommand(newEntityAddCmd())
 	cmd.AddCommand(newEntityRehashCmd())
+	cmd.AddCommand(newEntityStandardsCmd())
 
 	return cmd
 }

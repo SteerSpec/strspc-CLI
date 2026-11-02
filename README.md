@@ -167,6 +167,7 @@ full data model.
 | `strspc realm add-subrealm` | Scaffold a sub-realm inside an existing Realm |
 | `strspc realm dep add\|remove\|list\|upgrade` | Manage Realm dependencies |
 | `strspc realm validate` | Validate Realm structure and EUID uniqueness |
+| `strspc realm standards add\|remove\|list` | Declare the external standards a Realm cites |
 | `strspc rule add` | Add a Draft rule to an entity or sub-entity |
 | `strspc rule update` | Edit the body of a Draft rule |
 | `strspc rule promote` | Advance a rule D→P or P→I |
@@ -177,6 +178,7 @@ full data model.
 | `strspc note update` | Revise a note in place; notes are never removed |
 | `strspc entity add` | Add a sub-entity under an existing entity |
 | `strspc entity rehash` | Recompute null or stale `rule_set.hash` values |
+| `strspc entity standards add\|remove\|list` | Declare the external standards an entity cites |
 | `strspc completion` | Generate a shell completion script (bash, fish, powershell, zsh) |
 | `strspc version` | Show version, commit and build info |
 
@@ -361,8 +363,16 @@ A realm or entity declares the external standards it cites under `standards`, an
 maps a rule to one clause, with content `<standard-id>:<clause>`:
 
 ```bash
+strspc realm standards add --id owasp.asvs --relation implements --version 4.0.3
+strspc entity standards add AUTH --id ietf.rfc2119 --relation derived_from --url https://www.rfc-editor.org/rfc/rfc2119
 strspc note add AUTH-004 --type standard --body "owasp.asvs:2.1.1" --added-by "@alice"
 ```
+
+`implements` claims coverage of the standard and `derived_from` only cites it as a source. An id is
+declared once per `standards` array; to change a reference, remove it and add it again. The entity
+commands patch-bump the entity and refresh its hash. `remove` is refused while a `standard` note would
+no longer resolve: withdraw the mapping first with `strspc note update <note_id> --type reference`.
+The `standards` field needs `dev.steerspec.core` 1.15.0 or later, so run `strspc realm dep upgrade` first.
 
 `strspc standards coverage` then lists each mapped clause, per standard and entity:
 
