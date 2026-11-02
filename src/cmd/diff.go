@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -393,8 +394,8 @@ func (e *gitShowError) Error() string {
 
 // isGitNotFound returns true when err represents a file that does not exist at the given ref.
 func isGitNotFound(err error) bool {
-	gse, ok := err.(*gitShowError)
-	if !ok {
+	var gse *gitShowError
+	if !errors.As(err, &gse) {
 		return false
 	}
 	var exitErr *exec.ExitError
@@ -406,11 +407,15 @@ func isGitNotFound(err error) bool {
 		bytes.Contains(exitErr.Stderr, []byte("exists on disk"))
 }
 
-// isExitError reports whether err is an *exec.ExitError and sets target if so.
+// isExitError reports whether err is or wraps an *exec.ExitError and sets
+// target if so.
 func isExitError(err error, target **exec.ExitError) bool {
-	exitErr, ok := err.(*exec.ExitError)
-	if ok && target != nil {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return false
+	}
+	if target != nil {
 		*target = exitErr
 	}
-	return ok
+	return true
 }
