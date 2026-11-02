@@ -134,9 +134,9 @@ func newLintCmd() *cobra.Command {
 // directories (e.g. _schema/) and files, as well as realm.json.
 //
 // The files of a sub-realm of dir that pins its own core are linted only with
-// the linter sub returns for its directory, so they are checked against that
-// pin and not also against dir's (RLM-014), as realm validate does. A sub-realm
-// without a core dependency keeps dir's linter.
+// the linter returned by sub for that sub-realm's directory, so they are
+// checked against its pin and not also against dir's (RLM-014), as realm
+// validate does. A sub-realm without a core dependency keeps dir's linter.
 func lintDirPerFile(ctx context.Context, linter *rulelint.Linter, dir string, sub rulelint.SubRealmLinter) *result.Result {
 	res := &result.Result{}
 	seen := 0
