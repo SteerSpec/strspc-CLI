@@ -64,6 +64,9 @@ Examples:
 			if err != nil {
 				return err
 			}
+			if err := checkCoreAcceptsStandards(dir, target.path); err != nil {
+				return err
+			}
 			change := entityStandardChange{Entity: args[0], Path: target.path, Standard: ref}
 			err = modifyEntity(target, func(f *entity.File) error {
 				refs, err := addStandardRef(f.Entity.Standards, ref)
