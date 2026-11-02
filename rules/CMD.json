@@ -5,9 +5,9 @@
     "title": "Commands"
   },
   "rule_set": {
-    "version": "0.5.0",
-    "timestamp": "2026-10-20T05:45:07Z",
-    "hash": "blake3:77ba4a160f14b8d37f8fbfd60dc07cfd2c78fc51e8c51fe43eec6492183d4666"
+    "version": "0.6.0",
+    "timestamp": "2026-11-02T15:34:03Z",
+    "hash": "blake3:d0113db5af89242e0b46441b32648b85b5d550808c7252839c5d867d4477ddc1"
   },
   "rules": [
     {
@@ -31,7 +31,7 @@
     {
       "id": "CMD-003",
       "revision": 0,
-      "state": "P",
+      "state": "I",
       "body": "Command output MUST be written via cmd.OutOrStdout() and cmd.ErrOrStderr() to support testing with captured output buffers.",
       "added_by": "@pleberre",
       "added_at": "2026-03-25",
@@ -39,9 +39,9 @@
     },
     {
       "id": "CMD-004",
-      "revision": 0,
+      "revision": 1,
       "state": "D",
-      "body": "MUST NOT call os.Exit outside the root command's error handler; a command returns an error and the exit code derives from it.",
+      "body": "Code outside _test.go files MUST NOT call os.Exit except in the root command's error handler; a command returns an error and the exit code derives from it.",
       "added_by": "@pleberre",
       "added_at": "2026-10-19",
       "supersedes": null

@@ -6,15 +6,15 @@
     "description": "Behaviour of strspc init and the .strspc/config.yaml it writes."
   },
   "rule_set": {
-    "version": "0.3.0",
-    "timestamp": "2026-10-19T19:22:35Z",
-    "hash": "blake3:b5e8289097e87e23092352b201e78238019fb6b1a5bc0cddce83874eb66a4a79"
+    "version": "0.4.0",
+    "timestamp": "2026-11-02T15:21:15Z",
+    "hash": "blake3:59acd7e265a98a063a0342f3f0a22ce63f2c2d4b79abd7268fb2581e624dad92"
   },
   "rules": [
     {
       "id": "CFG-001",
       "revision": 0,
-      "state": "P",
+      "state": "I",
       "body": "MUST write a `.strspc/config.yaml` that declares at least one rule source.",
       "added_by": "@pleberre",
       "added_at": "2026-10-18",
