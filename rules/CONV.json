@@ -5,9 +5,9 @@
     "title": "Conventions"
   },
   "rule_set": {
-    "version": "0.1.5",
-    "timestamp": "2026-10-30T10:47:31Z",
-    "hash": "blake3:91660391a850931d3dcf3d315b5fe8732938bd58102571b1bc29c16e8c016e03"
+    "version": "0.2.0",
+    "timestamp": "2026-11-02T17:36:30Z",
+    "hash": "blake3:b4355e7a39ec809d622cb9627bb3f56702499953511103395962f7f086fb524e"
   },
   "rules": [
     {
@@ -40,7 +40,7 @@
     {
       "id": "CONV-004",
       "revision": 0,
-      "state": "D",
+      "state": "P",
       "body": "MUST wrap an underlying error with %w when returning it so callers can inspect the cause with errors.Is and errors.As.",
       "added_by": "@pleberre",
       "added_at": "2026-10-19",
