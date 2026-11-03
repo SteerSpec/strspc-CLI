@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.34.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.33.0...v1.34.0) (2026-11-03)
+
+
+### Features
+
+* **doctor:** add --online release and source reachability checks ([#224](https://github.com/SteerSpec/strspc-CLI/issues/224)) ([a29257f](https://github.com/SteerSpec/strspc-CLI/commit/a29257fe4ae03b13a30fbf0ecb28ae74a190a31c))
+
+
+### Bug Fixes
+
+* **deps:** bump strspc-manager to v1.39.0 ([#227](https://github.com/SteerSpec/strspc-CLI/issues/227)) ([5b7def3](https://github.com/SteerSpec/strspc-CLI/commit/5b7def3abdafe05a501b44dd725cc3f9942f9fdf))
+* **doctor:** exit 4 on output errors, and implement CMD-006 and CMD-007 ([#226](https://github.com/SteerSpec/strspc-CLI/issues/226)) ([5e67d5f](https://github.com/SteerSpec/strspc-CLI/commit/5e67d5fc77f7958425e719f36bde7691677a375e))
+
 ## [1.33.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.32.0...v1.33.0) (2026-11-02)
 
 
