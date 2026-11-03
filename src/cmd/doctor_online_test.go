@@ -270,6 +270,61 @@ func TestDoctorOnlineNotFoundHints(t *testing.T) {
 	testutil.AssertContains(t, c.Remedy, "GITHUB_TOKEN")
 }
 
+func TestIsGitHubRateLimit(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		header map[string]string
+		body   string
+		want   bool
+	}{
+		{name: "429", status: http.StatusTooManyRequests, want: true},
+		{name: "primary", status: http.StatusForbidden, header: map[string]string{"X-RateLimit-Remaining": "0"}, want: true},
+		{name: "secondary, Retry-After", status: http.StatusForbidden, header: map[string]string{"X-RateLimit-Remaining": "4999", "Retry-After": "60"}, want: true},
+		{
+			name: "secondary, message", status: http.StatusForbidden, header: map[string]string{"X-RateLimit-Remaining": "4999"},
+			body: `{"message":"You have exceeded a secondary rate limit."}`, want: true,
+		},
+		{name: "forbidden", status: http.StatusForbidden, header: map[string]string{"X-RateLimit-Remaining": "4999"}, body: `{"message":"Resource not accessible"}`},
+		{name: "not found", status: http.StatusNotFound, header: map[string]string{"Retry-After": "60"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &http.Response{StatusCode: tt.status, Header: http.Header{}}
+			for k, v := range tt.header {
+				resp.Header.Set(k, v)
+			}
+			if got := isGitHubRateLimit(resp, []byte(tt.body)); got != tt.want {
+				t.Errorf("isGitHubRateLimit = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDoctorOnlineSecondaryRateLimitWarns(t *testing.T) {
+	fakeDoctorHost(t)
+	const (
+		secondary = "github://acme/rules@v1.0.0"
+		forbidden = "github://acme/locked@v1.0.0"
+	)
+	fakeGitHub(t, map[string]fakeGitHubReply{
+		latestCLIRelease: release("v1.2.3"),
+		"/repos/acme/rules/contents?ref=v1.0.0": {
+			status: http.StatusForbidden,
+			header: map[string]string{"X-RateLimit-Remaining": "4999", "Retry-After": "60"},
+			body:   `{"message":"You have exceeded a secondary rate limit."}`,
+		},
+		"/repos/acme/locked/contents?ref=v1.0.0": {status: http.StatusForbidden, body: `{"message":"Resource not accessible"}`},
+	})
+	dir := writeDoctorProject(t, "rules:\n  - source: "+secondary+"\n    scope: global\n  - source: "+forbidden+"\n    scope: global\n")
+
+	report, _ := runDoctorJSON(t, dir, "--online")
+	c := assertDoctorStatus(t, report, "online.sources", secondary, doctorWarn)
+	testutil.AssertContains(t, c.Message, "rate limited")
+	c = assertDoctorStatus(t, report, "online.sources", forbidden, doctorFail)
+	testutil.AssertContains(t, c.Message, "HTTP 403")
+}
+
 func TestContentsPath(t *testing.T) {
 	tests := []struct {
 		ref  remote.Ref

@@ -170,10 +170,9 @@ func unreachableSource(source, target string, resp *http.Response, owner string)
 // githubProblem describes a response other than 200, and reports whether it
 // is rate limiting. The body is drained so the connection can be reused.
 func githubProblem(resp *http.Response, owner string) (msg string, rateLimited bool) {
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 	switch {
-	case resp.StatusCode == http.StatusTooManyRequests,
-		resp.StatusCode == http.StatusForbidden && resp.Header.Get("X-RateLimit-Remaining") == "0":
+	case isGitHubRateLimit(resp, body):
 		return "rate limited by GitHub", true
 	case resp.StatusCode == http.StatusNotFound && remote.TokenFromEnv() == "":
 		return "not found (missing, or private and no token is set)", false
@@ -185,6 +184,22 @@ func githubProblem(resp *http.Response, owner string) (msg string, rateLimited b
 		return "HTTP 401: the token is invalid", false
 	default:
 		return fmt.Sprintf("HTTP %d", resp.StatusCode), false
+	}
+}
+
+// isGitHubRateLimit reports a primary rate limit (403 with no requests
+// remaining, or 429) or a secondary one, which GitHub sends as a 403 with
+// requests still remaining but with Retry-After or a "rate limit" message.
+func isGitHubRateLimit(resp *http.Response, body []byte) bool {
+	switch resp.StatusCode {
+	case http.StatusTooManyRequests:
+		return true
+	case http.StatusForbidden:
+		return resp.Header.Get("X-RateLimit-Remaining") == "0" ||
+			resp.Header.Get("Retry-After") != "" ||
+			strings.Contains(strings.ToLower(string(body)), "rate limit")
+	default:
+		return false
 	}
 }
 
