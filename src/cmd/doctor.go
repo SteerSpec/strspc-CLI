@@ -129,7 +129,7 @@ func newDoctorCmd() *cobra.Command {
 			"--online also asks the GitHub API whether a newer strspc is released and whether each\n" +
 			"github:// source's ref and path exist. The token goes only to the owners it is allowed for.\n\n" +
 			"Exit codes: 0 when no check failed; 1 when one did, or with --strict when one warned;\n" +
-			"2 when the flags are invalid or path can't be read.\n\n" +
+			"2 when the flags are invalid or path can't be read; 4 when the --json report can't be written.\n\n" +
 			"Examples:\n" +
 			"  strspc doctor\n" +
 			"  strspc doctor --online\n" +
@@ -155,7 +155,8 @@ func newDoctorCmd() *cobra.Command {
 			w := cmd.OutOrStdout()
 			if jsonOutput {
 				if err := writeDoctorJSON(w, report); err != nil {
-					return err
+					// Not 1: that means a check failed (CMD-007).
+					return withExitCode(exitOutput, err)
 				}
 			} else {
 				writeDoctor(w, report)

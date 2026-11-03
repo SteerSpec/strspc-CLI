@@ -598,6 +598,26 @@ func TestDoctorBadPath(t *testing.T) {
 	assertExit(t, err, exitConfig)
 }
 
+// failingWriter refuses every write, as a closed pipe does.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("broken pipe") }
+
+// TestDoctorOutputErrorIsNotACheckFailure: exit 1 means a check failed
+// (CMD-007), so a report that can't be written exits 4 instead.
+func TestDoctorOutputErrorIsNotACheckFailure(t *testing.T) {
+	fakeDoctorHost(t)
+	cmd := NewRootCmd()
+	cmd.SetOut(failingWriter{})
+	cmd.SetErr(&strings.Builder{})
+	cmd.SetArgs([]string{"doctor", t.TempDir(), "--json"})
+	err := cmd.Execute()
+	assertExit(t, err, exitOutput)
+	if err == nil || !strings.Contains(err.Error(), "broken pipe") {
+		t.Errorf("error %v, want the write error", err)
+	}
+}
+
 func TestDoctorOfflineClientRefusesRequests(t *testing.T) {
 	_, err := offlineHTTPClient().Get("https://steerspec.dev/schemas/realm/v1.json")
 	if !errors.Is(err, errDoctorOffline) {
