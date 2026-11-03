@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.33.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.32.0...v1.33.0) (2026-11-02)
+
+
+### Features
+
+* **doctor:** add strspc doctor diagnostic command ([#219](https://github.com/SteerSpec/strspc-CLI/issues/219)) ([4692931](https://github.com/SteerSpec/strspc-CLI/commit/4692931e89d977e16b5dbd0f3e6191c222c443d3))
+* **standards:** add entity and realm standards commands ([#204](https://github.com/SteerSpec/strspc-CLI/issues/204)) ([#206](https://github.com/SteerSpec/strspc-CLI/issues/206)) ([e246cc4](https://github.com/SteerSpec/strspc-CLI/commit/e246cc424972bf1a2f0fa02cd3fa1bff6d275476))
+* **standards:** add entity and realm standards update ([#209](https://github.com/SteerSpec/strspc-CLI/issues/209)) ([ca5037e](https://github.com/SteerSpec/strspc-CLI/commit/ca5037ea5bbe48eb5b61cbad00af2a3a7b33b891))
+* **standards:** refuse standards add on a realm pinned to core before 1.15.0 ([#208](https://github.com/SteerSpec/strspc-CLI/issues/208)) ([dc2efd3](https://github.com/SteerSpec/strspc-CLI/commit/dc2efd325380c248a5916fe2c16d47e0d3775a21))
+
+
+### Bug Fixes
+
+* **entity:** validate the EUID in every command that resolves an entity file ([#207](https://github.com/SteerSpec/strspc-CLI/issues/207)) ([4570dce](https://github.com/SteerSpec/strspc-CLI/commit/4570dceae683930c0515894f336020a7a1c1c81b))
+* **lint:** check a pinned sub-realm's entities only against its own pin ([#213](https://github.com/SteerSpec/strspc-CLI/issues/213)) ([5737a6e](https://github.com/SteerSpec/strspc-CLI/commit/5737a6e0c0c4b827995468d77085b474338bc7fe))
+* **realm:** accept only realm IDs the realm schema allows ([#215](https://github.com/SteerSpec/strspc-CLI/issues/215)) ([3cc5fcf](https://github.com/SteerSpec/strspc-CLI/commit/3cc5fcf7e8a68b55c8272d70b1c246c79b90f58c))
+
+
+### Documentation
+
+* **readme:** list the standard note type ([#214](https://github.com/SteerSpec/strspc-CLI/issues/214)) ([777eacf](https://github.com/SteerSpec/strspc-CLI/commit/777eacf72a1f3310ba07a66b2e9db8221aa3f519))
+
 ## [1.32.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.31.0...v1.32.0) (2026-11-01)
 
 
