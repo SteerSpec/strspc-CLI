@@ -70,6 +70,10 @@ type doctorEnv struct {
 	// httpClient is given to every schema fetcher. The default one refuses
 	// every request, so doctor reads only what is cached.
 	httpClient *http.Client
+	// online is set by --online: the online checks then call the GitHub API
+	// (githubAPIBase) through onlineClient. Nothing else goes online.
+	online       bool
+	onlineClient *http.Client
 }
 
 // newDoctorEnv returns the environment of a doctor run. Package-level so tests
@@ -88,6 +92,7 @@ var newDoctorEnv = func(ctx context.Context, cwd string) *doctorEnv {
 		now:          time.Now,
 		userCacheDir: os.UserCacheDir,
 		httpClient:   offlineHTTPClient(),
+		onlineClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -109,6 +114,7 @@ func newDoctorCmd() *cobra.Command {
 	var (
 		jsonOutput bool
 		strict     bool
+		online     bool
 	)
 
 	cmd := &cobra.Command{
@@ -117,12 +123,16 @@ func newDoctorCmd() *cobra.Command {
 		Long: "Check the strspc installation and the project at path (the current directory by default):\n" +
 			"the binary, git, the configuration, credentials, rule sources, realms and project files. Each\n" +
 			"check passes, warns or fails, and a warning or failure comes with a command that fixes it.\n\n" +
-			"doctor only reads: it makes no network call and fills no cache, so what was never fetched\n" +
-			"is reported as not cached. The API key is checked for presence only; it is never printed.\n\n" +
+			"doctor only reads: it fills no cache, and without --online it makes no network call, so\n" +
+			"what was never fetched is reported as not cached. The API key is checked for presence only;\n" +
+			"it is never printed.\n\n" +
+			"--online also asks the GitHub API whether a newer strspc is released and whether each\n" +
+			"github:// source's ref and path exist. The token goes only to the owners it is allowed for.\n\n" +
 			"Exit codes: 0 when no check failed; 1 when one did, or with --strict when one warned;\n" +
 			"2 when the flags are invalid or path can't be read.\n\n" +
 			"Examples:\n" +
 			"  strspc doctor\n" +
+			"  strspc doctor --online\n" +
 			"  strspc doctor ./my-project --strict --json",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -139,7 +149,9 @@ func newDoctorCmd() *cobra.Command {
 				return withExitCode(exitConfig, fmt.Errorf("%s is not a directory", cwd))
 			}
 
-			report := runDoctor(newDoctorEnv(cmd.Context(), cwd))
+			env := newDoctorEnv(cmd.Context(), cwd)
+			env.online = online
+			report := runDoctor(env)
 			w := cmd.OutOrStdout()
 			if jsonOutput {
 				if err := writeDoctorJSON(w, report); err != nil {
@@ -157,6 +169,7 @@ func newDoctorCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output as JSON")
 	cmd.Flags().BoolVar(&strict, "strict", false, "treat warnings as failures")
+	cmd.Flags().BoolVar(&online, "online", false, "also check the latest release and that each github:// source can be reached")
 	// A usage error exits 2, so that 1 only ever means a check failed.
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return withExitCode(exitConfig, err) })
 	cmd.Args = func(c *cobra.Command, args []string) error {
@@ -193,6 +206,7 @@ func runDoctor(env *doctorEnv) *doctorReport {
 	add(doctorSourceChecks(env, project)...)
 	add(doctorRealmChecks(env, project)...)
 	add(doctorProjectChecks(env)...)
+	add(doctorOnlineChecks(env, project)...)
 
 	for i := range report.Checks {
 		switch report.Checks[i].Status {

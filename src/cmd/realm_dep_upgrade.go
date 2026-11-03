@@ -51,20 +51,43 @@ type depUpgrade struct {
 	source  string // rewritten source
 }
 
-func fetchLatestReleaseTag(ctx context.Context, ref remote.Ref, token string) (string, error) {
-	endpoint := fmt.Sprintf("%s/repos/%s/%s/releases/latest", strings.TrimRight(githubAPIBase, "/"),
-		url.PathEscape(ref.Owner), url.PathEscape(ref.Repo))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
+// getGitHubAPI sends a GET for path below githubAPIBase, with token as the
+// bearer token unless it is empty. The caller closes the body.
+func getGitHubAPI(ctx context.Context, client *http.Client, path, accept, token string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(githubAPIBase, "/")+path, http.NoBody)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Accept", accept)
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	req.Header.Set("User-Agent", "strspc")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
-	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	return client.Do(req)
+}
+
+// releasesLatestPath is the API path of a repository's latest release.
+func releasesLatestPath(ref remote.Ref) string {
+	return fmt.Sprintf("/repos/%s/%s/releases/latest", url.PathEscape(ref.Owner), url.PathEscape(ref.Repo))
+}
+
+// decodeReleaseTag reads the tag_name from a 200 response for a release.
+func decodeReleaseTag(resp *http.Response, ref remote.Ref) (string, error) {
+	var body struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
+		return "", fmt.Errorf("decoding latest release of %s/%s: %w", ref.Owner, ref.Repo, err)
+	}
+	if body.TagName == "" {
+		return "", fmt.Errorf("latest release of %s/%s has no tag", ref.Owner, ref.Repo)
+	}
+	return body.TagName, nil
+}
+
+func fetchLatestReleaseTag(ctx context.Context, ref remote.Ref, token string) (string, error) {
+	resp, err := getGitHubAPI(ctx, &http.Client{Timeout: 30 * time.Second}, releasesLatestPath(ref), "application/vnd.github+json", token)
 	if err != nil {
 		return "", err
 	}
@@ -77,16 +100,7 @@ func fetchLatestReleaseTag(ctx context.Context, ref remote.Ref, token string) (s
 	default:
 		return "", fmt.Errorf("resolving latest release of %s/%s: HTTP %d", ref.Owner, ref.Repo, resp.StatusCode)
 	}
-	var body struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&body); err != nil {
-		return "", fmt.Errorf("decoding latest release of %s/%s: %w", ref.Owner, ref.Repo, err)
-	}
-	if body.TagName == "" {
-		return "", fmt.Errorf("latest release of %s/%s has no tag", ref.Owner, ref.Repo)
-	}
-	return body.TagName, nil
+	return decodeReleaseTag(resp, ref)
 }
 
 // planDepUpgrade decides what to do with one dependency. It returns nil when
