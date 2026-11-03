@@ -56,6 +56,8 @@ func skipped(group, why string, names ...string) []doctorResult {
 
 // --- install ---
 
+const doctorInstallRemedy = "install a release: see https://github.com/SteerSpec/strspc-CLI#install"
+
 func doctorInstallChecks(env *doctorEnv) []doctorResult {
 	const g = "install"
 	var out []doctorResult
@@ -63,7 +65,7 @@ func doctorInstallChecks(env *doctorEnv) []doctorResult {
 	if v := env.version; v == "" || v == "dev" {
 		out = append(out, doctorOutcome(g, "version", "", doctorWarn,
 			fmt.Sprintf("%q is a development build, not a release", v),
-			"install a release: see https://github.com/SteerSpec/strspc-CLI#install"))
+			doctorInstallRemedy))
 	} else {
 		out = append(out, doctorOutcome(g, "version", "", doctorPass, v, ""))
 	}
