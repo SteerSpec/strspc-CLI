@@ -337,7 +337,7 @@ fail_on:
 
 ```text
 $ strspc status
-SteerSpec CLI 1.31.0
+SteerSpec CLI 1.34.0
 
 Config: .strspc/config.yaml
   Evaluator: claude
@@ -345,11 +345,11 @@ Config: .strspc/config.yaml
   Cache TTL: 24h0m0s
 
 Sources:
-  - github://SteerSpec/strspc-rules@v1.16.0/rules/core (global): pinned, cached, 107 rule(s)
-  - ./rules/ (global): local, 11 rule(s)
+  - github://SteerSpec/strspc-rules@v1.16.0/rules/core (global): pinned, cached, 154 rule(s)
+  - ./rules/ (global): local, 13 rule(s)
 
-Rules: 118 total
-  6 Draft  3 Published  109 Implemented  0 Abandoned  0 Retired  0 Terminated
+Rules: 167 total
+  53 Draft  44 Published  70 Implemented  0 Abandoned  0 Retired  0 Terminated
 
 Realm: dev.steerspec.cli 0.1.0
   Entities: CFG, CMD, CONV
