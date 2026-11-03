@@ -134,14 +134,16 @@ func TestCoreAcceptsStandardsRemedy(t *testing.T) {
 	dir := t.TempDir()
 	setupValidRealm(t, dir)
 	upgrade := "`strspc realm dep upgrade dev.steerspec.core --to 1.15.0 --dir " + shellQuote(dir) + "`"
+	// Built, not literal: strspc-rules' pin_core.py rejects stray core pins.
+	pin := coreRealmID + "@" + standardsMinCore.String()
 	for _, tc := range []struct {
 		name, source, want string
 	}{
 		{"release tag", coreSource, upgrade},
-		{"no source", "", "`strspc realm dep add dev.steerspec.core@1.15.0 --dir " + shellQuote(dir) + "`"},
-		{"local", "./core", "`strspc realm dep add dev.steerspec.core@1.15.0=./core --dir " + shellQuote(dir) + "`"},
-		{"latest", "github://SteerSpec/strspc-rules@latest/rules/core", "dev.steerspec.core@1.15.0=github://SteerSpec/strspc-rules@latest/rules/core"},
-		{"branch", "github://SteerSpec/strspc-rules@main/rules/core", "dev.steerspec.core@1.15.0=github://SteerSpec/strspc-rules@main/rules/core"},
+		{"no source", "", "`strspc realm dep add " + pin + " --dir " + shellQuote(dir) + "`"},
+		{"local", "./core", "`strspc realm dep add " + pin + "=./core --dir " + shellQuote(dir) + "`"},
+		{"latest", "github://SteerSpec/strspc-rules@latest/rules/core", pin + "=github://SteerSpec/strspc-rules@latest/rules/core"},
+		{"branch", "github://SteerSpec/strspc-rules@main/rules/core", pin + "=github://SteerSpec/strspc-rules@main/rules/core"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pinCoreFrom(t, dir, "1.14.0", tc.source)
