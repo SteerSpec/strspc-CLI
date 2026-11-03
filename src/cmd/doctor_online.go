@@ -15,6 +15,9 @@ import (
 // strspcRelease is the repository whose releases online.latest compares with.
 var strspcRelease = remote.Ref{Owner: "SteerSpec", Repo: "strspc-CLI"}
 
+// doctorNetworkRemedy is the remedy when GitHub can't be reached at all.
+const doctorNetworkRemedy = "check the network connection (and any proxy), then retry"
+
 // doctorOnlineChecks are the checks that call the GitHub API. They run only
 // with --online, and read nothing into a cache.
 func doctorOnlineChecks(env *doctorEnv, project *doctorProject) []doctorResult {
@@ -41,12 +44,12 @@ func doctorLatestCheck(env *doctorEnv) doctorResult {
 	resp, err := getGitHubAPI(env.ctx, env.onlineClient, releasesLatestPath(strspcRelease),
 		"application/vnd.github+json", remote.TokenForOwner(strspcRelease.Owner))
 	if err != nil {
-		return doctorOutcome(g, "latest", "", doctorWarn, "can't reach GitHub: "+err.Error(), "")
+		return doctorOutcome(g, "latest", "", doctorWarn, "can't reach GitHub: "+err.Error(), doctorNetworkRemedy)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		msg, rateLimited := githubProblem(resp, strspcRelease.Owner)
-		remedy := ""
+		remedy := "retry later"
 		if rateLimited {
 			remedy = rateLimitRemedy(strspcRelease.Owner)
 		}
@@ -54,11 +57,11 @@ func doctorLatestCheck(env *doctorEnv) doctorResult {
 	}
 	tag, err := decodeReleaseTag(resp, strspcRelease)
 	if err != nil {
-		return doctorOutcome(g, "latest", "", doctorWarn, err.Error(), "")
+		return doctorOutcome(g, "latest", "", doctorWarn, err.Error(), "retry later")
 	}
 	latest, err := semver.NewVersion(tag)
 	if err != nil {
-		return doctorOutcome(g, "latest", "", doctorWarn, fmt.Sprintf("the latest release tag %q is not a version", tag), "")
+		return doctorOutcome(g, "latest", "", doctorWarn, fmt.Sprintf("the latest release tag %q is not a version", tag), "retry later")
 	}
 
 	switch {
@@ -108,14 +111,14 @@ func doctorReachSource(env *doctorEnv, source string, ref remote.Ref) doctorResu
 	if ref.Ref == remote.LatestRef {
 		resp, err := get(releasesLatestPath(ref))
 		if err != nil {
-			return doctorOutcome(g, "sources", source, doctorFail, target+": unreachable: "+err.Error(), "")
+			return doctorOutcome(g, "sources", source, doctorFail, target+": unreachable: "+err.Error(), doctorNetworkRemedy)
 		}
 		defer func() { _ = resp.Body.Close() }()
 		if resp.StatusCode != http.StatusOK {
 			return unreachableSource(source, target+": resolving latest release", resp, ref.Owner)
 		}
 		if tag, err = decodeReleaseTag(resp, ref); err != nil {
-			return doctorOutcome(g, "sources", source, doctorFail, target+": "+err.Error(), "")
+			return doctorOutcome(g, "sources", source, doctorFail, target+": "+err.Error(), "pin a release tag in .strspc/config.yaml")
 		}
 		target += " (" + tag + ")"
 	}
@@ -125,7 +128,7 @@ func doctorReachSource(env *doctorEnv, source string, ref remote.Ref) doctorResu
 
 	resp, err := get(contentsPath(ref, tag))
 	if err != nil {
-		return doctorOutcome(g, "sources", source, doctorFail, target+": unreachable: "+err.Error(), "")
+		return doctorOutcome(g, "sources", source, doctorFail, target+": unreachable: "+err.Error(), doctorNetworkRemedy)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
@@ -159,6 +162,8 @@ func unreachableSource(source, target string, resp *http.Response, owner string)
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
 		remedy = "fix or unset GITHUB_TOKEN"
+	case resp.StatusCode >= http.StatusInternalServerError:
+		remedy = "retry later"
 	case resp.StatusCode == http.StatusNotFound && remote.TokenFromEnv() == "":
 		remedy += ", or export GITHUB_TOKEN if it is private"
 	case resp.StatusCode == http.StatusNotFound && remote.TokenForOwner(owner) == "":

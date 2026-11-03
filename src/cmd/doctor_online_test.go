@@ -116,7 +116,19 @@ func TestDoctorOnlineLatest(t *testing.T) {
 			if tt.remedy != "" {
 				testutil.AssertContains(t, c.Remedy, tt.remedy)
 			}
+			assertOnlineRemedies(t, report)
 		})
+	}
+}
+
+// assertOnlineRemedies checks that every online warning or failure says what
+// to do about it.
+func assertOnlineRemedies(t *testing.T, report *doctorReport) {
+	t.Helper()
+	for _, c := range report.Checks {
+		if c.Group == "online" && (c.Status == doctorWarn || c.Status == doctorFail) && c.Remedy == "" {
+			t.Errorf("%s (%s) %s has no remedy: %s", c.ID, c.Subject, c.Status, c.Message)
+		}
 	}
 }
 
@@ -135,6 +147,8 @@ func TestDoctorOnlineLatestUnreachable(t *testing.T) {
 	testutil.AssertContains(t, c.Message, "can't reach GitHub")
 	c = assertDoctorStatus(t, report, "online.sources", "github://acme/rules@v1.0.0", doctorFail)
 	testutil.AssertContains(t, c.Message, "unreachable")
+	testutil.AssertContains(t, c.Remedy, "network")
+	assertOnlineRemedies(t, report)
 }
 
 func TestDoctorOnlineSources(t *testing.T) {
@@ -179,6 +193,10 @@ func TestDoctorOnlineSources(t *testing.T) {
 	testutil.AssertContains(t, c.Message, "rate limited")
 	c = assertDoctorStatus(t, report, "online.sources", broken, doctorFail)
 	testutil.AssertContains(t, c.Message, "resolving latest release: HTTP 500")
+	if c.Remedy != "retry later" {
+		t.Errorf("remedy for HTTP 500: %q", c.Remedy)
+	}
+	assertOnlineRemedies(t, report)
 
 	for _, c := range report.Checks {
 		if c.ID == "online.sources" && c.Subject == "./local" {
