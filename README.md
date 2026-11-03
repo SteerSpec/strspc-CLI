@@ -118,7 +118,7 @@ strspc init
 
 # Author rules in your own realm, pinned to the core realm
 strspc realm init --dir rules --id com.acme.app --title "Acme App" \
-  --dependency dev.steerspec.core@1.15.0=github://SteerSpec/strspc-rules@v1.15.0/rules/core
+  --dependency dev.steerspec.core@1.16.0=github://SteerSpec/strspc-rules@v1.16.0/rules/core
 strspc realm add CFG --title "Configuration"
 strspc rule add CFG --body "The CLI MUST write a config file." --added-by "@alice"
 
@@ -300,7 +300,7 @@ a branch or a commit SHA, are skipped. See [GitHub sources](#github-sources) for
 
 ```yaml
 rules:
-  - source: github://SteerSpec/strspc-rules@v1.15.0/rules/core   # bumped per rules release
+  - source: github://SteerSpec/strspc-rules@v1.16.0/rules/core   # bumped per rules release
     scope: global
   - source: ./rules/
     scope: global
@@ -337,7 +337,7 @@ fail_on:
 
 ```text
 $ strspc status
-SteerSpec CLI 1.31.0
+SteerSpec CLI 1.34.0
 
 Config: .strspc/config.yaml
   Evaluator: claude
@@ -345,11 +345,11 @@ Config: .strspc/config.yaml
   Cache TTL: 24h0m0s
 
 Sources:
-  - github://SteerSpec/strspc-rules@v1.15.0/rules/core (global): pinned, cached, 107 rule(s)
-  - ./rules/ (global): local, 11 rule(s)
+  - github://SteerSpec/strspc-rules@v1.16.0/rules/core (global): pinned, cached, 154 rule(s)
+  - ./rules/ (global): local, 13 rule(s)
 
-Rules: 118 total
-  6 Draft  3 Published  109 Implemented  0 Abandoned  0 Retired  0 Terminated
+Rules: 167 total
+  53 Draft  44 Published  70 Implemented  0 Abandoned  0 Retired  0 Terminated
 
 Realm: dev.steerspec.cli 0.1.0
   Entities: CFG, CMD, CONV

@@ -133,15 +133,18 @@ func TestCheckCoreAcceptsStandards(t *testing.T) {
 func TestCoreAcceptsStandardsRemedy(t *testing.T) {
 	dir := t.TempDir()
 	setupValidRealm(t, dir)
-	upgrade := "`strspc realm dep upgrade dev.steerspec.core --to 1.15.0 --dir " + shellQuote(dir) + "`"
+	// Built from standardsMinCore: a literal pin outside the pin files stops
+	// the steerspec-sync pin job.
+	minCore := standardsMinCore.String()
+	upgrade := "`strspc realm dep upgrade dev.steerspec.core --to " + minCore + " --dir " + shellQuote(dir) + "`"
 	for _, tc := range []struct {
 		name, source, want string
 	}{
 		{"release tag", coreSource, upgrade},
-		{"no source", "", "`strspc realm dep add dev.steerspec.core@1.15.0 --dir " + shellQuote(dir) + "`"},
-		{"local", "./core", "`strspc realm dep add dev.steerspec.core@1.15.0=./core --dir " + shellQuote(dir) + "`"},
-		{"latest", "github://SteerSpec/strspc-rules@latest/rules/core", "dev.steerspec.core@1.15.0=github://SteerSpec/strspc-rules@latest/rules/core"},
-		{"branch", "github://SteerSpec/strspc-rules@main/rules/core", "dev.steerspec.core@1.15.0=github://SteerSpec/strspc-rules@main/rules/core"},
+		{"no source", "", "`strspc realm dep add dev.steerspec.core@" + minCore + " --dir " + shellQuote(dir) + "`"},
+		{"local", "./core", "`strspc realm dep add dev.steerspec.core@" + minCore + "=./core --dir " + shellQuote(dir) + "`"},
+		{"latest", "github://SteerSpec/strspc-rules@latest/rules/core", "dev.steerspec.core@" + minCore + "=github://SteerSpec/strspc-rules@latest/rules/core"},
+		{"branch", "github://SteerSpec/strspc-rules@main/rules/core", "dev.steerspec.core@" + minCore + "=github://SteerSpec/strspc-rules@main/rules/core"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			pinCoreFrom(t, dir, "1.14.0", tc.source)

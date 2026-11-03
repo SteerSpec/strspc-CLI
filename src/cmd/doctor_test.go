@@ -311,7 +311,15 @@ func TestDoctorGitHubToken(t *testing.T) {
 
 	report, _ := runDoctorJSON(t, dir)
 	c := assertDoctorStatus(t, report, "credentials.github", src, doctorWarn)
-	testutil.AssertContains(t, c.Remedy, "GITHUB_TOKEN")
+	testutil.AssertContains(t, c.Message, "no GITHUB_TOKEN or GH_TOKEN")
+	testutil.AssertContains(t, c.Remedy, "export GITHUB_TOKEN or GH_TOKEN if acme/rules is private")
+
+	// GH_TOKEN alone counts as a token.
+	t.Setenv("GH_TOKEN", "gho-secret")
+	report, _ = runDoctorJSON(t, dir)
+	c = assertDoctorStatus(t, report, "credentials.github", src, doctorWarn)
+	testutil.AssertContains(t, c.Remedy, "STRSPC_TOKEN_OWNERS")
+	t.Setenv("GH_TOKEN", "")
 
 	t.Setenv("GITHUB_TOKEN", "ghp-secret")
 	report, _ = runDoctorJSON(t, dir)
@@ -577,7 +585,8 @@ func TestDoctorRealmCore(t *testing.T) {
 	testutil.AssertContains(t, c.Message, "1.14.0")
 	testutil.AssertContains(t, c.Remedy, "strspc realm dep upgrade "+coreRealmID+" --to 1.15.0")
 
-	writeRealmDeps(t, rules, entity.RealmDep{RealmID: coreRealmID, Version: "1.15.0", Source: "github://SteerSpec/strspc-rules@v1.15.0/rules/core"})
+	minCore := standardsMinCore.String()
+	writeRealmDeps(t, rules, entity.RealmDep{RealmID: coreRealmID, Version: minCore, Source: "github://SteerSpec/strspc-rules@v" + minCore + "/rules/core"})
 	report, _ = runDoctorJSON(t, project)
 	assertDoctorStatus(t, report, "realm.core", "./rules", doctorPass)
 }
