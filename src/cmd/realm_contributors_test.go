@@ -19,41 +19,47 @@ var testContributors = []entity.Contributor{
 
 // TestRealmWritesKeepContributors runs every command that rewrites realm.json
 // on a manifest with realm.contributors (CTRB-004) and checks they survive.
+// Contributors are added last, as raw JSON, so the command under test is the
+// first writer that sees them: fixture setup that goes through
+// loadModifyWriteRealm can't drop them unnoticed.
 func TestRealmWritesKeepContributors(t *testing.T) {
+	newRealm := func(t *testing.T) string {
+		dir := t.TempDir()
+		setupValidRealm(t, dir)
+		return dir
+	}
 	tests := []struct {
 		name  string
 		setup func(t *testing.T) string
 		args  func(dir string) []string
 	}{
-		{"dep add", contributorRealm, func(dir string) []string {
+		{"dep add", newRealm, func(dir string) []string {
 			return []string{"realm", "dep", "add", "dev.steerspec.core@0.1.0", "--dir", dir}
 		}},
 		{"dep remove", func(t *testing.T) string {
-			dir := contributorRealm(t)
+			dir := newRealm(t)
 			writeRealmDeps(t, dir, entity.RealmDep{RealmID: "dev.steerspec.core", Version: "0.1.0"})
 			return dir
 		}, func(dir string) []string {
 			return []string{"realm", "dep", "remove", "dev.steerspec.core", "--dir", dir}
 		}},
 		{"dep upgrade", func(t *testing.T) string {
-			dir := setupUpgradeTest(t, "v9.9.9", nil)
-			addContributors(t, dir)
-			return dir
+			return setupUpgradeTest(t, "v9.9.9", nil)
 		}, func(dir string) []string {
 			return []string{"realm", "dep", "upgrade", "--dir", dir}
 		}},
-		{"standards add", contributorRealm, func(dir string) []string {
+		{"standards add", newRealm, func(dir string) []string {
 			return []string{"realm", "standards", "add", "--id", "owasp.asvs", "--relation", "implements", "--dir", dir}
 		}},
 		{"standards remove", func(t *testing.T) string {
-			dir := contributorRealm(t)
+			dir := newRealm(t)
 			setRealmStandards(t, dir, entity.StandardRef{ID: "owasp.asvs", Relation: "implements"})
 			return dir
 		}, func(dir string) []string {
 			return []string{"realm", "standards", "remove", "--id", "owasp.asvs", "--dir", dir}
 		}},
 		{"standards update", func(t *testing.T) string {
-			dir := contributorRealm(t)
+			dir := newRealm(t)
 			setRealmStandards(t, dir, entity.StandardRef{ID: "owasp.asvs", Relation: "implements", Version: "4.0.3"})
 			return dir
 		}, func(dir string) []string {
@@ -63,6 +69,7 @@ func TestRealmWritesKeepContributors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := tt.setup(t)
+			addContributors(t, dir)
 			if _, err := testutil.ExecuteCommand(NewRootCmd(), tt.args(dir)...); err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -75,6 +82,48 @@ func TestRealmWritesKeepContributors(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRealmValidateAcceptsContributors runs realm validate, schema check
+// (RM002) included, on a manifest with realm.contributors. The schemas are
+// this repo's vendored copies, from the pinned core (1.16.0 or later), read
+// from the realm's _schema/ so no network is needed. A field the schema
+// doesn't know still fails, which shows the check ran.
+func TestRealmValidateAcceptsContributors(t *testing.T) {
+	orig := newRealmValidator
+	t.Cleanup(func() { newRealmValidator = orig })
+	newRealmValidator = func(dir string, strict, recursive, _ bool) *realmValidatorSet {
+		return buildRealmValidator(dir, strict, recursive, true, nil, fetchRealmDependency)
+	}
+
+	validate := func(t *testing.T, edit func(manifest map[string]any)) (string, error) {
+		t.Helper()
+		dir := t.TempDir()
+		setupValidRealm(t, dir)
+		for _, name := range []string{"realm.v1.schema.json", "entity.v1.schema.json"} {
+			data, err := os.ReadFile(filepath.Join("..", "..", "rules", "_schema", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "_schema", name), data, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		editRealmJSON(t, dir, edit)
+		return testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir)
+	}
+
+	out, err := validate(t, func(m map[string]any) { m["realm"].(map[string]any)["contributors"] = testContributors })
+	if err != nil {
+		t.Fatalf("unexpected error: %v\n%s", err, out)
+	}
+	testutil.AssertContains(t, out, "No errors or warnings")
+
+	out, err = validate(t, func(m map[string]any) { m["realm"].(map[string]any)["unknown_field"] = true })
+	if err == nil {
+		t.Fatalf("an unknown realm field passed, so the schema wasn't checked:\n%s", out)
+	}
+	testutil.AssertContains(t, out, "RM002")
 }
 
 // TestRealmWriteLeavesContributorsAbsent checks a manifest without
@@ -94,17 +143,15 @@ func TestRealmWriteLeavesContributorsAbsent(t *testing.T) {
 	}
 }
 
-func contributorRealm(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	setupValidRealm(t, dir)
-	addContributors(t, dir)
-	return dir
-}
-
 // addContributors edits realm.json as raw JSON, not through the write path
 // under test, so a writer that drops the field can't hide it.
 func addContributors(t *testing.T, dir string) {
+	t.Helper()
+	editRealmJSON(t, dir, func(m map[string]any) { m["realm"].(map[string]any)["contributors"] = testContributors })
+}
+
+// editRealmJSON applies edit to realm.json as a generic JSON document.
+func editRealmJSON(t *testing.T, dir string, edit func(manifest map[string]any)) {
 	t.Helper()
 	path := filepath.Join(dir, "realm.json")
 	data, err := os.ReadFile(path)
@@ -115,7 +162,7 @@ func addContributors(t *testing.T, dir string) {
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	manifest["realm"].(map[string]any)["contributors"] = testContributors
+	edit(manifest)
 	if data, err = json.Marshal(manifest); err != nil {
 		t.Fatal(err)
 	}
