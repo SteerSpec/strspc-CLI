@@ -577,7 +577,8 @@ func TestDoctorRealmCore(t *testing.T) {
 	testutil.AssertContains(t, c.Message, "1.14.0")
 	testutil.AssertContains(t, c.Remedy, "strspc realm dep upgrade "+coreRealmID+" --to 1.15.0")
 
-	writeRealmDeps(t, rules, entity.RealmDep{RealmID: coreRealmID, Version: "1.15.0", Source: "github://SteerSpec/strspc-rules@v1.15.0/rules/core"})
+	minCore := standardsMinCore.String()
+	writeRealmDeps(t, rules, entity.RealmDep{RealmID: coreRealmID, Version: minCore, Source: "github://SteerSpec/strspc-rules@v" + minCore + "/rules/core"})
 	report, _ = runDoctorJSON(t, project)
 	assertDoctorStatus(t, report, "realm.core", "./rules", doctorPass)
 }
