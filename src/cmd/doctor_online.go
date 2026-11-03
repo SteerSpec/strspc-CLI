@@ -50,8 +50,11 @@ func doctorLatestCheck(env *doctorEnv) doctorResult {
 	if resp.StatusCode != http.StatusOK {
 		msg, rateLimited := githubProblem(resp, strspcRelease.Owner)
 		remedy := "retry later"
-		if rateLimited {
+		switch {
+		case rateLimited:
 			remedy = rateLimitRemedy(strspcRelease.Owner)
+		case resp.StatusCode == http.StatusUnauthorized:
+			remedy = "fix or unset " + tokenEnvVars
 		}
 		return doctorOutcome(g, "latest", "", doctorWarn, "can't look up the latest release: "+msg, remedy)
 	}
@@ -161,11 +164,11 @@ func unreachableSource(source, target string, resp *http.Response, owner string)
 	remedy := "fix the source in .strspc/config.yaml"
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
-		remedy = "fix or unset GITHUB_TOKEN"
+		remedy = "fix or unset " + tokenEnvVars
 	case resp.StatusCode >= http.StatusInternalServerError:
 		remedy = "retry later"
 	case resp.StatusCode == http.StatusNotFound && remote.TokenFromEnv() == "":
-		remedy += ", or export GITHUB_TOKEN if it is private"
+		remedy += ", or export " + tokenEnvVars + " if it is private"
 	case resp.StatusCode == http.StatusNotFound && remote.TokenForOwner(owner) == "":
 		remedy += ", or add " + owner + " to " + remote.TokenOwnersEnv + " if it is private"
 	}
@@ -180,13 +183,13 @@ func githubProblem(resp *http.Response, owner string) (msg string, rateLimited b
 	case isGitHubRateLimit(resp, body):
 		return "rate limited by GitHub", true
 	case resp.StatusCode == http.StatusNotFound && remote.TokenFromEnv() == "":
-		return "not found (missing, or private and no token is set)", false
+		return "not found (missing, or private and no token is set in " + tokenEnvVars + ")", false
 	case resp.StatusCode == http.StatusNotFound && remote.TokenForOwner(owner) == "":
 		return "not found (missing, or private and the token is not sent to " + owner + ")", false
 	case resp.StatusCode == http.StatusNotFound:
 		return "not found", false
 	case resp.StatusCode == http.StatusUnauthorized:
-		return "HTTP 401: the token is invalid", false
+		return "HTTP 401: the token in " + tokenEnvVars + " is invalid", false
 	default:
 		return fmt.Sprintf("HTTP %d", resp.StatusCode), false
 	}
@@ -211,7 +214,7 @@ func isGitHubRateLimit(resp *http.Response, body []byte) bool {
 func rateLimitRemedy(owner string) string {
 	switch {
 	case remote.TokenFromEnv() == "":
-		return "export GITHUB_TOKEN to raise the limit, or retry later"
+		return "export " + tokenEnvVars + " to raise the limit, or retry later"
 	case remote.TokenForOwner(owner) == "":
 		return "add " + owner + " to " + remote.TokenOwnersEnv + " to raise the limit, or retry later"
 	default:

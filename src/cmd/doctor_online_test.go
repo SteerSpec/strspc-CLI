@@ -98,8 +98,9 @@ func TestDoctorOnlineLatest(t *testing.T) {
 		{name: "newer", version: "v1.4.0-rc.1", reply: release("v1.3.0"), want: doctorPass, message: "newer"},
 		{name: "dev build", version: "dev", reply: release("v1.3.0"), want: doctorSkip, message: "development build"},
 		{name: "not a version", version: "abc1234", reply: release("v1.3.0"), want: doctorSkip, message: "not a release version"},
-		{name: "rate limited", version: "v1.2.3", reply: rateLimited, want: doctorWarn, message: "rate limited", remedy: "GITHUB_TOKEN"},
-		{name: "server error", version: "v1.2.3", reply: fakeGitHubReply{status: http.StatusBadGateway}, want: doctorWarn, message: "HTTP 502"},
+		{name: "rate limited", version: "v1.2.3", reply: rateLimited, want: doctorWarn, message: "rate limited", remedy: "export GITHUB_TOKEN or GH_TOKEN"},
+		{name: "bad token", version: "v1.2.3", reply: fakeGitHubReply{status: http.StatusUnauthorized}, want: doctorWarn, message: "HTTP 401: the token in GITHUB_TOKEN or GH_TOKEN is invalid", remedy: "fix or unset GITHUB_TOKEN or GH_TOKEN"},
+		{name: "server error", version: "v1.2.3", reply: fakeGitHubReply{status: http.StatusBadGateway}, want: doctorWarn, message: "HTTP 502", remedy: "retry later"},
 		{name: "no tag", version: "v1.2.3", reply: fakeGitHubReply{status: http.StatusOK, body: `{}`}, want: doctorWarn, message: "has no tag"},
 		{name: "bad tag", version: "v1.2.3", reply: release("nightly"), want: doctorWarn, message: "not a version"},
 	}
@@ -184,8 +185,8 @@ func TestDoctorOnlineSources(t *testing.T) {
 	c := assertDoctorStatus(t, report, "online.sources", pinned, doctorPass)
 	testutil.AssertContains(t, c.Message, "acme/rules@v1.0.0/rules/core: reachable")
 	c = assertDoctorStatus(t, report, "online.sources", missing, doctorFail)
-	testutil.AssertContains(t, c.Message, "not found (missing, or private and no token is set)")
-	testutil.AssertContains(t, c.Remedy, "export GITHUB_TOKEN if it is private")
+	testutil.AssertContains(t, c.Message, "not found (missing, or private and no token is set in GITHUB_TOKEN or GH_TOKEN)")
+	testutil.AssertContains(t, c.Remedy, "export GITHUB_TOKEN or GH_TOKEN if it is private")
 	c = assertDoctorStatus(t, report, "online.sources", latest, doctorPass)
 	testutil.AssertContains(t, c.Message, "acme/rules@latest (v2.0.0)/rules: reachable")
 	assertDoctorStatus(t, report, "online.sources", root, doctorPass)
@@ -284,8 +285,10 @@ func TestDoctorOnlineNotFoundHints(t *testing.T) {
 		t.Errorf("remedy %q", c.Remedy)
 	}
 	c = assertDoctorStatus(t, report, "online.sources", badToken, doctorFail)
-	testutil.AssertContains(t, c.Message, "token is invalid")
-	testutil.AssertContains(t, c.Remedy, "GITHUB_TOKEN")
+	testutil.AssertContains(t, c.Message, "HTTP 401: the token in GITHUB_TOKEN or GH_TOKEN is invalid")
+	if c.Remedy != "fix or unset GITHUB_TOKEN or GH_TOKEN" {
+		t.Errorf("remedy for HTTP 401: %q", c.Remedy)
+	}
 }
 
 func TestIsGitHubRateLimit(t *testing.T) {

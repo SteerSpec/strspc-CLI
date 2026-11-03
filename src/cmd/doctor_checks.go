@@ -58,6 +58,9 @@ func skipped(group, why string, names ...string) []doctorResult {
 
 const doctorInstallRemedy = "install a release: see https://github.com/SteerSpec/strspc-CLI#install"
 
+// tokenEnvVars names the variables remote.TokenFromEnv reads, in order.
+const tokenEnvVars = "GITHUB_TOKEN or GH_TOKEN"
+
 func doctorInstallChecks(env *doctorEnv) []doctorResult {
 	const g = "install"
 	var out []doctorResult
@@ -316,8 +319,8 @@ func doctorCredentialChecks(env *doctorEnv, project *doctorProject) []doctorResu
 		switch {
 		case remote.TokenFromEnv() == "":
 			out = append(out, doctorOutcome(g, "github", r.Source, doctorWarn,
-				repo+": no GITHUB_TOKEN or GH_TOKEN, so a private repository can't be fetched",
-				"export GITHUB_TOKEN if "+repo+" is private"))
+				repo+": no "+tokenEnvVars+", so a private repository can't be fetched",
+				"export "+tokenEnvVars+" if "+repo+" is private"))
 		case remote.TokenForOwner(ref.Owner) == "":
 			out = append(out, doctorOutcome(g, "github", r.Source, doctorWarn,
 				repo+": the token is not sent to "+ref.Owner,

@@ -311,7 +311,15 @@ func TestDoctorGitHubToken(t *testing.T) {
 
 	report, _ := runDoctorJSON(t, dir)
 	c := assertDoctorStatus(t, report, "credentials.github", src, doctorWarn)
-	testutil.AssertContains(t, c.Remedy, "GITHUB_TOKEN")
+	testutil.AssertContains(t, c.Message, "no GITHUB_TOKEN or GH_TOKEN")
+	testutil.AssertContains(t, c.Remedy, "export GITHUB_TOKEN or GH_TOKEN if acme/rules is private")
+
+	// GH_TOKEN alone counts as a token.
+	t.Setenv("GH_TOKEN", "gho-secret")
+	report, _ = runDoctorJSON(t, dir)
+	c = assertDoctorStatus(t, report, "credentials.github", src, doctorWarn)
+	testutil.AssertContains(t, c.Remedy, "STRSPC_TOKEN_OWNERS")
+	t.Setenv("GH_TOKEN", "")
 
 	t.Setenv("GITHUB_TOKEN", "ghp-secret")
 	report, _ = runDoctorJSON(t, dir)
