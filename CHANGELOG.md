@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.34.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.34.0...v1.34.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* **doctor:** token remedy for HTTP 401 and name GH_TOKEN ([#230](https://github.com/SteerSpec/strspc-CLI/issues/230)) ([3fc2c52](https://github.com/SteerSpec/strspc-CLI/commit/3fc2c5239202084940553cdfe83be589a039d1a0))
+* **realm:** accept and keep realm.contributors (manager v1.40.0) ([#234](https://github.com/SteerSpec/strspc-CLI/issues/234)) ([1955bca](https://github.com/SteerSpec/strspc-CLI/commit/1955bca25a238cadba308997f1e2f1315b41c791))
+
 ## [1.34.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.33.0...v1.34.0) (2026-11-03)
 
 
