@@ -392,15 +392,22 @@ credentials
 | `realm` | Each local realm passes `realm validate`, and its core pin accepts the standards it declares |
 | `project` | `.strspc/cache/` and `.strspc/cache.db` are git-ignored, and a workflow runs `strspc check` |
 
-Like `status`, doctor only reads: it makes no network call and fills no cache, so what was never
-fetched (a schema, a source, a realm dependency) is skipped or reported as not cached. Check IDs such as
+Like `status`, doctor only reads: without `--online` it makes no network call, and it never fills a
+cache, so what was never fetched (a schema, a source, a realm dependency) is skipped or reported as not cached. Check IDs such as
 `credentials.provider` are stable and appear in `--json`, which prints
 `{"version", "checks": [{"id", "group", "subject", "status", "message", "remedy"}], "summary"}`.
-It exits 0 when no check failed, 1 when one did (or, with `--strict`, when one warned), and 2 when the
-path can't be read. A missing API key is a warning, since lint and realm validation work without it.
+It exits 0 when no check failed, 1 when one did (or, with `--strict`, when one warned), 2 when the
+path can't be read, and 4 when the `--json` report can't be written. A missing API key is a warning,
+since lint and realm validation work without it.
 
-`--online`, which compares the version with the latest release and checks that each `github://`
-source can be reached, is not implemented yet.
+`--online` adds the checks that call the GitHub API, and still fills no cache:
+
+| Check | What it checks |
+| ----- | -------------- |
+| `online.latest` | The version is not older than the latest strspc release (a warning); development builds are skipped, and a failed lookup is a warning |
+| `online.sources` | The ref and path of each `github://` source exist. Not found or an invalid token fails; rate limiting is a warning |
+
+The GitHub token goes only to the owners it is allowed for, as when fetching sources.
 
 ### Report coverage of a standard
 

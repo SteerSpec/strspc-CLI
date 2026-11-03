@@ -5,9 +5,9 @@
     "title": "Commands"
   },
   "rule_set": {
-    "version": "0.8.2",
-    "timestamp": "2026-11-02T20:21:54Z",
-    "hash": "blake3:af8a106759311cf3c781e4354e95496dc489dfc8ef41a31cb1751466ba0c0dc4"
+    "version": "0.12.0",
+    "timestamp": "2026-11-03T07:01:43Z",
+    "hash": "blake3:d0ae4bbed7fd1b51bdf76a0391791c603b835a1ca429232011842b49aacf876d"
   },
   "rules": [
     {
@@ -58,7 +58,7 @@
     {
       "id": "CMD-006",
       "revision": 0,
-      "state": "D",
+      "state": "I",
       "body": "strspc doctor MUST NOT make a network call or write a file unless --online is given.",
       "added_by": "@pleberre",
       "added_at": "2026-11-02",
@@ -67,7 +67,7 @@
     {
       "id": "CMD-007",
       "revision": 0,
-      "state": "D",
+      "state": "I",
       "body": "strspc doctor MUST exit 1 only when a check fails or, under --strict, warns, and 2 only when its flags are invalid or its path can't be read.",
       "added_by": "@pleberre",
       "added_at": "2026-11-02",
