@@ -396,8 +396,9 @@ Like `status`, doctor only reads: without `--online` it makes no network call, a
 cache, so what was never fetched (a schema, a source, a realm dependency) is skipped or reported as not cached. Check IDs such as
 `credentials.provider` are stable and appear in `--json`, which prints
 `{"version", "checks": [{"id", "group", "subject", "status", "message", "remedy"}], "summary"}`.
-It exits 0 when no check failed, 1 when one did (or, with `--strict`, when one warned), and 2 when the
-path can't be read. A missing API key is a warning, since lint and realm validation work without it.
+It exits 0 when no check failed, 1 when one did (or, with `--strict`, when one warned), 2 when the
+path can't be read, and 4 when the `--json` report can't be written. A missing API key is a warning,
+since lint and realm validation work without it.
 
 `--online` adds the checks that call the GitHub API, and still fills no cache:
 

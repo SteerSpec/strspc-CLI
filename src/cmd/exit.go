@@ -9,6 +9,7 @@ const (
 	exitViolations  = 1 // violations in fail_on states (or any plain error)
 	exitConfig      = 2 // configuration, rule resolution or diff collection failed
 	exitUnavailable = 3 // the AI provider cannot be used (no key, 401/403, unreachable)
+	exitOutput      = 4 // the result could not be written to stdout
 )
 
 // exitError carries a process exit code alongside the underlying error.
