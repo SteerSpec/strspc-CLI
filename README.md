@@ -120,7 +120,7 @@ strspc init
 strspc realm init --dir rules --id com.acme.app --title "Acme App" \
   --dependency dev.steerspec.core@1.17.0=github://SteerSpec/strspc-rules@v1.17.0/rules/core
 strspc realm add CFG --title "Configuration"
-strspc rule add CFG --body "The CLI MUST write a config file." --added-by "@alice"
+strspc rule add CFG --body "The CLI MUST write a config file." --added-by github:alice
 
 # Validate them
 strspc lint rules/ --strict
@@ -169,6 +169,7 @@ full data model.
 | `strspc realm dep add\|remove\|list\|upgrade` | Manage Realm dependencies |
 | `strspc realm validate` | Validate Realm structure and EUID uniqueness |
 | `strspc realm standards add\|update\|remove\|list` | Declare the external standards a Realm cites |
+| `strspc realm rewrite-added-by` | Rewrite `added_by` values to contributor identifiers such as `github:alice` |
 | `strspc rule add` | Add a Draft rule to an entity or sub-entity |
 | `strspc rule update` | Edit the body of a Draft rule |
 | `strspc rule promote` | Advance a rule D→P or P→I |
@@ -218,13 +219,13 @@ Transitions are forward-only and no state may be skipped
 Every change bumps the rule set version: minor when a rule is promoted or retired, patch otherwise.
 
 ```bash
-strspc rule add CFG --body "The CLI MUST write a config file." --added-by "@alice"
+strspc rule add CFG --body "The CLI MUST write a config file." --added-by github:alice
 strspc rule update CFG-001 --body "The CLI MUST write a YAML config file."     # Draft only
 strspc rule promote CFG-001                                                    # D → P
-strspc note add CFG-001 --type rationale --body "Why." --added-by "@alice"
+strspc note add CFG-001 --type rationale --body "Why." --added-by github:alice
 strspc note update CFG-001/01 --body "Corrected."
 strspc entity add CFGIO --parent CFG --title "Config I/O"
-strspc rule add CFG --sub-entity CFGIO --body "Writes MUST be atomic." --added-by "@alice"
+strspc rule add CFG --sub-entity CFGIO --body "Writes MUST be atomic." --added-by github:alice
 strspc entity rehash --all                                     # fix hashes after a bulk import
 ```
 
@@ -243,12 +244,24 @@ A `standard` note maps its rule to one clause of a declared standard (`<standard
 added, revised, or retyped to `reference` and back in any rule state, without changing the rule's revision
 (NTE-017, NTE-018); retyping it to `reference` is how a mapping is withdrawn (NTE-019).
 
+**Contributors.** `--added-by` takes a contributor identifier, `<idp>:<login>` with `github` as the
+only provider (CTRB-001, CTRB-002). When the Realm lists `realm.contributors`, the value must name
+one of them (CTRB-005), and a sub-realm uses its parent's list (CTRB-006). An `@handle` or an email
+address is still accepted during the transition and matches the listed contributor it names.
+`strspc diff` reports a new rule or note by someone the Realm doesn't list (`RD023`, Info).
+`realm rewrite-added-by` migrates existing values, with a patch bump for each changed file:
+
+```bash
+strspc realm rewrite-added-by --github-handles --dry-run         # preview @alice → github:alice
+strspc realm rewrite-added-by --github-handles --map alice@example.com=github:alice
+```
+
 **Inheritance.** An entity can inherit another entity's rule set, in the same Realm or in a declared
 dependency, and a rule can override one inherited rule for that entity:
 
 ```bash
 strspc realm add SAVACCT --title "Savings Account" --inherits dev.globalbank.core:ACCT
-strspc rule add SAVACCT --body "Withdrawals MUST be capped." --added-by "@alice" \
+strspc rule add SAVACCT --body "Withdrawals MUST be capped." --added-by github:alice \
   --overrides dev.globalbank.core:ACCT-005 # strspc-refs: ignore
 ```
 
@@ -417,7 +430,7 @@ maps a rule to one clause, with content `<standard-id>:<clause>`:
 ```bash
 strspc realm standards add --id owasp.asvs --relation implements --version 4.0.3
 strspc entity standards add AUTH --id ietf.rfc2119 --relation derived_from --url https://www.rfc-editor.org/rfc/rfc2119
-strspc note add AUTH-004 --type standard --body "owasp.asvs:2.1.1" --added-by "@alice"
+strspc note add AUTH-004 --type standard --body "owasp.asvs:2.1.1" --added-by github:alice
 ```
 
 `implements` claims coverage of the standard and `derived_from` only cites it as a source. An id is

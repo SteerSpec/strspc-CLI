@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/result"
 	"github.com/SteerSpec/strspc-manager/src/rulediff"
 	"github.com/spf13/cobra"
@@ -110,7 +111,11 @@ func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, e
 		return nil, fmt.Errorf("reading %s: %w", headPath, err)
 	}
 
-	opts := diffOpts(strict)
+	contributors, err := realmContributorsOf(headPath, repoDir)
+	if err != nil {
+		return nil, err
+	}
+	opts := diffOpts(strict, contributors)
 	baseData, err := gitShow(baseRef, headPath, repoDir)
 
 	var res *result.Result
@@ -141,7 +146,10 @@ func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, e
 // Files deleted from headDir are reported as RD005.
 func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, error) {
 	res := &result.Result{}
-	opts := diffOpts(strict)
+	// The contributors of each file's Realm, by directory: a walk from a
+	// parent Realm reaches its sub-realms, and one from above reaches several
+	// Realms.
+	contributors := map[string][]entity.Contributor{}
 
 	// Walk headDir to find entity JSON files and compare each against baseRef.
 	headRelPaths := make(map[string]bool)
@@ -177,6 +185,16 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		if showErr == nil && bytes.Equal(baseData, headData) {
 			return nil // file unchanged — nothing to validate
 		}
+		fileDir := filepath.Dir(path)
+		list, seen := contributors[fileDir]
+		if !seen {
+			var listErr error
+			if list, listErr = realmContributorsOf(path, repoDir); listErr != nil {
+				return listErr
+			}
+			contributors[fileDir] = list
+		}
+		opts := diffOpts(strict, list)
 		addWithPath := func(diags []result.Diagnostic) {
 			for _, diag := range diags {
 				if diag.Path == "" {
@@ -367,12 +385,14 @@ func prBaseSHA(prNum int, repoDir string) (string, error) {
 	return sha, nil
 }
 
-// diffOpts builds the rulediff option slice from CLI flags.
-func diffOpts(strict bool) []rulediff.Option {
+// diffOpts builds the rulediff option slice from CLI flags and the
+// contributors of the Realm holding the file, for RD023.
+func diffOpts(strict bool, contributors []entity.Contributor) []rulediff.Option {
+	opts := []rulediff.Option{rulediff.WithContributors(contributors)}
 	if strict {
-		return []rulediff.Option{rulediff.WithStrict(true)}
+		opts = append(opts, rulediff.WithStrict(true))
 	}
-	return nil
+	return opts
 }
 
 // gitShowError wraps a git-show failure so callers can distinguish "not found" from real errors.

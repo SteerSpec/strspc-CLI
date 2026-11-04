@@ -28,9 +28,9 @@ When the superseded rule overrides an inherited rule, pass the same
 --overrides to keep the override in force (RUL-011); otherwise it lapses.
 
 Examples:
-  strspc rule supersede MYE-001 --body "Updated requirement MUST..." --added-by "@alice"
-  strspc rule supersede MYE-001 --body "New rule" --added-by "@bob" --json
-  strspc rule supersede SAVACCT-003 --body "..." --added-by "@alice" --overrides dev.globalbank.core:ACCT-005`,
+  strspc rule supersede MYE-001 --body "Updated requirement MUST..." --added-by github:alice
+  strspc rule supersede MYE-001 --body "New rule" --added-by github:bob --json
+  strspc rule supersede SAVACCT-003 --body "..." --added-by github:alice --overrides dev.globalbank.core:ACCT-005`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -55,6 +55,9 @@ Examples:
 
 			target, err := resolveEntityTarget(dir, entityID)
 			if err != nil {
+				return err
+			}
+			if err := checkAddedBy(addedBy, target, dir); err != nil {
 				return err
 			}
 
@@ -114,7 +117,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&body, "body", "", "new rule statement text (required)")
-	cmd.Flags().StringVar(&addedBy, "added-by", "", "contributor identifier (required)")
+	cmd.Flags().StringVar(&addedBy, "added-by", "", "contributor identifier such as github:<login>; must name a contributor when the realm lists any (required)")
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
 	cmd.Flags().StringVar(&overrides, "overrides", "", "inherited rule the new rule replaces for the entity: <EUID>-NNN or <realm-id>:<EUID>-NNN")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
