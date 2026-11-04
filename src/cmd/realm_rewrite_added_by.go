@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -28,6 +29,10 @@ type addedByResult struct {
 	// Skipped lists .json files under --dir that are not entity files (no
 	// valid entity.id). They are never rewritten.
 	Skipped []string `json:"skipped"`
+	// Links lists .json files under --dir that are symbolic links. They are
+	// never followed, so no link can make the command write outside --dir; a
+	// target inside --dir is rewritten under its own path.
+	Links []string `json:"links"`
 }
 
 // parseAddedByMap reads --map values of the form OLD=NEW. Each NEW must be a
@@ -142,10 +147,12 @@ github:<login> (CTRB-003).
 
 --map OLD=NEW replaces each added_by equal to OLD with NEW, and may be given
 more than once. --github-handles replaces each @handle with github:<handle>;
-a --map for the same @handle wins, in any case, as GitHub logins ignore case. Each changed file gets a patch version
-bump and a fresh hash; revisions stay as they are, since added_by is not part
-of what a revision counts. Files with nothing to replace are not touched.
-Use --dry-run to see what would change without writing.
+a --map for the same @handle wins, in any case, as GitHub logins ignore case.
+Each changed file gets a patch version bump and a fresh hash; revisions stay
+as they are, since added_by is not part of what a revision counts. Files with
+nothing to replace are not touched. A file that is a symbolic link is listed
+and never followed: rewrite its target where it lives. Use --dry-run to see
+what would change without writing.
 
 Examples:
   strspc realm rewrite-added-by --github-handles --dry-run
@@ -165,6 +172,14 @@ Examples:
 
 			res := addedByResult{DryRun: dryRun}
 			err = entity.WalkEntityFiles(dir, func(path string, _ []byte, ef *entity.File, parseErr error) error {
+				// The walk reads through a link, and saveEntity would write
+				// through it, possibly outside --dir.
+				if fi, err := os.Lstat(path); err != nil {
+					return fmt.Errorf("reading %s: %w", path, err)
+				} else if fi.Mode()&os.ModeSymlink != 0 {
+					res.Links = append(res.Links, path)
+					return nil
+				}
 				if parseErr != nil {
 					return fmt.Errorf("reading %s: %w", path, parseErr)
 				}
@@ -209,6 +224,9 @@ Examples:
 				if res.Skipped == nil {
 					res.Skipped = []string{}
 				}
+				if res.Links == nil {
+					res.Links = []string{}
+				}
 				return writeJSONOutput(w, res)
 			}
 
@@ -224,11 +242,14 @@ Examples:
 			for _, p := range res.Skipped {
 				writeln(w, descStyle.Render(fmt.Sprintf("Skipped %s (not an entity file)", p)))
 			}
+			for _, p := range res.Links {
+				writeln(w, descStyle.Render(fmt.Sprintf("Skipped %s (a symbolic link, not followed: rewrite its target where it lives)", p)))
+			}
 			done := "rewritten"
 			if dryRun {
 				done = "to rewrite (dry run, nothing written)"
 			}
-			summary := fmt.Sprintf("%d added_by in %d entity file(s) %s, %d unchanged, %d skipped", total, len(res.Updated), done, res.Unchanged, len(res.Skipped))
+			summary := fmt.Sprintf("%d added_by in %d entity file(s) %s, %d unchanged, %d skipped", total, len(res.Updated), done, res.Unchanged, len(res.Skipped)+len(res.Links))
 			writeln(w, descStyle.Render(summary))
 			return nil
 		},

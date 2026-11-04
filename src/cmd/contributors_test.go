@@ -416,6 +416,37 @@ func TestRealmRewriteAddedByMapWinsAnyCase(t *testing.T) {
 	}
 }
 
+// TestRealmRewriteAddedBySkipsLinks checks that an entity file under --dir
+// that is a symbolic link is listed and not followed, so a link to a file
+// outside --dir can't make the migration rewrite it.
+func TestRealmRewriteAddedBySkipsLinks(t *testing.T) {
+	outside := rewriteFixture(t)
+	before := readFiles(t, outside, "TST.json")
+	dir := rewriteFixture(t)
+	link := filepath.Join(dir, "LNK.json")
+	if err := os.Symlink(filepath.Join(outside, "TST.json"), link); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "rewrite-added-by", "--github-handles", "--dir", dir, "--json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var res addedByResult
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out)
+	}
+	if len(res.Links) != 1 || res.Links[0] != link {
+		t.Errorf("links = %v, want [%s]", res.Links, link)
+	}
+	if len(res.Updated) != 1 || res.Updated[0].Path != filepath.Join(dir, "TST.json") {
+		t.Errorf("updated = %+v, want only %s", res.Updated, filepath.Join(dir, "TST.json"))
+	}
+	if !bytes.Equal(readFiles(t, outside, "TST.json")["TST.json"], before["TST.json"]) {
+		t.Error("the file outside --dir was rewritten through the link")
+	}
+}
+
 // TestRealmDirOfDanglingManifest checks that a realm.json linking to nothing
 // is reported, rather than skipped for a parent Realm's manifest.
 func TestRealmDirOfDanglingManifest(t *testing.T) {
