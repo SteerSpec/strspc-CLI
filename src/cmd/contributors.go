@@ -15,11 +15,17 @@ import (
 // directory of file, looking no higher than stop, or "" when there is none:
 // an entity belongs to the Realm with the nearest manifest above it. Both
 // paths are resolved first, so /var and /private/var on macOS compare equal.
+// A realm.json that is a link to nothing is an error, not a missing manifest:
+// otherwise the lookup would go on to a parent Realm's list, or to none.
 func realmDirOf(file, stop string) (string, error) {
 	dir, stop := resolvedPath(filepath.Dir(file)), resolvedPath(stop)
 	for {
-		_, statErr := os.Stat(filepath.Join(dir, "realm.json"))
+		manifest := filepath.Join(dir, "realm.json")
+		_, statErr := os.Lstat(manifest)
 		if statErr == nil {
+			if _, err := os.Stat(manifest); err != nil {
+				return "", fmt.Errorf("reading %s: %w", manifest, err)
+			}
 			return dir, nil
 		}
 		if !errors.Is(statErr, fs.ErrNotExist) {

@@ -32,8 +32,11 @@ type addedByResult struct {
 
 // parseAddedByMap reads --map values of the form OLD=NEW. Each NEW must be a
 // contributor identifier (CTRB-001, CTRB-002), and an OLD may be mapped once.
+// GitHub logins ignore case, so two @handles that differ only in case may not
+// map to different identifiers.
 func parseAddedByMap(pairs []string) (map[string]string, error) {
 	m := make(map[string]string, len(pairs))
+	handles := make(map[string]string) // lower-cased @handle → the OLD first given
 	for _, pair := range pairs {
 		old, repl, ok := strings.Cut(pair, "=")
 		old, repl = strings.TrimSpace(old), strings.TrimSpace(repl)
@@ -46,15 +49,41 @@ func parseAddedByMap(pairs []string) (map[string]string, error) {
 		if prev, dup := m[old]; dup && prev != repl {
 			return nil, fmt.Errorf("--map maps %q to both %q and %q", old, prev, repl)
 		}
+		if strings.HasPrefix(old, "@") {
+			key := strings.ToLower(old)
+			if first, seen := handles[key]; seen && first != old && m[first] != repl {
+				return nil, fmt.Errorf("--map maps %q and %q, the same GitHub handle, to both %q and %q", first, old, m[first], repl)
+			} else if !seen {
+				handles[key] = old
+			}
+		}
 		m[old] = repl
 	}
 	return m, nil
 }
 
+// mappedHandle returns what m maps addedBy to, matching an @handle without
+// regard to case, as GitHub logins do. An exact key wins.
+func mappedHandle(m map[string]string, addedBy string) (string, bool) {
+	if v, ok := m[addedBy]; ok {
+		return v, true
+	}
+	if !strings.HasPrefix(addedBy, "@") {
+		return "", false
+	}
+	for k, v := range m {
+		if strings.HasPrefix(k, "@") && strings.EqualFold(k, addedBy) {
+			return v, true
+		}
+	}
+	return "", false
+}
+
 // githubHandleMap adds to m, for every @handle written as an added_by in f or
-// its sub-entities, the contributor identifier github:<handle>, unless m
-// already maps it or the result would not be a valid identifier. It returns
-// a new map; m is not changed.
+// its sub-entities, the contributor identifier github:<handle>, unless the
+// result would not be a valid identifier. When m maps the same handle in
+// another case, that mapping applies instead, so a --map wins for every
+// spelling of the login. It returns a new map; m is not changed.
 func githubHandleMap(f *entity.File, m map[string]string) map[string]string {
 	out := make(map[string]string, len(m))
 	for k, v := range m {
@@ -67,6 +96,10 @@ func githubHandleMap(f *entity.File, m map[string]string) map[string]string {
 			return
 		}
 		if _, mapped := out[addedBy]; mapped {
+			return
+		}
+		if v, mapped := mappedHandle(m, addedBy); mapped {
+			out[addedBy] = v
 			return
 		}
 		id := entity.IdentityProviderGitHub + ":" + handle
@@ -109,7 +142,7 @@ github:<login> (CTRB-003).
 
 --map OLD=NEW replaces each added_by equal to OLD with NEW, and may be given
 more than once. --github-handles replaces each @handle with github:<handle>;
-a --map for the same @handle wins. Each changed file gets a patch version
+a --map for the same @handle wins, in any case, as GitHub logins ignore case. Each changed file gets a patch version
 bump and a fresh hash; revisions stay as they are, since added_by is not part
 of what a revision counts. Files with nothing to replace are not touched.
 Use --dry-run to see what would change without writing.

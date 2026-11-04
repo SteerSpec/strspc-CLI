@@ -400,6 +400,41 @@ func TestRealmRewriteAddedByMapWins(t *testing.T) {
 	}
 }
 
+// TestRealmRewriteAddedByMapWinsAnyCase checks that a --map for an @handle
+// also wins over --github-handles for the same login in another case, as
+// GitHub logins ignore case.
+func TestRealmRewriteAddedByMapWinsAnyCase(t *testing.T) {
+	dir := rewriteFixture(t)
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "rewrite-added-by",
+		"--github-handles", "--map", "@Alice=github:alice-gh", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := strings.Join(allAddedBy(loadEntityFile(t, dir, "TST")), " ")
+	want := "TST-001=github:alice-gh TST-002=alice@example.com TST-003=github:bob TST-001/01=github:bob TSTSUB-001=github:alice-gh"
+	if got != want {
+		t.Errorf("added_by = %s\nwant      %s", got, want)
+	}
+}
+
+// TestRealmDirOfDanglingManifest checks that a realm.json linking to nothing
+// is reported, rather than skipped for a parent Realm's manifest.
+func TestRealmDirOfDanglingManifest(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	sub := filepath.Join(dir, "auth")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(sub, "missing.json"), filepath.Join(sub, "realm.json")); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+	_, err := realmDirOf(filepath.Join(sub, "TST.json"), dir)
+	if err == nil {
+		t.Fatal("want an error for a realm.json that links to nothing, got none")
+	}
+	testutil.AssertContains(t, err.Error(), "realm.json")
+}
+
 // TestRealmRewriteAddedByDryRun checks that --dry-run reports the changes and
 // writes nothing.
 func TestRealmRewriteAddedByDryRun(t *testing.T) {
@@ -432,6 +467,7 @@ func TestRealmRewriteAddedByErrors(t *testing.T) {
 		{"no equals sign", []string{"--map", "@alice"}, "want OLD=NEW"},
 		{"empty side", []string{"--map", "=github:alice"}, "want OLD=NEW"},
 		{"conflicting", []string{"--map", "@alice=github:alice", "--map", "@alice=github:alice2"}, "both"},
+		{"conflicting case", []string{"--map", "@alice=github:alice", "--map", "@Alice=github:alice2"}, "same GitHub handle"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
