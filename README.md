@@ -465,6 +465,107 @@ document, or on failure `strspc check`'s document with its `error` field. It exi
 is printed, and 2 when the configuration can't be read or a source or dependency doesn't resolve, as a
 report would then understate the coverage.
 
+#### Planned: a coverage gate in CI
+
+> **Not yet implemented.** Tracked in [#239](https://github.com/SteerSpec/strspc-CLI/issues/239); the
+> flags below may change.
+
+`standards coverage` will be able to fail a build. It exits 1 when the gate fails, and 2 still wins
+when resolution fails, so a gate never passes on a report that understates the coverage:
+
+```bash
+strspc standards coverage --fail-on lapsed,mapped,unresolved   # no lapsed or unenforced claims
+strspc standards coverage --require owasp.asvs@5.0.0            # declared as implements, with a covered clause
+strspc standards coverage --require-evaluator                   # covered clauses that something checks
+strspc standards coverage --baseline coverage-base.json         # no regression against an earlier --json report
+```
+
+The statuses in `--fail-on` (`lapsed`, `mapped`) and `--require` apply to `implements` standards only,
+so a `cited` clause never fails. `unresolved` is a separate check, on `standard` notes that resolve to
+no declared standard: such a note has no relation, so it fails whatever the standard it meant to name.
+
+`--baseline` compares with the `--json` report of the base branch, kept as a CI artifact. It fails
+when:
+- a covered clause becomes mapped or lapsed
+- a covered or mapped clause is lost
+- an `implements` standard is dropped or becomes `derived_from`
+- a note that resolved stops resolving
+
+A baseline that can't be read or parsed exits 2. The comparison comes from strspc-manager
+([strspc-manager#269](https://github.com/SteerSpec/strspc-manager/issues/269)), so the CLI, the pull
+request review and the cloud dashboard share one definition of a regression.
+
+In GitHub Actions, a push to `develop` records the baseline, and a pull request is gated against the
+latest one:
+
+```yaml
+on:
+  push:
+    branches: [develop]
+  pull_request:
+
+jobs:
+  standards:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read                    # gh run download reads the develop run's artifact
+    steps:
+      - uses: actions/checkout@v4
+      - uses: SteerSpec/strspc-CLI/.github/actions/setup-strspc@main
+      - name: Record the baseline
+        if: github.event_name == 'push'
+        run: strspc standards coverage --json > coverage.json
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: standards-coverage
+          path: coverage.json
+      - name: Fetch the baseline from develop
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW: ${{ github.workflow }}
+        run: |
+          run_id=$(gh run list --workflow "$WORKFLOW" --branch develop --event push \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          gh run download "$run_id" --name standards-coverage --dir baseline
+      - name: Gate on standards coverage    # exit 1 fails the gate, 2 a report it can't trust
+        if: github.event_name == 'pull_request'
+        run: >-
+          strspc standards coverage
+          --fail-on lapsed,unresolved
+          --require owasp.asvs@5.0.0
+          --baseline baseline/coverage.json
+```
+
+Until `develop` has a successful run, there is no artifact to fetch, so leave out the fetch step and
+`--baseline` until then.
+
+There is no percentage threshold: without a standard's clause list, a report has nothing to divide by.
+
+#### Planned: standards published as realms
+
+> **Not yet implemented.** Proposed in
+> [strspc-rules#144](https://github.com/SteerSpec/strspc-rules/issues/144); still a design under
+> discussion.
+
+A standard's publisher, or anyone its licence allows, publishes it as a SteerSpec realm with one rule
+per clause, for example OWASP ASVS 5.0.0 (345 requirements, CC BY-SA 4.0) in a GitHub repository. A
+project declares it as a dependency and links its Standard Reference to it, then maps its own rules
+to the standard's clauses with `standard` notes, as today. The realm supplies the clause list SteerSpec
+doesn't hold, so:
+
+- lint rejects a note naming a clause the standard doesn't have
+- coverage gains an `unmapped` status and a figure per level, such as covered ÷ the 253 clauses of ASVS
+  L2, less those excluded
+- a project can mark a clause not applicable, with a justification, which removes it from the total
+- a new edition is a new realm, published with a crosswalk from the previous one, so a project's
+  mappings carry forward instead of all lapsing
+
+A transcription SteerSpec publishes uses its own namespace (`dev.steerspec.std.…`), not the standard
+owner's.
+
 ## Validate rules
 
 ```bash
