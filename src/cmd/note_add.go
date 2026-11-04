@@ -46,9 +46,6 @@ Examples:
 			if body == "" {
 				return fmt.Errorf("--body is required")
 			}
-			if addedBy == "" {
-				return fmt.Errorf("--added-by is required")
-			}
 
 			entityID, err := entityIDFromRuleID(ruleID)
 			if err != nil {
@@ -59,7 +56,8 @@ Examples:
 			if err != nil {
 				return err
 			}
-			if err := checkAddedBy(addedBy, target, dir); err != nil {
+			addedBy, addedBySource, err := resolveAddedBy(addedBy, target, dir)
+			if err != nil {
 				return err
 			}
 
@@ -88,11 +86,13 @@ Examples:
 					"revision":    0,
 					"version":     version,
 					"old_version": oldVersion,
+					"added_by":    addedBy,
 				})
 			}
 
 			writeln(w, brandStyle.Render(fmt.Sprintf("Added note %s (%s)", noteID, noteType)))
 			writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", oldVersion, version)))
+			writeAddedBySource(w, addedBy, addedBySource)
 
 			return nil
 		},
@@ -100,7 +100,7 @@ Examples:
 
 	cmd.Flags().StringVar(&noteType, "type", "", "note type (required): "+strings.Join(entity.NoteTypes(), "|"))
 	cmd.Flags().StringVar(&body, "body", "", "note content (required)")
-	cmd.Flags().StringVar(&addedBy, "added-by", "", "contributor identifier such as github:<login>; must name a contributor when the realm lists any (required)")
+	cmd.Flags().StringVar(&addedBy, "added-by", "", "contributor identifier such as github:<login>; must name a contributor when the realm lists any. Defaults to $STRSPC_ADDED_BY, then to the contributor whose email is your git user.email")
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 

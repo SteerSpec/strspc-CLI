@@ -28,8 +28,14 @@ import (
 // would otherwise contact steerspec.dev from every test that gets past the
 // hard configuration checks. Tests that exercise the schema validation
 // install a local server with serveConfigSchema.
+//
+// It also keeps the --added-by default from reading the developer's
+// STRSPC_ADDED_BY or git user.email: tests that exercise it set their own.
 func TestMain(m *testing.M) {
 	newConfigSchemaFetcher = func(string) *schema.Fetcher { return nil }
+	_ = os.Unsetenv(addedByEnv)
+	realGitUserEmail = gitUserEmail
+	gitUserEmail = func(string) string { return "" }
 	os.Exit(m.Run())
 }
 

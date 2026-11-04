@@ -169,6 +169,7 @@ full data model.
 | `strspc realm dep add\|remove\|list\|upgrade` | Manage Realm dependencies |
 | `strspc realm validate` | Validate Realm structure and EUID uniqueness |
 | `strspc realm standards add\|update\|remove\|list` | Declare the external standards a Realm cites |
+| `strspc realm contributor add\|remove\|list` | Manage the contributors a Realm lists, which `--added-by` must name |
 | `strspc realm rewrite-added-by` | Rewrite `added_by` values to contributor identifiers such as `github:alice` |
 | `strspc rule add` | Add a Draft rule to an entity or sub-entity |
 | `strspc rule update` | Edit the body of a Draft rule |
@@ -249,6 +250,23 @@ only provider (CTRB-001, CTRB-002). When the Realm lists `realm.contributors`, t
 one of them (CTRB-005), and a sub-realm uses its parent's list (CTRB-006). An `@handle` or an email
 address is still accepted during the transition and matches the listed contributor it names.
 `strspc diff` reports a new rule or note by someone the Realm doesn't list (`RD023`, Info).
+
+`realm contributor` edits the list, so realm.json is never edited by hand. A sub-realm's list is its
+parent's, so it is edited there:
+
+```bash
+strspc realm contributor add github:alice --github-id 1234567 --email alice@example.com
+strspc realm contributor list
+strspc realm contributor remove github:alice
+```
+
+`--github-id` records the account's numeric ID, which survives a rename (CTRB-008):
+`gh api users/<login> --jq .id` prints it. `add` needs `dev.steerspec.core` 1.16.0 or later.
+
+Without `--added-by`, `rule add`, `note add` and `rule supersede` use `$STRSPC_ADDED_BY`, then the
+listed contributor whose email is your `git config user.email`, and print which one they used. The
+value is checked like the flag's, before anything is written.
+
 `realm rewrite-added-by` migrates existing values, with a patch bump for each changed file:
 
 ```bash

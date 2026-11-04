@@ -42,9 +42,6 @@ Examples:
 			if body == "" {
 				return fmt.Errorf("--body is required")
 			}
-			if addedBy == "" {
-				return fmt.Errorf("--added-by is required")
-			}
 			overridesID, err := validateOverrides(overrides)
 			if err != nil {
 				return err
@@ -59,7 +56,8 @@ Examples:
 			if err != nil {
 				return err
 			}
-			if err := checkAddedBy(addedBy, target, dir); err != nil {
+			addedBy, addedBySource, err := resolveAddedBy(addedBy, target, dir)
+			if err != nil {
 				return err
 			}
 
@@ -89,6 +87,7 @@ Examples:
 					"revision":    0,
 					"version":     version,
 					"old_version": oldVersion,
+					"added_by":    addedBy,
 				}
 				if overridesID != "" {
 					out["overrides"] = overridesID
@@ -101,13 +100,14 @@ Examples:
 				writeln(w, descStyle.Render("  Overrides: "+overridesID))
 			}
 			writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", oldVersion, version)))
+			writeAddedBySource(w, addedBy, addedBySource)
 
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&body, "body", "", "rule statement text (required)")
-	cmd.Flags().StringVar(&addedBy, "added-by", "", "contributor identifier such as github:<login>; must name a contributor when the realm lists any (required)")
+	cmd.Flags().StringVar(&addedBy, "added-by", "", "contributor identifier such as github:<login>; must name a contributor when the realm lists any. Defaults to $STRSPC_ADDED_BY, then to the contributor whose email is your git user.email")
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
 	cmd.Flags().StringVar(&subEntity, "sub-entity", "", "target this sub-entity of <entity_id> instead of the entity itself")
 	cmd.Flags().StringVar(&overrides, "overrides", "", "inherited rule this rule replaces for the entity: <EUID>-NNN or <realm-id>:<EUID>-NNN")
