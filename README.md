@@ -465,6 +465,51 @@ document, or on failure `strspc check`'s document with its `error` field. It exi
 is printed, and 2 when the configuration can't be read or a source or dependency doesn't resolve, as a
 report would then understate the coverage.
 
+#### Planned: a coverage gate in CI
+
+> **Not yet implemented.** Tracked in [#239](https://github.com/SteerSpec/strspc-CLI/issues/239); the
+> flags below may change.
+
+`standards coverage` will be able to fail a build. It exits 1 when the gate fails, and 2 still wins
+when resolution fails, so a gate never passes on a report that understates the coverage:
+
+```bash
+strspc standards coverage --fail-on lapsed,mapped,unresolved   # no lapsed or unenforced claims
+strspc standards coverage --require owasp.asvs@5.0.0            # declared as implements, with a covered clause
+strspc standards coverage --require-evaluator                   # covered clauses that something checks
+strspc standards coverage --baseline coverage-base.json         # no regression against an earlier --json report
+```
+
+`--fail-on` and `--require` apply to `implements` standards only: a `cited` clause never fails.
+`--baseline` compares with the `--json` report of the base branch, kept as a CI artifact, and fails
+when a covered clause becomes mapped or lapsed, a clause is lost, a declared standard is dropped or a
+note stops resolving. That comparison comes from strspc-manager
+([strspc-manager#269](https://github.com/SteerSpec/strspc-manager/issues/269)), so the CLI, the pull
+request review and the cloud dashboard share one definition of a regression.
+
+There is no percentage threshold: without a standard's clause list, a report has nothing to divide by.
+
+#### Planned: standards published as realms
+
+> **Not yet implemented.** Proposed in
+> [strspc-rules#144](https://github.com/SteerSpec/strspc-rules/issues/144); still a design under
+> discussion.
+
+A standard's publisher, or anyone its licence allows, publishes it as a SteerSpec realm with one rule
+per clause, for example OWASP ASVS 5.0.0 (345 requirements, CC BY-SA 4.0) in a GitHub repository. A
+project declares it as a dependency and links its Standard Reference to it, then maps its own rules
+to the standard's clauses with `standard` notes, as today. The realm supplies the clause list SteerSpec
+doesn't hold, so:
+
+- lint rejects a note naming a clause the standard doesn't have
+- coverage gains an `unmapped` status and a figure per level, such as covered ÷ the 253 clauses of ASVS L2
+- a project can mark a clause not applicable, with a justification, and it leaves the total
+- a new edition is a new realm, published with a crosswalk from the previous one, so a project's
+  mappings carry forward instead of all lapsing
+
+A transcription SteerSpec publishes uses its own namespace (`dev.steerspec.std.…`), not the standard
+owner's.
+
 ## Validate rules
 
 ```bash
