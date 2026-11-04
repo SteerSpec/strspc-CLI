@@ -29,10 +29,10 @@ file under --dir (detected automatically). Use --sub-entity to target a named
 sub-entity of <entity_id> explicitly.
 
 Examples:
-  strspc rule add MYE --body "The system MUST validate input" --added-by "@alice"
-  strspc rule add MYE --body "Users SHOULD be notified" --added-by "@bob" --dir ./specs --json
-  strspc rule add MYE --sub-entity MYESUB --body "Sub-entity rule" --added-by "@alice"
-  strspc rule add SAVACCT --body "Withdrawals MUST..." --added-by "@alice" --overrides dev.globalbank.core:ACCT-005`,
+  strspc rule add MYE --body "The system MUST validate input" --added-by github:alice
+  strspc rule add MYE --body "Users SHOULD be notified" --added-by github:bob --dir ./specs --json
+  strspc rule add MYE --sub-entity MYESUB --body "Sub-entity rule" --added-by github:alice
+  strspc rule add SAVACCT --body "Withdrawals MUST..." --added-by github:alice --overrides dev.globalbank.core:ACCT-005`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -57,6 +57,9 @@ Examples:
 				target, err = resolveEntityTarget(dir, entityID)
 			}
 			if err != nil {
+				return err
+			}
+			if err := checkAddedBy(addedBy, target, dir); err != nil {
 				return err
 			}
 
@@ -104,7 +107,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&body, "body", "", "rule statement text (required)")
-	cmd.Flags().StringVar(&addedBy, "added-by", "", "contributor identifier (required)")
+	cmd.Flags().StringVar(&addedBy, "added-by", "", "contributor identifier such as github:<login>; must name a contributor when the realm lists any (required)")
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
 	cmd.Flags().StringVar(&subEntity, "sub-entity", "", "target this sub-entity of <entity_id> instead of the entity itself")
 	cmd.Flags().StringVar(&overrides, "overrides", "", "inherited rule this rule replaces for the entity: <EUID>-NNN or <realm-id>:<EUID>-NNN")
