@@ -18,6 +18,8 @@ func TestEntityAddUnderTopLevel(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	testutil.AssertContains(t, output, "CHILD")
+	// The next-step hint quotes its placeholder, so it can be pasted into a shell.
+	testutil.AssertContains(t, output, `--added-by "github:<login>"`)
 
 	f := loadEntityFile(t, dir, "PARENT")
 	if len(f.SubEntities) != 1 {

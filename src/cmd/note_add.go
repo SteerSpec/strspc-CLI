@@ -29,8 +29,8 @@ and its timestamp and hash refreshed.
 Types: ` + strings.Join(entity.NoteTypes(), ", ") + `
 
 Examples:
-  strspc note add MYE-001 --type rationale --body "Required by GDPR art. 17" --added-by "@alice"
-  strspc note add MYE-001 --type applies_to --body "src/cmd/*.go" --added-by "@bob" --json`,
+  strspc note add MYE-001 --type rationale --body "Required by GDPR art. 17" --added-by github:alice
+  strspc note add MYE-001 --type applies_to --body "src/cmd/*.go" --added-by github:bob --json`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -57,6 +57,9 @@ Examples:
 
 			target, err := resolveEntityTarget(dir, entityID)
 			if err != nil {
+				return err
+			}
+			if err := checkAddedBy(addedBy, target, dir); err != nil {
 				return err
 			}
 
@@ -97,7 +100,7 @@ Examples:
 
 	cmd.Flags().StringVar(&noteType, "type", "", "note type (required): "+strings.Join(entity.NoteTypes(), "|"))
 	cmd.Flags().StringVar(&body, "body", "", "note content (required)")
-	cmd.Flags().StringVar(&addedBy, "added-by", "", "contributor identifier (required)")
+	cmd.Flags().StringVar(&addedBy, "added-by", "", "contributor identifier such as github:<login>; must name a contributor when the realm lists any (required)")
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 

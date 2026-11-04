@@ -113,7 +113,7 @@ Examples:
 			writeln(w, descStyle.Render(fmt.Sprintf("  Parent version: %s → %s", oldVersion, version)))
 			writeln(w)
 			writeln(w, descStyle.Render("Next steps:"))
-			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Add rules: ")+cmdStyle.Render(fmt.Sprintf("strspc rule add %s --body \"...\" --added-by \"@handle\"", euid)))
+			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Add rules: ")+cmdStyle.Render(fmt.Sprintf("strspc rule add %s --body \"...\" --added-by \"github:<login>\"", euid)))
 			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Validate: ")+cmdStyle.Render("strspc realm validate"))
 			writeln(w)
 

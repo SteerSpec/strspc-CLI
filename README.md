@@ -118,9 +118,9 @@ strspc init
 
 # Author rules in your own realm, pinned to the core realm
 strspc realm init --dir rules --id com.acme.app --title "Acme App" \
-  --dependency dev.steerspec.core@1.16.0=github://SteerSpec/strspc-rules@v1.16.0/rules/core
+  --dependency dev.steerspec.core@1.17.0=github://SteerSpec/strspc-rules@v1.17.0/rules/core
 strspc realm add CFG --title "Configuration"
-strspc rule add CFG --body "The CLI MUST write a config file." --added-by "@alice"
+strspc rule add CFG --body "The CLI MUST write a config file." --added-by github:alice
 
 # Validate them
 strspc lint rules/ --strict
@@ -169,6 +169,7 @@ full data model.
 | `strspc realm dep add\|remove\|list\|upgrade` | Manage Realm dependencies |
 | `strspc realm validate` | Validate Realm structure and EUID uniqueness |
 | `strspc realm standards add\|update\|remove\|list` | Declare the external standards a Realm cites |
+| `strspc realm rewrite-added-by` | Rewrite `added_by` values to contributor identifiers such as `github:alice` |
 | `strspc rule add` | Add a Draft rule to an entity or sub-entity |
 | `strspc rule update` | Edit the body of a Draft rule |
 | `strspc rule promote` | Advance a rule D→P or P→I |
@@ -218,13 +219,13 @@ Transitions are forward-only and no state may be skipped
 Every change bumps the rule set version: minor when a rule is promoted or retired, patch otherwise.
 
 ```bash
-strspc rule add CFG --body "The CLI MUST write a config file." --added-by "@alice"
+strspc rule add CFG --body "The CLI MUST write a config file." --added-by github:alice
 strspc rule update CFG-001 --body "The CLI MUST write a YAML config file."     # Draft only
 strspc rule promote CFG-001                                                    # D → P
-strspc note add CFG-001 --type rationale --body "Why." --added-by "@alice"
+strspc note add CFG-001 --type rationale --body "Why." --added-by github:alice
 strspc note update CFG-001/01 --body "Corrected."
 strspc entity add CFGIO --parent CFG --title "Config I/O"
-strspc rule add CFG --sub-entity CFGIO --body "Writes MUST be atomic." --added-by "@alice"
+strspc rule add CFG --sub-entity CFGIO --body "Writes MUST be atomic." --added-by github:alice
 strspc entity rehash --all                                     # fix hashes after a bulk import
 ```
 
@@ -243,12 +244,24 @@ A `standard` note maps its rule to one clause of a declared standard (`<standard
 added, revised, or retyped to `reference` and back in any rule state, without changing the rule's revision
 (NTE-017, NTE-018); retyping it to `reference` is how a mapping is withdrawn (NTE-019).
 
+**Contributors.** `--added-by` takes a contributor identifier, `<idp>:<login>` with `github` as the
+only provider (CTRB-001, CTRB-002). When the Realm lists `realm.contributors`, the value must name
+one of them (CTRB-005), and a sub-realm uses its parent's list (CTRB-006). An `@handle` or an email
+address is still accepted during the transition and matches the listed contributor it names.
+`strspc diff` reports a new rule or note by someone the Realm doesn't list (`RD023`, Info).
+`realm rewrite-added-by` migrates existing values, with a patch bump for each changed file:
+
+```bash
+strspc realm rewrite-added-by --github-handles --dry-run         # preview @alice → github:alice
+strspc realm rewrite-added-by --github-handles --map alice@example.com=github:alice
+```
+
 **Inheritance.** An entity can inherit another entity's rule set, in the same Realm or in a declared
 dependency, and a rule can override one inherited rule for that entity:
 
 ```bash
 strspc realm add SAVACCT --title "Savings Account" --inherits dev.globalbank.core:ACCT
-strspc rule add SAVACCT --body "Withdrawals MUST be capped." --added-by "@alice" \
+strspc rule add SAVACCT --body "Withdrawals MUST be capped." --added-by github:alice \
   --overrides dev.globalbank.core:ACCT-005 # strspc-refs: ignore
 ```
 
@@ -300,7 +313,7 @@ a branch or a commit SHA, are skipped. See [GitHub sources](#github-sources) for
 
 ```yaml
 rules:
-  - source: github://SteerSpec/strspc-rules@v1.16.0/rules/core   # bumped per rules release
+  - source: github://SteerSpec/strspc-rules@v1.17.0/rules/core   # bumped per rules release
     scope: global
   - source: ./rules/
     scope: global
@@ -345,7 +358,7 @@ Config: .strspc/config.yaml
   Cache TTL: 24h0m0s
 
 Sources:
-  - github://SteerSpec/strspc-rules@v1.16.0/rules/core (global): pinned, cached, 154 rule(s)
+  - github://SteerSpec/strspc-rules@v1.17.0/rules/core (global): pinned, cached, 154 rule(s)
   - ./rules/ (global): local, 13 rule(s)
 
 Rules: 167 total
@@ -417,7 +430,7 @@ maps a rule to one clause, with content `<standard-id>:<clause>`:
 ```bash
 strspc realm standards add --id owasp.asvs --relation implements --version 4.0.3
 strspc entity standards add AUTH --id ietf.rfc2119 --relation derived_from --url https://www.rfc-editor.org/rfc/rfc2119
-strspc note add AUTH-004 --type standard --body "owasp.asvs:2.1.1" --added-by "@alice"
+strspc note add AUTH-004 --type standard --body "owasp.asvs:2.1.1" --added-by github:alice
 ```
 
 `implements` claims coverage of the standard and `derived_from` only cites it as a source. An id is
@@ -464,6 +477,109 @@ standard, so its `standard` notes are left out with a warning. `--json` prints t
 document, or on failure `strspc check`'s document with its `error` field. It exits 0 when the report
 is printed, and 2 when the configuration can't be read or a source or dependency doesn't resolve, as a
 report would then understate the coverage.
+
+#### Planned: a coverage gate in CI
+
+> **Not yet implemented.** Tracked in [#239](https://github.com/SteerSpec/strspc-CLI/issues/239); the
+> flags below may change.
+
+`standards coverage` will be able to fail a build. It exits 1 when the gate fails, and 2 still wins
+when resolution fails, so a gate never passes on a report that understates the coverage:
+
+```bash
+strspc standards coverage --fail-on lapsed,mapped,unresolved   # no lapsed or unenforced claims
+strspc standards coverage --require owasp.asvs@5.0.0            # declared as implements, with a covered clause
+strspc standards coverage --require-evaluator                   # covered clauses that something checks
+strspc standards coverage --baseline coverage-base.json         # no regression against an earlier --json report
+```
+
+The statuses in `--fail-on` (`lapsed`, `mapped`) and `--require` apply to `implements` standards only,
+so a `cited` clause never fails. `unresolved` is a separate check, on `standard` notes that resolve to
+no declared standard: such a note has no relation, so it fails whatever the standard it meant to name.
+
+`--baseline` compares with the `--json` report of the base branch, kept as a CI artifact. It fails
+when:
+- a covered clause becomes mapped or lapsed
+- a covered or mapped clause is lost
+- an `implements` standard is dropped or becomes `derived_from`
+- a note that resolved stops resolving
+
+A baseline that can't be read or parsed exits 2. The comparison comes from strspc-manager
+([strspc-manager#269](https://github.com/SteerSpec/strspc-manager/issues/269)), so the CLI, the pull
+request review and the cloud dashboard share one definition of a regression.
+
+In GitHub Actions, a push to `develop` records the baseline, and a pull request into `develop` is
+gated against the latest one. A pull request into another branch would need that branch's own
+baseline, so the trigger names `develop` for both:
+
+```yaml
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+
+jobs:
+  standards:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read                    # gh run download reads the develop run's artifact
+    steps:
+      - uses: actions/checkout@v4
+      - uses: SteerSpec/strspc-CLI/.github/actions/setup-strspc@main
+      - name: Record the baseline
+        if: github.event_name == 'push'
+        run: strspc standards coverage --json > coverage.json
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push'
+        with:
+          name: standards-coverage
+          path: coverage.json
+      - name: Fetch the baseline from develop
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW: ${{ github.workflow }}
+        run: |
+          run_id=$(gh run list --workflow "$WORKFLOW" --branch develop --event push \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          gh run download "$run_id" --name standards-coverage --dir baseline
+      - name: Gate on standards coverage    # exit 1 fails the gate, 2 a report it can't trust
+        if: github.event_name == 'pull_request'
+        run: >-
+          strspc standards coverage
+          --fail-on lapsed,unresolved
+          --require owasp.asvs@5.0.0
+          --baseline baseline/coverage.json
+```
+
+Until `develop` has a successful run, there is no artifact to fetch, so leave out the fetch step and
+`--baseline` until then.
+
+There is no percentage threshold: without a standard's clause list, a report has nothing to divide by.
+
+#### Planned: standards published as realms
+
+> **Not yet implemented.** Proposed in
+> [strspc-rules#144](https://github.com/SteerSpec/strspc-rules/issues/144); still a design under
+> discussion.
+
+A standard's publisher, or anyone its licence allows, publishes it as a SteerSpec realm with one rule
+per clause, for example OWASP ASVS 5.0.0 (345 requirements, CC BY-SA 4.0) in a GitHub repository. A
+project declares it as a dependency and links its Standard Reference to it, then maps its own rules
+to the standard's clauses with `standard` notes, as today. The realm supplies the clause list SteerSpec
+doesn't hold, so:
+
+- lint rejects a note naming a clause the standard doesn't have
+- coverage gains an `unmapped` status and a figure per level, such as covered ÷ the 253 clauses of ASVS
+  L2, less those excluded
+- a project can mark a clause not applicable, with a justification, which removes it from the total
+- a new edition is a new realm, published with a crosswalk from the previous one, so a project's
+  mappings carry forward instead of all lapsing
+
+A transcription SteerSpec publishes uses its own namespace (`dev.steerspec.std.…`), not the standard
+owner's.
 
 ## Validate rules
 
