@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.35.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.34.1...v1.35.0) (2026-11-04)
+
+
+### Features
+
+* **realm:** check added_by against contributors and add rewrite-added-by (manager v1.41.0) ([#238](https://github.com/SteerSpec/strspc-CLI/issues/238)) ([f1a395e](https://github.com/SteerSpec/strspc-CLI/commit/f1a395eb93a546ec8c3e1b402814c9a8c056cef0))
+
+
+### Documentation
+
+* **standards:** describe the planned coverage gate and standard realms ([#240](https://github.com/SteerSpec/strspc-CLI/issues/240)) ([7288a12](https://github.com/SteerSpec/strspc-CLI/commit/7288a121ae5b056d6a69d1a2e0632473b747d80b))
+* **standards:** gate only pull requests into develop in the CI example ([#241](https://github.com/SteerSpec/strspc-CLI/issues/241)) ([08a55e2](https://github.com/SteerSpec/strspc-CLI/commit/08a55e2f544c90173d677504b1c6b451c51eb452))
+
 ## [1.34.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.34.0...v1.34.1) (2026-11-03)
 
 
