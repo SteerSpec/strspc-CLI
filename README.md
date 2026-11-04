@@ -508,14 +508,16 @@ A baseline that can't be read or parsed exits 2. The comparison comes from strsp
 ([strspc-manager#269](https://github.com/SteerSpec/strspc-manager/issues/269)), so the CLI, the pull
 request review and the cloud dashboard share one definition of a regression.
 
-In GitHub Actions, a push to `develop` records the baseline, and a pull request is gated against the
-latest one:
+In GitHub Actions, a push to `develop` records the baseline, and a pull request into `develop` is
+gated against the latest one. A pull request into another branch would need that branch's own
+baseline, so the trigger names `develop` for both:
 
 ```yaml
 on:
   push:
     branches: [develop]
   pull_request:
+    branches: [develop]
 
 jobs:
   standards:
