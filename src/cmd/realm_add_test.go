@@ -20,6 +20,8 @@ func TestRealmAddBasic(t *testing.T) {
 	}
 	testutil.AssertContains(t, output, "MYENT")
 	testutil.AssertContains(t, output, "My Entity")
+	// The next-step hint quotes its placeholder, so it can be pasted into a shell.
+	testutil.AssertContains(t, output, `--added-by "github:<login>"`)
 
 	// Verify file contents.
 	data, readErr := os.ReadFile(filepath.Join(dir, "MYENT.json"))
