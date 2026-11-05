@@ -115,6 +115,54 @@ func saveEntity(entityPath string, f *entity.File) error {
 	return nil
 }
 
+// isLinkPath reports whether path is itself a symbolic link, without following
+// it. Commands that rewrite entity files skip or refuse a link: saveEntity
+// writes through it, possibly to a file outside --dir.
+func isLinkPath(path string) (bool, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return false, err
+	}
+	return fi.Mode()&os.ModeSymlink != 0, nil
+}
+
+// replaceEntityFile writes f to path by way of a temporary file in the same
+// directory and a rename. The rename replaces the directory entry and never
+// follows a link, so a link swapped in after isLinkPath looked is replaced,
+// not written through. The file keeps its permissions.
+func replaceEntityFile(path string, f *entity.File) error {
+	data, err := marshalJSON(f)
+	if err != nil {
+		return fmt.Errorf("marshaling entity file: %w", err)
+	}
+	mode := os.FileMode(0o644)
+	if fi, err := os.Lstat(path); err == nil && fi.Mode().IsRegular() {
+		mode = fi.Mode().Perm()
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("writing entity file: %w", err)
+	}
+	name := tmp.Name()
+	// The mode is set through the open file, not by name: a name swapped for
+	// a link before a Chmod by path would change the link's target instead.
+	_, err = tmp.Write(data)
+	if err == nil {
+		err = tmp.Chmod(mode)
+	}
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(name, path)
+	}
+	if err != nil {
+		_ = os.Remove(name)
+		return fmt.Errorf("writing entity file: %w", err)
+	}
+	return nil
+}
+
 // entityTarget identifies the entity file to modify and, when subID is set,
 // the nested sub-entity inside it that the operation applies to.
 type entityTarget struct {

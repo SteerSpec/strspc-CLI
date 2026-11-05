@@ -27,6 +27,10 @@ type rehashResult struct {
 	// Skipped lists .json files under --dir that are not entity files (no valid
 	// entity.id). They are never rewritten.
 	Skipped []string `json:"skipped"`
+	// Links lists .json files under --dir that are symbolic links. They are
+	// never written: the target may lie outside --dir, and a target inside it
+	// is rehashed on its own.
+	Links []string `json:"links"`
 }
 
 // notEntityError reports a JSON file that parsed but carries no valid entity.id.
@@ -68,7 +72,7 @@ func rehashEntity(path string, data []byte, ef *entity.File) (*rehashChange, err
 	if err := entityops.UpdateMeta(ef); err != nil {
 		return nil, fmt.Errorf("updating metadata for %s: %w", path, err)
 	}
-	if err := saveEntity(path, ef); err != nil {
+	if err := replaceEntityFile(path, ef); err != nil {
 		return nil, err
 	}
 	change.NewHash = *ef.RuleSet.Hash
@@ -119,8 +123,9 @@ null or does not match the file contents. Sub-entities are repaired the same way
 each over its own JSON, and a file is rewritten when it or any sub-entity was
 stale. Files whose hashes are all consistent are not touched. Versions are never
 bumped. A .json file without a valid entity.id is never rewritten: --all reports
-it as skipped and the single-file form fails. Useful after bulk imports or hand
-edits.
+it as skipped and the single-file form fails. Symbolic links are not followed,
+since the file they point to may lie outside --dir: --all lists them as skipped
+and the single-file form fails. Useful after bulk imports or hand edits.
 
 Examples:
   strspc entity rehash MYE
@@ -137,6 +142,14 @@ Examples:
 
 			if all {
 				err := entity.WalkEntityFiles(dir, func(path string, data []byte, ef *entity.File, parseErr error) error {
+					// The walk has already read through a link; writing back
+					// through it could change a file outside --dir.
+					if link, err := isLinkPath(path); err != nil {
+						return fmt.Errorf("reading %s: %w", path, err)
+					} else if link {
+						res.Links = append(res.Links, path)
+						return nil
+					}
 					if parseErr != nil {
 						return fmt.Errorf("reading %s: %w", path, parseErr)
 					}
@@ -164,6 +177,15 @@ Examples:
 					return err
 				}
 				path := resolveEntityPath(dir, args[0])
+				// Fail closed: a path whose link status can't be read is not
+				// read either.
+				if link, err := isLinkPath(path); err != nil {
+					return fmt.Errorf("reading entity file: %w", err)
+				} else if link {
+					return fmt.Errorf("%s is a symbolic link; rehash its target where it lives", path)
+				}
+				// replaceEntityFile below never writes through a link, even
+				// one swapped in after this check.
 				data, err := os.ReadFile(path)
 				if err != nil {
 					return fmt.Errorf("reading entity file: %w", err)
@@ -192,6 +214,9 @@ Examples:
 				if res.Skipped == nil {
 					res.Skipped = []string{}
 				}
+				if res.Links == nil {
+					res.Links = []string{}
+				}
 				return writeJSONOutput(w, res)
 			}
 
@@ -206,7 +231,10 @@ Examples:
 			for _, p := range res.Skipped {
 				writeln(w, descStyle.Render(fmt.Sprintf("Skipped %s (not an entity file)", p)))
 			}
-			writeln(w, descStyle.Render(fmt.Sprintf("%d entity file(s) updated, %d unchanged, %d skipped", len(res.Updated), res.Unchanged, len(res.Skipped))))
+			for _, p := range res.Links {
+				writeln(w, descStyle.Render(fmt.Sprintf("Skipped %s (a symbolic link, not followed: rehash its target where it lives)", p)))
+			}
+			writeln(w, descStyle.Render(fmt.Sprintf("%d entity file(s) updated, %d unchanged, %d skipped", len(res.Updated), res.Unchanged, len(res.Skipped)+len(res.Links))))
 
 			return nil
 		},
