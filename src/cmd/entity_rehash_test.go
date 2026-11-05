@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -364,5 +365,64 @@ func TestEntityRehashRefusesLink(t *testing.T) {
 	testutil.AssertContains(t, err.Error(), "symbolic link")
 	if !bytes.Equal(readFiles(t, outside, "OUT.json")["OUT.json"], before["OUT.json"]) {
 		t.Error("the file outside --dir was rewritten through a link")
+	}
+}
+
+// TestReplaceEntityFileNeverFollowsLink checks the write used by rehash: a
+// link swapped in for an entity file after the link check is replaced by a
+// regular file, and the file it pointed to is unchanged.
+func TestReplaceEntityFileNeverFollowsLink(t *testing.T) {
+	outside := t.TempDir()
+	setupEntityFileHash(t, outside, "OUT", nil)
+	before := readFiles(t, outside, "OUT.json")
+	dir := t.TempDir()
+	path := filepath.Join(dir, "TST.json")
+	if err := os.Symlink(filepath.Join(outside, "OUT.json"), path); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+
+	f := &entity.File{Entity: entity.Entity{ID: "TST", Title: "Test"}}
+	if err := replaceEntityFile(path, f); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if link, err := isLinkPath(path); err != nil || link {
+		t.Errorf("%s is still a link (err %v)", path, err)
+	}
+	if !bytes.Equal(readFiles(t, outside, "OUT.json")["OUT.json"], before["OUT.json"]) {
+		t.Error("the file outside --dir was written through the link")
+	}
+	if got := loadEntityFile(t, dir, "TST"); got.Entity.ID != "TST" {
+		t.Errorf("entity id = %q, want TST", got.Entity.ID)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("temporary file left behind: %v", entries)
+	}
+}
+
+// TestReplaceEntityFileKeepsMode checks that rewriting keeps the file's
+// permissions.
+func TestReplaceEntityFileKeepsMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits are not kept on Windows")
+	}
+	dir := t.TempDir()
+	setupEntityFileHash(t, dir, "TST", nil)
+	path := filepath.Join(dir, "TST.json")
+	if err := os.Chmod(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := replaceEntityFile(path, loadEntityFile(t, dir, "TST")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v, want 0600", fi.Mode().Perm())
 	}
 }

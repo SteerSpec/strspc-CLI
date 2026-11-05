@@ -28,8 +28,8 @@ type rehashResult struct {
 	// entity.id). They are never rewritten.
 	Skipped []string `json:"skipped"`
 	// Links lists .json files under --dir that are symbolic links. They are
-	// neither read nor written: the target may lie outside --dir, and a
-	// target inside it is rehashed on its own.
+	// never written: the target may lie outside --dir, and a target inside it
+	// is rehashed on its own.
 	Links []string `json:"links"`
 }
 
@@ -72,7 +72,7 @@ func rehashEntity(path string, data []byte, ef *entity.File) (*rehashChange, err
 	if err := entityops.UpdateMeta(ef); err != nil {
 		return nil, fmt.Errorf("updating metadata for %s: %w", path, err)
 	}
-	if err := saveEntity(path, ef); err != nil {
+	if err := replaceEntityFile(path, ef); err != nil {
 		return nil, err
 	}
 	change.NewHash = *ef.RuleSet.Hash
@@ -142,8 +142,8 @@ Examples:
 
 			if all {
 				err := entity.WalkEntityFiles(dir, func(path string, data []byte, ef *entity.File, parseErr error) error {
-					// The walk reads through a link, and saveEntity would write
-					// through it, possibly outside --dir.
+					// The walk has already read through a link; writing back
+					// through it could change a file outside --dir.
 					if link, err := isLinkPath(path); err != nil {
 						return fmt.Errorf("reading %s: %w", path, err)
 					} else if link {
@@ -180,6 +180,8 @@ Examples:
 				if link, err := isLinkPath(path); err == nil && link {
 					return fmt.Errorf("%s is a symbolic link; rehash its target where it lives", path)
 				}
+				// replaceEntityFile below never writes through a link, even
+				// one swapped in after this check.
 				data, err := os.ReadFile(path)
 				if err != nil {
 					return fmt.Errorf("reading entity file: %w", err)

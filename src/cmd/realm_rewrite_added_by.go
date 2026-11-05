@@ -171,8 +171,8 @@ Examples:
 
 			res := addedByResult{DryRun: dryRun}
 			err = entity.WalkEntityFiles(dir, func(path string, _ []byte, ef *entity.File, parseErr error) error {
-				// The walk reads through a link, and saveEntity would write
-				// through it, possibly outside --dir.
+				// The walk has already read through a link; writing back
+				// through it could change a file outside --dir.
 				if link, err := isLinkPath(path); err != nil {
 					return fmt.Errorf("reading %s: %w", path, err)
 				} else if link {
@@ -200,7 +200,7 @@ Examples:
 					return nil
 				}
 				if !dryRun {
-					if err := saveEntity(path, ef); err != nil {
+					if err := replaceEntityFile(path, ef); err != nil {
 						return err
 					}
 				}
