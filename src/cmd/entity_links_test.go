@@ -66,3 +66,37 @@ func TestEntityWriterLeavesNoTempFile(t *testing.T) {
 	}
 	assertFileHashFresh(t, dir, "TST")
 }
+
+// TestEntityTargetRefusesLinks checks target resolution: a link that points
+// nowhere is refused as a link, not reported as a missing entity, and a
+// sub-entity found in a linked file is refused before it is edited.
+func TestEntityTargetRefusesLinks(t *testing.T) {
+	t.Run("dangling link", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.Symlink(filepath.Join(t.TempDir(), "missing.json"), filepath.Join(dir, "TST.json")); err != nil {
+			t.Skipf("cannot create a symlink here: %v", err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "TST", "--body", "The system MUST log.", "--added-by", "github:alice", "--dir", dir)
+		if err == nil {
+			t.Fatal("want an error, got none")
+		}
+		testutil.AssertContains(t, err.Error(), "symbolic link")
+	})
+	t.Run("sub-entity in a linked file", func(t *testing.T) {
+		outside := t.TempDir()
+		setupEntityFileWithSub(t, outside, "TST", "TSTSUB")
+		before := readFiles(t, outside, "TST.json")
+		dir := t.TempDir()
+		if err := os.Symlink(filepath.Join(outside, "TST.json"), filepath.Join(dir, "TST.json")); err != nil {
+			t.Skipf("cannot create a symlink here: %v", err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "TSTSUB", "--body", "The system MUST log.", "--added-by", "github:alice", "--dir", dir)
+		if err == nil {
+			t.Fatal("want an error, got none")
+		}
+		testutil.AssertContains(t, err.Error(), "symbolic link")
+		if !bytes.Equal(readFiles(t, outside, "TST.json")["TST.json"], before["TST.json"]) {
+			t.Error("the file outside --dir was written through the link")
+		}
+	})
+}
