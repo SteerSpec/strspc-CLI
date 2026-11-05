@@ -5,9 +5,9 @@
     "title": "Commands"
   },
   "rule_set": {
-    "version": "0.12.0",
-    "timestamp": "2026-11-03T07:01:43Z",
-    "hash": "blake3:d0ae4bbed7fd1b51bdf76a0391791c603b835a1ca429232011842b49aacf876d"
+    "version": "0.12.1",
+    "timestamp": "2026-11-05T07:49:22Z",
+    "hash": "blake3:ea0eb36de99e057433b93db354f0c7f6a06f607be4ff0df8783379099bf3d6bb"
   },
   "rules": [
     {
@@ -15,7 +15,7 @@
       "revision": 0,
       "state": "I",
       "body": "Every command MUST declare both Short and Long descriptions in its cobra.Command definition.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-03-25",
       "supersedes": null
     },
@@ -24,7 +24,7 @@
       "revision": 0,
       "state": "I",
       "body": "Commands that return errors MUST set SilenceUsage: true and SilenceErrors: true to suppress cobra's default error printing.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-03-25",
       "supersedes": null
     },
@@ -33,7 +33,7 @@
       "revision": 0,
       "state": "I",
       "body": "Command output MUST be written via cmd.OutOrStdout() and cmd.ErrOrStderr() to support testing with captured output buffers.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-03-25",
       "supersedes": null
     },
@@ -42,7 +42,7 @@
       "revision": 1,
       "state": "I",
       "body": "Code outside _test.go files MUST NOT call os.Exit except in the root command's error handler; a command returns an error and the exit code derives from it.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-10-19",
       "supersedes": null
     },
@@ -51,7 +51,7 @@
       "revision": 0,
       "state": "D",
       "body": "Long descriptions SHOULD include at least one usage example invoking the command.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-10-19",
       "supersedes": null
     },
@@ -60,7 +60,7 @@
       "revision": 0,
       "state": "I",
       "body": "strspc doctor MUST NOT make a network call or write a file unless --online is given.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-11-02",
       "supersedes": null
     },
@@ -69,7 +69,7 @@
       "revision": 0,
       "state": "I",
       "body": "strspc doctor MUST exit 1 only when a check fails or, under --strict, warns, and 2 only when its flags are invalid or its path can't be read.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-11-02",
       "supersedes": null
     }

@@ -6,9 +6,9 @@
     "description": "Behaviour of strspc init and the .strspc/config.yaml it writes."
   },
   "rule_set": {
-    "version": "0.4.0",
-    "timestamp": "2026-11-02T15:21:15Z",
-    "hash": "blake3:59acd7e265a98a063a0342f3f0a22ce63f2c2d4b79abd7268fb2581e624dad92"
+    "version": "0.4.1",
+    "timestamp": "2026-11-05T07:49:22Z",
+    "hash": "blake3:210a31a48128bd871c4043708b5fa8d5e1dcdbee3d562f8784566f6bec6cfe83"
   },
   "rules": [
     {
@@ -16,7 +16,7 @@
       "revision": 0,
       "state": "I",
       "body": "MUST write a `.strspc/config.yaml` that declares at least one rule source.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-10-18",
       "supersedes": null
     },
@@ -25,7 +25,7 @@
       "revision": 0,
       "state": "P",
       "body": "MUST NOT print URLs that do not resolve.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-10-18",
       "supersedes": null
     }
@@ -36,7 +36,7 @@
       "rule_ref": "CFG-001",
       "type": "rationale",
       "content": "Core rule SPCFG-004 requires every config to declare at least one rule source; a commented-out template fails lint on first use.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-10-18",
       "revision": 0
     },
@@ -45,7 +45,7 @@
       "rule_ref": "CFG-002",
       "type": "applies_to",
       "content": "Help text, next-step hints and generated config comments in src/cmd/*.go.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-10-18",
       "revision": 0
     }
