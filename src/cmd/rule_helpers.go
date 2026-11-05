@@ -115,6 +115,17 @@ func saveEntity(entityPath string, f *entity.File) error {
 	return nil
 }
 
+// isLinkPath reports whether path is itself a symbolic link, without following
+// it. Commands that rewrite entity files skip or refuse a link: saveEntity
+// writes through it, possibly to a file outside --dir.
+func isLinkPath(path string) (bool, error) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return false, err
+	}
+	return fi.Mode()&os.ModeSymlink != 0, nil
+}
+
 // entityTarget identifies the entity file to modify and, when subID is set,
 // the nested sub-entity inside it that the operation applies to.
 type entityTarget struct {

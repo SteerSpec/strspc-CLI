@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -174,9 +173,9 @@ Examples:
 			err = entity.WalkEntityFiles(dir, func(path string, _ []byte, ef *entity.File, parseErr error) error {
 				// The walk reads through a link, and saveEntity would write
 				// through it, possibly outside --dir.
-				if fi, err := os.Lstat(path); err != nil {
+				if link, err := isLinkPath(path); err != nil {
 					return fmt.Errorf("reading %s: %w", path, err)
-				} else if fi.Mode()&os.ModeSymlink != 0 {
+				} else if link {
 					res.Links = append(res.Links, path)
 					return nil
 				}

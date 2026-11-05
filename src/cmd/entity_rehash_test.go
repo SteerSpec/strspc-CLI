@@ -286,3 +286,83 @@ func TestEntityRehashRejectsNonEntityJSON(t *testing.T) {
 		t.Errorf("unrelated JSON was rewritten:\n%s", after)
 	}
 }
+
+// TestEntityRehashAllSkipsLinks checks that --all lists entity files that are
+// symbolic links and never follows them: a link to a stale file outside --dir
+// leaves it untouched, a link that points nowhere is no error, and a link to a
+// stale file inside --dir doesn't rehash that file a second time.
+func TestEntityRehashAllSkipsLinks(t *testing.T) {
+	outside := t.TempDir()
+	setupEntityFileHash(t, outside, "OUT", nil)
+	outsideBefore := readFiles(t, outside, "OUT.json")
+
+	dir := t.TempDir()
+	setupEntityFileHash(t, dir, "AAA", nil)
+	links := []string{filepath.Join(dir, "LNK.json"), filepath.Join(dir, "DNG.json"), filepath.Join(dir, "SIB.json")}
+	targets := []string{filepath.Join(outside, "OUT.json"), filepath.Join(outside, "missing.json"), filepath.Join(dir, "AAA.json")}
+	for i, link := range links {
+		if err := os.Symlink(targets[i], link); err != nil {
+			t.Skipf("cannot create a symlink here: %v", err)
+		}
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "--all", "--dir", dir, "--json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var res rehashResult
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	wantLinks := []string{links[1], links[0], links[2]} // walk order: DNG, LNK, SIB
+	if strings.Join(res.Links, ",") != strings.Join(wantLinks, ",") {
+		t.Errorf("links = %v, want %v", res.Links, wantLinks)
+	}
+	if len(res.Updated) != 1 || res.Updated[0].Path != filepath.Join(dir, "AAA.json") {
+		t.Errorf("updated = %+v, want only AAA once", res.Updated)
+	}
+	if !bytes.Equal(readFiles(t, outside, "OUT.json")["OUT.json"], outsideBefore["OUT.json"]) {
+		t.Error("the file outside --dir was rewritten through a link")
+	}
+	assertFileHashFresh(t, dir, "AAA")
+
+	human, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "--all", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, human, "a symbolic link, not followed")
+	testutil.AssertContains(t, human, "3 skipped")
+}
+
+// TestEntityRehashAllLinksNeverNull checks that --json reports links as [] when
+// there are none.
+func TestEntityRehashAllLinksNeverNull(t *testing.T) {
+	dir := t.TempDir()
+	writeFreshEntity(t, dir, "AAA")
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "--all", "--dir", dir, "--json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, out, `"links": []`)
+}
+
+// TestEntityRehashRefusesLink checks that the single-file form fails on an
+// entity file that is a symbolic link and leaves its target untouched.
+func TestEntityRehashRefusesLink(t *testing.T) {
+	outside := t.TempDir()
+	setupEntityFileHash(t, outside, "OUT", nil)
+	before := readFiles(t, outside, "OUT.json")
+	dir := t.TempDir()
+	if err := os.Symlink(filepath.Join(outside, "OUT.json"), filepath.Join(dir, "LNK.json")); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "LNK", "--dir", dir)
+	if err == nil {
+		t.Fatal("want an error for a linked entity file, got none")
+	}
+	testutil.AssertContains(t, err.Error(), "symbolic link")
+	if !bytes.Equal(readFiles(t, outside, "OUT.json")["OUT.json"], before["OUT.json"]) {
+		t.Error("the file outside --dir was rewritten through a link")
+	}
+}
