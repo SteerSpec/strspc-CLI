@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.36.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.35.0...v1.36.0) (2026-11-05)
+
+
+### Features
+
+* **realm:** add realm contributor commands and an --added-by default ([#245](https://github.com/SteerSpec/strspc-CLI/issues/245)) ([3f6c004](https://github.com/SteerSpec/strspc-CLI/commit/3f6c00450189cc12e514c6aaf66d9770366ed7b6))
+
+
+### Bug Fixes
+
+* **entity:** never follow a symlinked entity file in entity rehash ([#248](https://github.com/SteerSpec/strspc-CLI/issues/248)) ([2e6c46b](https://github.com/SteerSpec/strspc-CLI/commit/2e6c46b0a693719a724fe4f89dff3cfe3d73fad9))
+
 ## [1.35.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.34.1...v1.35.0) (2026-11-04)
 
 
