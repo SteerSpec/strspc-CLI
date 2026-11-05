@@ -89,8 +89,17 @@ func entityIDFromRuleID(ruleID string) (string, error) {
 	return ruleID[:idx], nil
 }
 
-// loadModifySaveEntity loads an entity file, applies the mutate function, and writes it back.
+// loadModifySaveEntity loads an entity file, applies the mutate function, and
+// writes it back. Every command that edits an entity file goes through here.
+// An entity file that is a symbolic link is refused before it is read: its
+// target may lie outside --dir. The write replaces the file by rename, so a
+// link swapped in after the check is replaced, not written through.
 func loadModifySaveEntity(entityPath string, mutate func(*entity.File) error) error {
+	if link, err := isLinkPath(entityPath); err != nil {
+		return fmt.Errorf("loading entity file: %w", err)
+	} else if link {
+		return fmt.Errorf("%s is a symbolic link; edit its target where it lives", entityPath)
+	}
 	f, err := entity.Load(entityPath)
 	if err != nil {
 		return fmt.Errorf("loading entity file: %w", err)
@@ -100,24 +109,12 @@ func loadModifySaveEntity(entityPath string, mutate func(*entity.File) error) er
 		return err
 	}
 
-	return saveEntity(entityPath, f)
-}
-
-// saveEntity writes an entity file as indented JSON with a trailing newline.
-func saveEntity(entityPath string, f *entity.File) error {
-	data, err := marshalJSON(f)
-	if err != nil {
-		return fmt.Errorf("marshaling entity file: %w", err)
-	}
-	if err := os.WriteFile(entityPath, data, 0o644); err != nil {
-		return fmt.Errorf("writing entity file: %w", err)
-	}
-	return nil
+	return replaceEntityFile(entityPath, f)
 }
 
 // isLinkPath reports whether path is itself a symbolic link, without following
-// it. Commands that rewrite entity files skip or refuse a link: saveEntity
-// writes through it, possibly to a file outside --dir.
+// it. Commands that rewrite entity files skip or refuse a link, whose target
+// may lie outside --dir.
 func isLinkPath(path string) (bool, error) {
 	fi, err := os.Lstat(path)
 	if err != nil {
@@ -126,8 +123,8 @@ func isLinkPath(path string) (bool, error) {
 	return fi.Mode()&os.ModeSymlink != 0, nil
 }
 
-// replaceEntityFile writes f to path by way of a temporary file in the same
-// directory and a rename. The rename replaces the directory entry and never
+// replaceEntityFile writes f to path as indented JSON with a trailing newline,
+// by way of a temporary file in the same directory and a rename. The rename replaces the directory entry and never
 // follows a link, so a link swapped in after isLinkPath looked is replaced,
 // not written through. The file keeps its permissions.
 func replaceEntityFile(path string, f *entity.File) error {

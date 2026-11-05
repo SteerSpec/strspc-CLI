@@ -164,7 +164,7 @@ func TestEntityRehashFillsSubEntityHashes(t *testing.T) {
 	// Null the sub-entity hash by hand, as a bulk import would leave it.
 	f := loadEntityFile(t, dir, "TST")
 	f.SubEntities[0].RuleSet.Hash = nil
-	if err := saveEntity(resolveEntityPath(dir, "TST"), f); err != nil {
+	if err := replaceEntityFile(resolveEntityPath(dir, "TST"), f); err != nil {
 		t.Fatal(err)
 	}
 
@@ -204,7 +204,7 @@ func TestEntityRehashFreshParentWithNullChildIsRewritten(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := resolveEntityPath(dir, "TST")
-	if err := saveEntity(path, f); err != nil {
+	if err := replaceEntityFile(path, f); err != nil {
 		t.Fatal(err)
 	}
 	assertFileHashFresh(t, dir, "TST")

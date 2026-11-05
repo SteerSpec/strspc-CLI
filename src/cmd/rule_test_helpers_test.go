@@ -168,7 +168,7 @@ func TestSaveEntityDoesNotEscapeHTML(t *testing.T) {
 	if f.Rules[0].Body != body {
 		t.Errorf("body changed on parse: %q", f.Rules[0].Body)
 	}
-	if err := saveEntity(path, f); err != nil {
+	if err := replaceEntityFile(path, f); err != nil {
 		t.Fatal(err)
 	}
 	second, _ := os.ReadFile(path)

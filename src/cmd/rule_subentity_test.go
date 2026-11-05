@@ -204,7 +204,7 @@ func TestRulePromoteNestedSubEntityRefreshesAllAncestors(t *testing.T) {
 		Notes:   []entity.Note{},
 	}
 	f.SubEntities[0].SubEntities = append(f.SubEntities[0].SubEntities, leaf)
-	if err := saveEntity(resolveEntityPath(dir, "TST"), f); err != nil {
+	if err := replaceEntityFile(resolveEntityPath(dir, "TST"), f); err != nil {
 		t.Fatal(err)
 	}
 
@@ -238,7 +238,7 @@ func TestRuleAddSubEntityFlagWithNestedParent(t *testing.T) {
 		Rules:   []entity.Rule{},
 		Notes:   []entity.Note{},
 	})
-	if err := saveEntity(resolveEntityPath(dir, "TST"), f); err != nil {
+	if err := replaceEntityFile(resolveEntityPath(dir, "TST"), f); err != nil {
 		t.Fatal(err)
 	}
 
