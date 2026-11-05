@@ -17,6 +17,10 @@ import (
 // realm schemas accept a `standards` array.
 var standardsMinCore = semver.MustParse("1.15.0")
 
+// contributorsMinCore is the first dev.steerspec.core release whose realm
+// schema accepts a `contributors` array (CTRB-004).
+var contributorsMinCore = semver.MustParse("1.16.0")
+
 // coreReleasePin matches a pin that selects a core release's schemas, as the
 // manager's schema.WithCoreVersion reads it. Lint ignores any other form and
 // uses the latest schemas.
@@ -31,33 +35,44 @@ type realmPin struct {
 }
 
 // checkCoreAcceptsStandards refuses to declare a standard in the file at path
-// when the core pin that validates it predates standardsMinCore: lint would
-// reject the file (RL002, RM002). That pin is the nearest one (corePinFor). A
-// pin that isn't an X.Y.Z release selects no schemas and is skipped, as is a
-// Realm with no manifest or no pin.
+// when the core pin that validates it predates standardsMinCore.
 func checkCoreAcceptsStandards(dir, path string) error {
+	return checkCoreAccepts(dir, path, "standards", standardsMinCore)
+}
+
+// checkCoreAccepts refuses to write field into the file at path when the core
+// pin that validates it predates minCore: lint would reject the file (RL002,
+// RM002). That pin is the nearest one (corePinFor). A pin that isn't an X.Y.Z
+// release selects no schemas and is skipped, as is a Realm with no manifest or
+// no pin.
+func checkCoreAccepts(dir, path, field string, minCore *semver.Version) error {
 	p := corePinFor(dir, path)
 	if p == nil || !coreReleasePin.MatchString(p.version) {
 		return nil
 	}
 	v, err := semver.StrictNewVersion(p.version)
-	if err != nil || !v.LessThan(standardsMinCore) {
+	if err != nil || !v.LessThan(minCore) {
 		return nil
 	}
-	return fmt.Errorf("realm %s pins %s %s, whose schemas reject `standards` (it needs %s or later): %s",
-		printableRealmID(p.realmID), coreRealmID, p.version, standardsMinCore, corePinRemedy(*p))
+	return fmt.Errorf("realm %s pins %s %s, whose schemas reject `%s` (it needs %s or later): %s",
+		printableRealmID(p.realmID), coreRealmID, p.version, field, minCore, corePinRemedyTo(*p, minCore))
 }
 
-// corePinRemedy tells how to move p to standardsMinCore. `realm dep upgrade`
-// moves only a github:// source pinned to a release tag (planDepUpgrade); any
-// other source is re-pinned with `realm dep remove` and `realm dep add`,
-// keeping the source.
+// corePinRemedy tells how to move p to standardsMinCore.
 func corePinRemedy(p realmPin) string {
+	return corePinRemedyTo(p, standardsMinCore)
+}
+
+// corePinRemedyTo tells how to move p to minCore. `realm dep upgrade` moves
+// only a github:// source pinned to a release tag (planDepUpgrade); any other
+// source is re-pinned with `realm dep remove` and `realm dep add`, keeping the
+// source.
+func corePinRemedyTo(p realmPin, minCore *semver.Version) string {
 	dir := coverageCell(shellQuote(p.dir))
 	if depUpgradable(p.source) {
-		return fmt.Sprintf("upgrade it first with `strspc realm dep upgrade %s --to %s --dir %s`", coreRealmID, standardsMinCore, dir)
+		return fmt.Sprintf("upgrade it first with `strspc realm dep upgrade %s --to %s --dir %s`", coreRealmID, minCore, dir)
 	}
-	spec := fmt.Sprintf("%s@%s", coreRealmID, standardsMinCore)
+	spec := fmt.Sprintf("%s@%s", coreRealmID, minCore)
 	if p.source != "" {
 		spec += "=" + p.source
 	}

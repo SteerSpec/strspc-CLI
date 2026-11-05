@@ -3,9 +3,12 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/entityops"
@@ -54,14 +57,82 @@ func realmContributorsOf(file, stop string) ([]entity.Contributor, error) {
 	return list, nil
 }
 
-// checkAddedBy checks addedBy before a Rule or Note is written to the entity
-// file of t under dir: it must be a contributor identifier, or during the
-// transition (#248) an @handle or email, and must name one of the Realm's
-// contributors when the Realm lists any (CTRB-005).
-func checkAddedBy(addedBy string, t entityTarget, dir string) error {
+// addedByEnv names the environment variable that supplies --added-by when the
+// flag is not given.
+const addedByEnv = "STRSPC_ADDED_BY"
+
+// Where resolveAddedBy found the value.
+const (
+	addedByFromFlag = "--added-by"
+	addedByFromEnv  = addedByEnv
+	addedByFromGit  = "git user.email"
+)
+
+// gitUserEmail returns `git config user.email` as run in dir, or "" when git
+// is missing, dir is in no repository or no email is set. Outside a
+// repository git would still answer from the global config, so membership is
+// checked first. A var so tests can replace it.
+var gitUserEmail = func(dir string) string {
+	inRepo := exec.Command("git", "rev-parse", "--git-dir")
+	inRepo.Dir = dir
+	if err := inRepo.Run(); err != nil {
+		return ""
+	}
+	cmd := exec.Command("git", "config", "user.email")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// resolveAddedBy returns the added_by for a Rule or Note written to the entity
+// file of t under dir, and where it came from. The flag wins when it was given
+// (flagSet), even empty, which is refused rather than falling through; then
+// STRSPC_ADDED_BY; then, when the Realm lists contributors, the entry whose
+// email is the git user.email, by its identifier. A raw email is never
+// written for the default: CTRB-003 retires that form. Whatever its source,
+// the value must then be a contributor identifier, or during the transition
+// (#248) an @handle or email, and must name one of the Realm's contributors
+// when the Realm lists any (CTRB-005). All of this runs before anything is
+// written.
+func resolveAddedBy(flag string, flagSet bool, t entityTarget, dir string) (value, source string, err error) {
 	list, err := realmContributorsOf(t.path, dir)
 	if err != nil {
-		return err
+		return "", "", err
 	}
-	return entityops.CheckAddedBy(addedBy, list)
+	switch {
+	case flagSet:
+		if strings.TrimSpace(flag) == "" {
+			return "", "", errors.New("--added-by must not be empty")
+		}
+		value, source = flag, addedByFromFlag
+	case os.Getenv(addedByEnv) != "":
+		value, source = strings.TrimSpace(os.Getenv(addedByEnv)), addedByFromEnv
+	case len(list) > 0:
+		if email := gitUserEmail(filepath.Dir(t.path)); email != "" {
+			if c := entity.FindContributor(list, email); c != nil {
+				value, source = c.ID, addedByFromGit
+			}
+		}
+	}
+	if value == "" {
+		return "", "", fmt.Errorf("--added-by is required: pass it, set %s, or list your git user.email on a contributor with `strspc realm contributor add`", addedByEnv)
+	}
+	if err := entityops.CheckAddedBy(value, list); err != nil {
+		if source != addedByFromFlag {
+			return "", "", fmt.Errorf("%w (from %s)", err, source)
+		}
+		return "", "", err
+	}
+	return value, source, nil
+}
+
+// writeAddedBySource tells, in human output, where a defaulted added_by came
+// from, so an agent or CI log shows who a change was recorded under.
+func writeAddedBySource(w io.Writer, value, source string) {
+	if source != addedByFromFlag {
+		writeln(w, descStyle.Render(fmt.Sprintf("  Added by: %s (from %s)", value, source)))
+	}
 }

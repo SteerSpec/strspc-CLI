@@ -5,9 +5,9 @@
     "title": "Conventions"
   },
   "rule_set": {
-    "version": "0.3.0",
-    "timestamp": "2026-11-02T19:13:48Z",
-    "hash": "blake3:41bef2b824a7b865d6d0ae0be71a7e47151a9cd95dd07f7105c42601ad8e6bad"
+    "version": "0.3.1",
+    "timestamp": "2026-11-05T07:49:22Z",
+    "hash": "blake3:707bd65825001ec752f20664c532e801396d150def6d1f052265ab5c4a2e3f6d"
   },
   "rules": [
     {
@@ -15,7 +15,7 @@
       "revision": 1,
       "state": "D",
       "body": "MUST use Conventional Commits format for all commits (type(scope): description), with a type from feat, fix, docs, style, refactor, perf, test, build, ci, chore or revert.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-03-25",
       "supersedes": null
     },
@@ -24,7 +24,7 @@
       "revision": 0,
       "state": "D",
       "body": "MUST format all Go source files with gofumpt before committing.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-03-25",
       "supersedes": null
     },
@@ -33,7 +33,7 @@
       "revision": 1,
       "state": "D",
       "body": "MUST pass golangci-lint v2 with the linters configured in .golangci.yml (errcheck, errorlint, gocritic, govet, ineffassign, staticcheck).",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-10-19",
       "supersedes": null
     },
@@ -42,7 +42,7 @@
       "revision": 0,
       "state": "I",
       "body": "MUST wrap an underlying error with %w when returning it so callers can inspect the cause with errors.Is and errors.As.",
-      "added_by": "@pleberre",
+      "added_by": "github:pleberre",
       "added_at": "2026-10-19",
       "supersedes": null
     }
