@@ -426,3 +426,17 @@ func TestReplaceEntityFileKeepsMode(t *testing.T) {
 		t.Errorf("mode = %v, want 0600", fi.Mode().Perm())
 	}
 }
+
+// TestEntityRehashMissingFile checks that the single-file form fails on an
+// entity file that isn't there, and creates nothing.
+func TestEntityRehashMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "TST", "--dir", dir)
+	if err == nil {
+		t.Fatal("want an error for a missing entity file, got none")
+	}
+	testutil.AssertContains(t, err.Error(), "reading entity file")
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("rehash created files: %v", entries)
+	}
+}

@@ -177,7 +177,11 @@ Examples:
 					return err
 				}
 				path := resolveEntityPath(dir, args[0])
-				if link, err := isLinkPath(path); err == nil && link {
+				// Fail closed: a path whose link status can't be read is not
+				// read either.
+				if link, err := isLinkPath(path); err != nil {
+					return fmt.Errorf("reading entity file: %w", err)
+				} else if link {
 					return fmt.Errorf("%s is a symbolic link; rehash its target where it lives", path)
 				}
 				// replaceEntityFile below never writes through a link, even
