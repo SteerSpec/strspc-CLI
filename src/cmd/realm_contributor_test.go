@@ -146,6 +146,28 @@ func TestRealmContributorSubRealm(t *testing.T) {
 		t.Error("the sub-realm's realm.json changed")
 	}
 
+	// A parent manifest that can't be read stops add and remove before they
+	// write, rather than passing for no parent.
+	parentManifest := filepath.Join(dir, "realm.json")
+	good, err := os.ReadFile(parentManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(parentManifest, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "github:carol"}, {"remove", "github:alice"}} {
+		if _, err := testutil.ExecuteCommand(NewRootCmd(), append(append([]string{"realm", "contributor"}, args...), "--dir", sub)...); err == nil {
+			t.Errorf("%s under an unreadable parent manifest: want an error, got none", args[0])
+		}
+	}
+	if !bytes.Equal(readFiles(t, sub, "realm.json")["realm.json"], before["realm.json"]) {
+		t.Error("the sub-realm's realm.json changed under an unreadable parent manifest")
+	}
+	if err := os.WriteFile(parentManifest, good, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	// An old core pin doesn't hide the sub-realm refusal.
 	older := semver.New(contributorsMinCore.Major(), contributorsMinCore.Minor()-1, 0, "", "")
 	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", coreRealmID+"@"+older.String(), "--dir", sub); err != nil {

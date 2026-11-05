@@ -255,8 +255,13 @@ func contributorFromFlags(cmd *cobra.Command, id, email string, githubID int64) 
 }
 
 // refuseSubRealmContributors refuses to edit the list of a sub-realm, which
-// uses its parent's (CTRB-006), and names the parent's directory.
+// uses its parent's (CTRB-006), and names the parent's directory. A manifest
+// above dir that can't be read is an error: ParentRealm alone would take it
+// for no parent, and the sub-realm's list would be edited.
 func refuseSubRealmContributors(dir string, rf *entity.RealmFile) error {
+	if _, err := entity.RealmContributors(dir); err != nil {
+		return fmt.Errorf("reading the contributors of the realm in %s: %w", dir, err)
+	}
 	parent := entity.ParentRealm(dir, rf.Realm.ID)
 	if parent == nil {
 		return nil
