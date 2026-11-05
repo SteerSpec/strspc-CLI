@@ -38,8 +38,8 @@ func newRealmContributorAddCmd() *cobra.Command {
 		Use:   "add <id>",
 		Short: "Add a contributor to a Realm",
 		Long: `Append a contributor to the contributors array of realm.json. The id is a
-contributor identifier <idp>:<subject> with a provider core lists (CTRB-001,
-CTRB-002), such as github:alice, not already listed (GitHub logins match
+contributor identifier <idp>:<subject> whose provider is one that core lists
+(CTRB-001, CTRB-002), such as github:alice, not already listed (GitHub logins match
 without regard to case). --email is optional (CTRB-007). For a github id,
 --github-id records the account's numeric user ID (CTRB-008), which survives a
 rename: ` + "`gh api users/<login> --jq .id`" + ` prints it.
@@ -60,6 +60,14 @@ Examples:
 			}
 			realmPath, err := checkRealmJSON(dir)
 			if err != nil {
+				return err
+			}
+			// A sub-realm can't be edited whatever its pin, so say so first.
+			current, err := entity.LoadRealm(realmPath)
+			if err != nil {
+				return err
+			}
+			if err := refuseSubRealmContributors(dir, current); err != nil {
 				return err
 			}
 			if err := checkCoreAccepts(dir, realmPath, "contributors", contributorsMinCore); err != nil {

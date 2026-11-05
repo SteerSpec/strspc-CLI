@@ -54,7 +54,7 @@ Examples:
 			if err != nil {
 				return err
 			}
-			addedBy, addedBySource, err := resolveAddedBy(addedBy, target, dir)
+			addedBy, addedBySource, err := resolveAddedBy(addedBy, cmd.Flags().Changed("added-by"), target, dir)
 			if err != nil {
 				return err
 			}

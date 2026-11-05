@@ -146,6 +146,17 @@ func TestRealmContributorSubRealm(t *testing.T) {
 		t.Error("the sub-realm's realm.json changed")
 	}
 
+	// An old core pin doesn't hide the sub-realm refusal.
+	older := semver.New(contributorsMinCore.Major(), contributorsMinCore.Minor()-1, 0, "", "")
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", coreRealmID+"@"+older.String(), "--dir", sub); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "contributor", "add", "github:carol", "--dir", sub); err == nil {
+		t.Fatal("add on a sub-realm with an old core pin: want an error, got none")
+	} else {
+		testutil.AssertContains(t, err.Error(), "CTRB-006")
+	}
+
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "contributor", "list", "--dir", sub, "--json")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -237,6 +248,9 @@ func TestRealmContributorList(t *testing.T) {
 	testutil.AssertContains(t, out, "github:bob")
 }
 
+// explicitEmptyFlag stands, in TestAddedByDefault, for --added-by= given empty.
+const explicitEmptyFlag = "<empty>"
+
 // TestAddedByDefault covers where rule add, note add and rule supersede take
 // added_by from when --added-by is not given.
 func TestAddedByDefault(t *testing.T) {
@@ -258,6 +272,7 @@ func TestAddedByDefault(t *testing.T) {
 		wantText string // in the output when accepted, in the error when refused
 	}{
 		{"flag wins over env", true, "github:bob", "github:alice", "", "github:bob", ""},
+		{"empty flag doesn't fall through", true, explicitEmptyFlag, "github:alice", "alice@example.com", "", "--added-by must not be empty"},
 		{"env", true, "", "github:alice", "", "github:alice", "Added by: github:alice (from STRSPC_ADDED_BY)"},
 		{"env unlisted", true, "", "github:carol", "", "", "CTRB-005"},
 		{"env without a list", false, "", "github:carol", "", "github:carol", "(from STRSPC_ADDED_BY)"},
@@ -282,7 +297,11 @@ func TestAddedByDefault(t *testing.T) {
 				gitUserEmail = func(string) string { return tc.gitEmail }
 
 				args := append([]string{}, c.args...)
-				if tc.flag != "" {
+				switch tc.flag {
+				case "":
+				case explicitEmptyFlag:
+					args = append(args, "--added-by=")
+				default:
 					args = append(args, "--added-by", tc.flag)
 				}
 				out, err := testutil.ExecuteCommand(NewRootCmd(), append(args, "--dir", dir)...)

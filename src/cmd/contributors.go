@@ -88,7 +88,8 @@ var gitUserEmail = func(dir string) string {
 }
 
 // resolveAddedBy returns the added_by for a Rule or Note written to the entity
-// file of t under dir, and where it came from. The flag wins; then
+// file of t under dir, and where it came from. The flag wins when it was given
+// (flagSet), even empty, which is refused rather than falling through; then
 // STRSPC_ADDED_BY; then, when the Realm lists contributors, the entry whose
 // email is the git user.email, by its identifier. A raw email is never
 // written for the default: CTRB-003 retires that form. Whatever its source,
@@ -96,13 +97,16 @@ var gitUserEmail = func(dir string) string {
 // (#248) an @handle or email, and must name one of the Realm's contributors
 // when the Realm lists any (CTRB-005). All of this runs before anything is
 // written.
-func resolveAddedBy(flag string, t entityTarget, dir string) (value, source string, err error) {
+func resolveAddedBy(flag string, flagSet bool, t entityTarget, dir string) (value, source string, err error) {
 	list, err := realmContributorsOf(t.path, dir)
 	if err != nil {
 		return "", "", err
 	}
 	switch {
-	case flag != "":
+	case flagSet:
+		if strings.TrimSpace(flag) == "" {
+			return "", "", errors.New("--added-by must not be empty")
+		}
 		value, source = flag, addedByFromFlag
 	case os.Getenv(addedByEnv) != "":
 		value, source = strings.TrimSpace(os.Getenv(addedByEnv)), addedByFromEnv
