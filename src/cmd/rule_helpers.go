@@ -144,12 +144,14 @@ func replaceEntityFile(path string, f *entity.File) error {
 		return fmt.Errorf("writing entity file: %w", err)
 	}
 	name := tmp.Name()
+	// The mode is set through the open file, not by name: a name swapped for
+	// a link before a Chmod by path would change the link's target instead.
 	_, err = tmp.Write(data)
+	if err == nil {
+		err = tmp.Chmod(mode)
+	}
 	if closeErr := tmp.Close(); err == nil {
 		err = closeErr
-	}
-	if err == nil {
-		err = os.Chmod(name, mode)
 	}
 	if err == nil {
 		err = os.Rename(name, path)
