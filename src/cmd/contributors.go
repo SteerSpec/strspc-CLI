@@ -69,9 +69,15 @@ const (
 )
 
 // gitUserEmail returns `git config user.email` as run in dir, or "" when git
-// is missing, dir is in no repository or no email is set. A var so tests can
-// replace it.
+// is missing, dir is in no repository or no email is set. Outside a
+// repository git would still answer from the global config, so membership is
+// checked first. A var so tests can replace it.
 var gitUserEmail = func(dir string) string {
+	inRepo := exec.Command("git", "rev-parse", "--git-dir")
+	inRepo.Dir = dir
+	if err := inRepo.Run(); err != nil {
+		return ""
+	}
 	cmd := exec.Command("git", "config", "user.email")
 	cmd.Dir = dir
 	out, err := cmd.Output()

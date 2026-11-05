@@ -323,11 +323,24 @@ func newestAddedBy(t *testing.T, dir string) string {
 	return f.Rules[len(f.Rules)-1].AddedBy
 }
 
-// TestGitUserEmail runs the real lookup in a repository with a local email.
+// TestGitUserEmail runs the real lookup in a repository with a local email,
+// and outside any repository, where a global email must not be used.
 func TestGitUserEmail(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
+	global := filepath.Join(t.TempDir(), "gitconfig")
+	if err := os.WriteFile(global, []byte("[user]\n\temail = global@example.com\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	outside := t.TempDir()
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(outside))
+	if got := realGitUserEmail(outside); got != "" {
+		t.Errorf("outside a repository: git user.email = %q, want none", got)
+	}
+	t.Setenv("GIT_CEILING_DIRECTORIES", "")
 	dir := t.TempDir()
 	for _, args := range [][]string{{"init", "-q"}, {"config", "user.email", "alice@example.com"}} {
 		cmd := exec.Command("git", args...)
