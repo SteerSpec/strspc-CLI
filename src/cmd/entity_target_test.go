@@ -20,7 +20,7 @@ func TestCommandsRejectPathEUID(t *testing.T) {
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	setupEntityFile(t, root, "OUTSIDE", makeRule("OUTSIDE-001", "D", "MUST x.", "@test"))
+	setupEntityFile(t, root, "OUTSIDE", makeRule("OUTSIDE-001", "D", "MUST x.", "github:test"))
 	outside := filepath.Join(root, "OUTSIDE.json")
 	before, err := os.ReadFile(outside)
 	if err != nil {
@@ -28,13 +28,13 @@ func TestCommandsRejectPathEUID(t *testing.T) {
 	}
 
 	for _, args := range [][]string{
-		{"rule", "add", "../OUTSIDE", "--body", "MUST y.", "--added-by", "@test"},
+		{"rule", "add", "../OUTSIDE", "--body", "MUST y.", "--added-by", "github:test"},
 		{"rule", "update", "../OUTSIDE-001", "--body", "MUST y."},
 		{"rule", "promote", "../OUTSIDE-001"},
 		{"rule", "retire", "../OUTSIDE-001"},
 		{"rule", "abandon", "../OUTSIDE-001"},
-		{"rule", "supersede", "../OUTSIDE-001", "--body", "MUST y.", "--added-by", "@test"},
-		{"note", "add", "../OUTSIDE-001", "--type", "reference", "--body", "x", "--added-by", "@test"},
+		{"rule", "supersede", "../OUTSIDE-001", "--body", "MUST y.", "--added-by", "github:test"},
+		{"note", "add", "../OUTSIDE-001", "--type", "reference", "--body", "x", "--added-by", "github:test"},
 		{"note", "update", "..-001/01", "--body", "x"},
 		{"entity", "rehash", "../OUTSIDE"},
 		{"entity", "standards", "add", "../OUTSIDE", "--id", "iso.27001", "--relation", "implements"},
