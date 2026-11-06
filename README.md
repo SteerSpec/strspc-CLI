@@ -42,8 +42,8 @@ Homebrew can refuse to load a cask from a third-party tap until you trust it. If
 
 Download an archive from [Releases](https://github.com/SteerSpec/strspc-CLI/releases). Linux and
 macOS builds (amd64, arm64) are `.tar.gz` files. Windows builds (amd64, arm64) are `.zip` files with
-`strspc.exe`, which you can put in any directory on your `PATH`. Only the macOS binaries are
-notarized. The Linux and Windows binaries are not code-signed, so SmartScreen may warn on the first
+`strspc.exe`, which you can put in any directory on your `PATH`. The macOS binaries are
+signed and notarized when the release has its five `MACOS_*` signing secrets configured. The Linux and Windows binaries are not code-signed, so SmartScreen may warn on the first
 run of the Windows build.
 
 **GitHub Actions**
