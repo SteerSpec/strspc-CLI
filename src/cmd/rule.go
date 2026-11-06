@@ -8,7 +8,7 @@ func newRuleCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rule",
 		Short: "Manage rules within entity files",
-		Long:  "Commands for adding, updating, and transitioning rules in SteerSpec entity files.",
+		Long:  "Commands for adding, updating, transitioning and showing rules in SteerSpec entity files.",
 	}
 
 	cmd.AddCommand(newRuleAddCmd())
@@ -17,6 +17,7 @@ func newRuleCmd() *cobra.Command {
 	cmd.AddCommand(newRuleRetireCmd())
 	cmd.AddCommand(newRuleAbandonCmd())
 	cmd.AddCommand(newRuleSupersedeCmd())
+	cmd.AddCommand(newRuleShowCmd())
 
 	return cmd
 }

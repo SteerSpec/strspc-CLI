@@ -61,6 +61,9 @@ func newRefsCmd() *cobra.Command {
 			"An unknown rule, an Abandoned rule, and a live rule replaced by one in state I, R or T are\n" +
 			"errors. A Retired, Terminated or Draft rule, and a live rule that a Published rule will\n" +
 			"replace, are warnings, which --strict turns into errors.\n\n" +
+			"Text that copies the body of a rule (RF007) is an error: cite the rule's ID, and look it\n" +
+			"up with `strspc rule show`. Committed `strspc render` output copies every body, so\n" +
+			"exclude it with --exclude.\n\n" +
 			"A line holding \"strspc-refs: ignore\" exempts itself and the next line, in any comment syntax.\n\n" +
 			"Exit codes: 0 clean, 1 findings, 2 configuration or resolution error.\n\n" +
 			"A pattern with no slash matches a file name in any directory, and dir/** matches everything\n" +
@@ -99,7 +102,7 @@ func runRefs(ctx context.Context, out, errOut io.Writer, cwd string, paths []str
 		return withExitCode(exitConfig, fmt.Errorf("invalid --format %q: must be human or github", o.format))
 	}
 	states := normalizeStateCodes(o.allowState)
-	if err := validateStateCodes("--allow-state", states); err != nil {
+	if err := validateStateFlag("--allow-state", states); err != nil {
 		return withExitCode(exitConfig, err)
 	}
 	files, err := refsFiles(cwd, paths, o)
