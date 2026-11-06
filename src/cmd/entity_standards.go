@@ -161,7 +161,7 @@ func newEntityStandardsListCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			target, err := resolveEntityTarget(dir, args[0])
+			target, err := resolveEntityTargetForRead(dir, args[0])
 			if err != nil {
 				return err
 			}

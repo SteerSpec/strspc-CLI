@@ -203,15 +203,31 @@ func findSubEntityChain(f *entity.File, euid string) []*entity.File {
 // A top-level file <dir>/<euid>.json wins; otherwise every entity file under
 // dir is scanned for a sub-entity with that EUID. Exactly one match is required.
 // The EUID is checked first, so an argument such as ../x can't name a file
-// outside dir.
+// outside dir. The target is about to be edited, so an entity file that is a
+// symbolic link is refused; resolveEntityTargetForRead follows links.
 func resolveEntityTarget(dir, euid string) (entityTarget, error) {
+	return resolveTarget(dir, euid, false)
+}
+
+// resolveEntityTargetForRead is resolveEntityTarget for commands that only read
+// the entity: a linked entity file is followed, as before links were refused
+// for writes.
+func resolveEntityTargetForRead(dir, euid string) (entityTarget, error) {
+	return resolveTarget(dir, euid, true)
+}
+
+func resolveTarget(dir, euid string, followLinks bool) (entityTarget, error) {
 	if err := entityops.ValidateEUID(euid); err != nil {
 		return entityTarget{}, err
 	}
 	topPath := resolveEntityPath(dir, euid)
-	// Lstat, not Stat: a link that points nowhere is still a link, refused
-	// as one rather than reported as a missing entity.
-	if fi, err := os.Lstat(topPath); err == nil {
+	if followLinks {
+		if _, err := os.Stat(topPath); err == nil {
+			return entityTarget{path: topPath}, nil
+		}
+	} else if fi, err := os.Lstat(topPath); err == nil {
+		// Lstat, not Stat: a link that points nowhere is still a link,
+		// refused as one rather than reported as a missing entity.
 		if fi.Mode()&os.ModeSymlink != 0 {
 			return entityTarget{}, linkedEntityError(topPath)
 		}
@@ -239,6 +255,9 @@ func resolveEntityTarget(dir, euid string) (entityTarget, error) {
 		// The walk reads through a link (strspc-manager's walker reads each
 		// file before calling back), so a sub-entity can be found in one;
 		// refuse it here, before anything else reads or writes it.
+		if followLinks {
+			return entityTarget{path: matches[0], subID: euid}, nil
+		}
 		if link, err := isLinkPath(matches[0]); err != nil {
 			return entityTarget{}, fmt.Errorf("loading entity file: %w", err)
 		} else if link {

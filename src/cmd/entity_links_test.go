@@ -100,3 +100,21 @@ func TestEntityTargetRefusesLinks(t *testing.T) {
 		}
 	})
 }
+
+// TestEntityStandardsListFollowsLinks checks that the read-only list command
+// still reads a linked entity file, top-level or holding a sub-entity.
+func TestEntityStandardsListFollowsLinks(t *testing.T) {
+	outside := t.TempDir()
+	setupEntityFileWithSub(t, outside, "TST", "TSTSUB")
+	dir := t.TempDir()
+	if err := os.Symlink(filepath.Join(outside, "TST.json"), filepath.Join(dir, "TST.json")); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+	for _, euid := range []string{"TST", "TSTSUB"} {
+		out, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "standards", "list", euid, "--json", "--dir", dir)
+		if err != nil {
+			t.Fatalf("list %s: %v", euid, err)
+		}
+		testutil.AssertContains(t, out, `"entity": "`+euid+`"`)
+	}
+}
