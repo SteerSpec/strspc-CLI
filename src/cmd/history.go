@@ -202,9 +202,6 @@ func historyFile(ctx context.Context, path string) (repo, rel string, err error)
 	if strings.TrimSpace(shallow) == "true" {
 		return "", "", errors.New("history needs the full git history, but this is a shallow clone: run `git fetch --unshallow` (in GitHub Actions, check out with fetch-depth: 0)")
 	}
-	if _, err := git(ctx, repo, "ls-files", "--error-unmatch", "--", rel); err != nil {
-		return "", "", fmt.Errorf("no committed history for %s: the file is not tracked by git", printableText(rel))
-	}
 	return repo, rel, nil
 }
 
@@ -233,8 +230,10 @@ func historyCommits(ctx context.Context, repo, rel string) ([]rulehistory.Commit
 		return nil, err
 	}
 	if len(entries) == 0 {
-		// ls-files passes for a file that is staged but was never committed.
-		return nil, fmt.Errorf("no committed history for %s: the file has not been committed yet", printableText(rel))
+		// The committed history decides, not the index: a staged file that
+		// was never committed has none, and a file whose deletion is staged
+		// keeps its history.
+		return nil, fmt.Errorf("no committed history for %s: the file has never been committed", printableText(rel))
 	}
 
 	var specs []string

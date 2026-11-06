@@ -302,6 +302,22 @@ func TestHistoryErrors(t *testing.T) {
 	}
 }
 
+func TestHistoryStagedDeletion(t *testing.T) {
+	repo, rules := newHistoryRepo(t)
+	gitRun(t, repo, "rm", "-q", "--cached", "rules/ENT.json")
+	var out, errOut bytes.Buffer
+	err := runHistory(context.Background(), &out, &errOut, "ENT", &historyOptions{dir: rules, jsonOutput: true})
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, errOut.String(), "rules/ENT.json has uncommitted changes")
+	var doc historyOutput
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, out.String())
+	}
+	if len(doc.Events) != len(concat(histCommit1, histCommit2, histCommit3, histCommit4)) {
+		t.Errorf("got %d events, want the committed history", len(doc.Events))
+	}
+}
+
 func TestHistoryUncommittedChanges(t *testing.T) {
 	repo, rules := newHistoryRepo(t)
 	if err := os.WriteFile(filepath.Join(repo, "rules", "ENT.json"), []byte(histEntityJSON("0.5.0", nil, nil)), 0o644); err != nil {
