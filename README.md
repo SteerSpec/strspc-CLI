@@ -14,7 +14,7 @@
 [Architecture](#architecture) · [Install](#installation) · [Quick start](#quick-start) ·
 [Concepts](#concepts) · [Commands](#commands) · [Author rules](#author-rules) ·
 [Configure](#configure-a-project) · [Validate](#validate-rules) · [Check code](#check-code-changes) ·
-[Render](#render-rules) · [CI](#continuous-integration) · [Reference](#reference) ·
+[Show](#show-rules) · [Render](#render-rules) · [CI](#continuous-integration) · [Reference](#reference) ·
 [Work in progress](#work-in-progress) · [Development](#development) ·
 [Releases](#branching-and-releases)
 
@@ -177,6 +177,7 @@ full data model.
 | `strspc rule retire` | Move a rule I→R or R→T |
 | `strspc rule abandon` | Abandon a Draft rule (D→A) |
 | `strspc rule supersede` | Create a Draft rule that supersedes a P, I or R rule |
+| `strspc rule show` | Print rules by ID or entity, from the configured sources and their dependencies |
 | `strspc note add` | Attach a typed note to a rule |
 | `strspc note update` | Revise a note in place; notes are never removed |
 | `strspc entity add` | Add a sub-entity under an existing entity |
@@ -662,6 +663,10 @@ strspc refs --format github                    # annotations; --json for diagnos
 | RF005 | Draft, Published or Implemented, replaced by a Published rule | warning | error |
 | RF006 | Draft | warning | error |
 
+Text that copies the body of a rule instead of citing it, five words or more, is an error (RF007),
+whatever the rule's state. Cite the ID and look the rule up with `strspc rule show`. Committed
+`strspc render` output copies every body, so exclude it, for example with `--exclude 'docs/rules/**'`.
+
 The stored `<EUID>-<NNN>` form always matches, in text or code spans, and so does the realm's own
 rendered form. An unknown prefix is reported only when it is uppercase and starts with a letter, so
 <!-- strspc-refs: ignore -->
@@ -792,6 +797,24 @@ validation is skipped and `--verbose` says so.
 endpoint from the config only when it's an `https://` URL on `anthropic.com`. Any other endpoint must
 be opted in from outside the repository, with `STRSPC_EVALUATOR_ENDPOINT=<url>` (highest precedence) or
 `--endpoint <url>`. Without that, it exits 2 with a message naming the host.
+
+## Show rules
+
+`strspc rule show` prints rules looked up by ID or by entity, with their state, body and notes, so a
+prompt or a doc can name a rule instead of copying it. Like `refs`, it reads `.strspc/config.yaml` in
+the current directory and includes the realm dependencies it pins:
+
+```bash
+strspc rule show CMD-001                      # one rule
+strspc rule show CFG --state I,P              # an entity's own rules, narrowed by state
+strspc rule show dev.steerspec.core:ENT-001   # only in that realm
+strspc rule show CMD-001 CFG --json           # a JSON list
+```
+
+An unqualified ID resolves to the first source that holds it, the way `refs` resolves citations.
+`--state` narrows what an EUID selects; a rule named by its ID is shown whatever its state. A
+sub-entity is selected by its own EUID. If any argument matches nothing, nothing is printed and the
+command exits 1; a configuration or resolution error exits 2.
 
 ## Render rules
 
