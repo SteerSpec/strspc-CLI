@@ -20,7 +20,7 @@
 engine, for engineers who keep behavioral rules as structured JSON next to the code they govern.
 It writes rule files with valid versions and hashes, validates them and their lifecycle, and asks an
 AI evaluator whether a code change complies; authoring and validation run locally, with no backend
-service of ours.
+service of ours (remote rule sources, dependencies and schemas are fetched over the network).
 
 **Status.** The [latest release](https://github.com/SteerSpec/strspc-CLI/releases/latest) is under the
 [Apache 2.0 licence](LICENSE). `strspc check` sends the diff to an AI provider: only Claude
@@ -53,7 +53,7 @@ The composite action installs a release for the runner and verifies its checksum
 ```yaml
 - uses: SteerSpec/strspc-CLI/.github/actions/setup-strspc@v1.36.0
   with:
-    version: "1.36.0"       # or "latest" (the default)
+    version: "latest"       # the default, or a release such as "1.36.0"
 - run: strspc version
 ```
 
@@ -128,9 +128,8 @@ applies to every contribution.
 
 ### Branching and releases
 
-Pull requests target `develop` and are squashed. Merging `develop` into `main` triggers a release
-pull request, and merging that creates the tag that triggers the binary build. The steps, and what to
-do when a commit is dropped from a changelog, are in [Branching and releases](docs/releases.md).
+The branch flow, the release steps and what to do when a commit is dropped from a changelog are in
+[Branching and releases](docs/releases.md).
 
 ## Security
 
