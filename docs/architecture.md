@@ -74,6 +74,7 @@ full data model.
 | `strspc diff` | Validate rule lifecycle transitions between a git ref and the working tree |
 | `strspc check` | Evaluate a code diff against the rules in `.strspc/config.yaml` |
 | `strspc refs` | Validate rule citations in Markdown and other text files |
+| `strspc history` | Show how an entity's rules changed, from git |
 | `strspc status` | Show the project's rule sources, rule counts and realm, without the network |
 | `strspc doctor` | Diagnose the installation and the project, and suggest a fix for each problem |
 | `strspc standards coverage` | Show how the rules map to the clauses of external standards |
@@ -95,6 +96,7 @@ full data model.
 | `strspc rule abandon` | Abandon a Draft rule (D→A) |
 | `strspc rule supersede` | Create a Draft rule that supersedes a P, I or R rule |
 | `strspc rule show` | Print rules by ID or entity, from the configured sources and their dependencies |
+| `strspc rule history` | Show how a rule changed, from git |
 | `strspc note add` | Attach a typed note to a rule |
 | `strspc note update` | Revise a note in place; notes are never removed |
 | `strspc entity add` | Add a sub-entity under an existing entity |

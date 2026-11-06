@@ -20,6 +20,31 @@ An unqualified ID resolves to the first source that holds it, the way `refs` res
 sub-entity is selected by its own EUID. If any argument matches nothing, nothing is printed and the
 command exits 1; a configuration or resolution error exits 2.
 
+## Rule history
+
+`strspc history` lists the changes to the rules of an entity, derived from the git history of its
+file: one row per change to a rule, oldest first, with the rule set version the commit produced and
+the pull request named in its subject. Dates are commit dates in UTC. `strspc rule history` does the
+same for one rule:
+
+```bash
+strspc history CMD                          # every change to CMD and its sub-entities
+strspc history CMD --rule CMD-001 --json    # one rule, as JSON
+strspc rule history CMD-001                 # the same, plus the addition of a rule superseding it
+strspc history CFG --since 0.2.0            # changes that produced a version above 0.2.0
+strspc history CFG --between 0.1.0..0.3.0   # above 0.1.0 and up to 0.3.0; either side may be empty
+```
+
+A change is `added`, `body_changed`, `promoted`, `retired`, `terminated`, `abandoned`,
+`state_changed` (a move the lifecycle doesn't name), `metadata_changed`, `superseded` or `removed`.
+A removed rule carries the version before the commit. Renames of the file are followed, a merge that
+only brings in a change made elsewhere isn't listed again, and uncommitted changes aren't shown.
+A sub-entity EUID shows that sub-entity's changes only.
+
+History needs a full git checkout. A shallow clone (GitHub Actions: check out with `fetch-depth: 0`),
+a realm downloaded into `.strspc/cache/` and a file never committed are errors that exit 2. An
+unknown entity or a malformed rule ID exits 1.
+
 ## Render rules
 
 ```bash
