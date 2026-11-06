@@ -69,7 +69,9 @@ func newRuleShowCmd() *cobra.Command {
 			"  strspc rule show MOD-010\n" +
 			"  strspc rule show GOTEST --state D\n" +
 			"  strspc rule show dev.steerspec.core:ENT-001 RUL --json",
-		Args:          cobra.MinimumNArgs(1),
+		Args: func(c *cobra.Command, args []string) error {
+			return withExitCode(exitConfig, cobra.MinimumNArgs(1)(c, args))
+		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -83,6 +85,8 @@ func newRuleShowCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&o.jsonOutput, "json", false, "output rules as JSON")
 	cmd.Flags().StringSliceVar(&o.states, "state", nil, "only the rules of an entity in this state: D, A, P, I, R or T")
+
+	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return withExitCode(exitConfig, err) })
 
 	return cmd
 }
@@ -296,7 +300,7 @@ func writeShownRules(w io.Writer, rules []*shownRule) {
 		if r.Realm != "" {
 			where = r.Realm + " · " + r.Entity
 		}
-		writeln(w, fmt.Sprintf("%s [%s] %s", brandStyle.Render(r.ID), printableText(r.State), descStyle.Render(printableText(where))))
+		writeln(w, fmt.Sprintf("%s [%s] %s", brandStyle.Render(printableText(r.ID)), printableText(r.State), descStyle.Render(printableText(where))))
 		writeln(w, indentLines(r.Body, "  "))
 		for _, n := range r.Notes {
 			head := fmt.Sprintf("  %s %s: ", printableText(n.ID), printableText(n.Type))

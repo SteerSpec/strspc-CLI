@@ -140,9 +140,13 @@ func TestRuleShowConfigurationErrors(t *testing.T) {
 	t.Run("no argument", func(t *testing.T) {
 		setupRefsProject(t)
 		_, err := runRuleShowCmd(t)
-		if err == nil {
-			t.Fatal("expected an error without arguments")
-		}
+		assertExit(t, err, exitConfig)
+	})
+
+	t.Run("unknown flag", func(t *testing.T) {
+		setupRefsProject(t)
+		_, err := runRuleShowCmd(t, "APP-001", "--nope")
+		assertExit(t, err, exitConfig)
 	})
 }
 
