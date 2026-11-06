@@ -18,6 +18,7 @@ func newRuleCmd() *cobra.Command {
 	cmd.AddCommand(newRuleAbandonCmd())
 	cmd.AddCommand(newRuleSupersedeCmd())
 	cmd.AddCommand(newRuleShowCmd())
+	cmd.AddCommand(newRuleHistoryCmd())
 
 	return cmd
 }
