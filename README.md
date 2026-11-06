@@ -14,7 +14,7 @@
 [Architecture](#architecture) · [Install](#installation) · [Quick start](#quick-start) ·
 [Concepts](#concepts) · [Commands](#commands) · [Author rules](#author-rules) ·
 [Configure](#configure-a-project) · [Validate](#validate-rules) · [Check code](#check-code-changes) ·
-[Show](#show-rules) · [Render](#render-rules) · [CI](#continuous-integration) · [Reference](#reference) ·
+[Show](#show-rules) · [History](#rule-history) · [Render](#render-rules) · [CI](#continuous-integration) · [Reference](#reference) ·
 [Work in progress](#work-in-progress) · [Development](#development) ·
 [Releases](#branching-and-releases)
 
@@ -157,6 +157,7 @@ full data model.
 | `strspc diff` | Validate rule lifecycle transitions between a git ref and the working tree |
 | `strspc check` | Evaluate a code diff against the rules in `.strspc/config.yaml` |
 | `strspc refs` | Validate rule citations in Markdown and other text files |
+| `strspc history` | Show how an entity's rules changed, from git |
 | `strspc status` | Show the project's rule sources, rule counts and realm, without the network |
 | `strspc doctor` | Diagnose the installation and the project, and suggest a fix for each problem |
 | `strspc standards coverage` | Show how the rules map to the clauses of external standards |
@@ -178,6 +179,7 @@ full data model.
 | `strspc rule abandon` | Abandon a Draft rule (D→A) |
 | `strspc rule supersede` | Create a Draft rule that supersedes a P, I or R rule |
 | `strspc rule show` | Print rules by ID or entity, from the configured sources and their dependencies |
+| `strspc rule history` | Show how a rule changed, from git |
 | `strspc note add` | Attach a typed note to a rule |
 | `strspc note update` | Revise a note in place; notes are never removed |
 | `strspc entity add` | Add a sub-entity under an existing entity |
@@ -815,6 +817,31 @@ An unqualified ID resolves to the first source that holds it, the way `refs` res
 `--state` narrows what an EUID selects; a rule named by its ID is shown whatever its state. A
 sub-entity is selected by its own EUID. If any argument matches nothing, nothing is printed and the
 command exits 1; a configuration or resolution error exits 2.
+
+## Rule history
+
+`strspc history` lists the changes to the rules of an entity, derived from the git history of its
+file: one row per change to a rule, oldest first, with the rule set version the commit produced and
+the pull request named in its subject. Dates are commit dates in UTC. `strspc rule history` does the
+same for one rule:
+
+```bash
+strspc history CMD                          # every change to CMD and its sub-entities
+strspc history CMD --rule CMD-001 --json    # one rule, as JSON
+strspc rule history CMD-001                 # the same, plus the addition of a rule superseding it
+strspc history CFG --since 0.2.0            # changes that produced a version above 0.2.0
+strspc history CFG --between 0.1.0..0.3.0   # above 0.1.0 and up to 0.3.0; either side may be empty
+```
+
+A change is `added`, `body_changed`, `promoted`, `retired`, `terminated`, `abandoned`,
+`state_changed` (a move the lifecycle doesn't name), `metadata_changed`, `superseded` or `removed`.
+A removed rule carries the version before the commit. Renames of the file are followed, a merge that
+only brings in a change made elsewhere isn't listed again, and uncommitted changes aren't shown.
+A sub-entity EUID shows that sub-entity's changes only.
+
+History needs a full git checkout. A shallow clone (GitHub Actions: check out with `fetch-depth: 0`),
+a realm downloaded into `.strspc/cache/` and a file never committed are errors that exit 2. An
+unknown entity or a malformed rule ID exits 1.
 
 ## Render rules
 
