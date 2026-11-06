@@ -18,7 +18,7 @@ func editEntityFile(t *testing.T, dir, entityID string, edit func(*entity.File))
 	t.Helper()
 	f := loadEntityFile(t, dir, entityID)
 	edit(f)
-	if err := saveEntity(filepath.Join(dir, entityID+".json"), f); err != nil {
+	if err := replaceEntityFile(filepath.Join(dir, entityID+".json"), f); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -233,6 +233,11 @@ strspc entity rehash --all                                     # fix hashes afte
 **Sub-entities.** Rule commands accept a sub-entity EUID anywhere a top-level EUID is accepted: the
 CLI scans `sub_entities[]` of every entity file under `--dir` and refreshes the parent hash.
 
+**Symbolic links.** Commands never write through an entity file that is a symbolic link, since its
+target may lie outside `--dir`: rule, note and entity commands refuse it, and `entity rehash --all`
+and `realm rewrite-added-by` list it as skipped. Edit the target where it lives. Commands that only
+read, such as `entity standards list`, follow the link.
+
 **Superseding.** Rules that have left Draft are immutable, so `rule supersede` creates a Draft that
 replaces them. It leaves the original unchanged: when the new rule reaches Implemented, the old one
 must be Retired, or `strspc diff` warns (`RD006`). `rule retire` moves a rule from Implemented to
