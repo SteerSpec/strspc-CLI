@@ -232,6 +232,10 @@ func historyCommits(ctx context.Context, repo, rel string) ([]rulehistory.Commit
 	if err != nil {
 		return nil, err
 	}
+	if len(entries) == 0 {
+		// ls-files passes for a file that is staged but was never committed.
+		return nil, fmt.Errorf("no committed history for %s: the file has not been committed yet", printableText(rel))
+	}
 
 	var specs []string
 	for _, e := range entries {

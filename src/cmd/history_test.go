@@ -265,6 +265,9 @@ func TestHistoryErrors(t *testing.T) {
 	repo, rules := newHistoryRepo(t)
 	writeFile(t, repo, "rules/NEW.json", strings.Replace(histEntityJSON("0.1.0", nil, nil), `"id": "ENT"`, `"id": "NEW"`, 1))
 
+	writeFile(t, repo, "rules/STAGED.json", strings.Replace(histEntityJSON("0.1.0", nil, nil), `"id": "ENT"`, `"id": "STAGED"`, 1))
+	gitRun(t, repo, "add", "rules/STAGED.json")
+
 	plain := t.TempDir()
 	writeFile(t, plain, "rules/ENT.json", histEntityJSON("0.1.0", nil, nil))
 
@@ -280,6 +283,7 @@ func TestHistoryErrors(t *testing.T) {
 		{"not a git checkout", []string{"history", "ENT", "--dir", filepath.Join(plain, "rules")}, exitConfig, "needs a git checkout"},
 		{"shallow clone", []string{"history", "ENT", "--dir", filepath.Join(shallow, "rules")}, exitConfig, "git fetch --unshallow"},
 		{"untracked file", []string{"history", "NEW", "--dir", rules}, exitConfig, "no committed history"},
+		{"staged, never committed", []string{"history", "STAGED", "--dir", rules}, exitConfig, "no committed history"},
 		{"unknown entity", []string{"history", "NOPE", "--dir", rules}, exitViolations, "not found"},
 		{"malformed rule ID", []string{"rule", "history", "ENT-1", "--dir", rules}, exitViolations, "invalid rule ID"},
 		{"malformed --rule", []string{"history", "ENT", "--rule", "ENT", "--dir", rules}, exitViolations, "invalid rule ID"},
