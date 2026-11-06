@@ -9,7 +9,7 @@ import (
 
 func TestRuleAbandonDraft(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft rule", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft rule", "github:alice"))
 
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "abandon", "TST-001", "--dir", dir)
@@ -27,7 +27,7 @@ func TestRuleAbandonDraft(t *testing.T) {
 
 func TestRuleAbandonJSON(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft", "github:alice"))
 
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "abandon", "TST-001", "--dir", dir, "--json")
@@ -46,7 +46,7 @@ func TestRuleAbandonJSON(t *testing.T) {
 
 func TestRuleAbandonNonDraft(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "P", "Published", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "P", "Published", "github:alice"))
 
 	root := NewRootCmd()
 	_, err := testutil.ExecuteCommand(root, "rule", "abandon", "TST-001", "--dir", dir)

@@ -96,7 +96,7 @@ func TestRealmStandardsRemoveGuard(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	setupEntityFile(t, dir, "MYE", makeRule("MYE-001", "D", "MUST x.", "@test"))
+	setupEntityFile(t, dir, "MYE", makeRule("MYE-001", "D", "MUST x.", "github:test"))
 	editEntityFile(t, dir, "MYE", func(f *entity.File) {
 		f.Notes = []entity.Note{standardNote("MYE-001/01", "MYE-001", entity.NoteTypeStandard, "owasp.asvs:V2.1")}
 	})

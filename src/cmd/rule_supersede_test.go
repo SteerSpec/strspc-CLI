@@ -9,12 +9,12 @@ import (
 
 func TestRuleSupersedeBasic(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "I", "Implemented rule", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "I", "Implemented rule", "github:alice"))
 
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "supersede", "TST-001",
 		"--body", "New improved rule MUST...",
-		"--added-by", "@bob",
+		"--added-by", "github:bob",
 		"--dir", dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -42,12 +42,12 @@ func TestRuleSupersedeBasic(t *testing.T) {
 
 func TestRuleSupersedeJSON(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "P", "Published", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "P", "Published", "github:alice"))
 
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "supersede", "TST-001",
 		"--body", "Replacement",
-		"--added-by", "@bob",
+		"--added-by", "github:bob",
 		"--dir", dir,
 		"--json")
 	if err != nil {
@@ -68,12 +68,12 @@ func TestRuleSupersedeJSON(t *testing.T) {
 
 func TestRuleSupersedeRetired(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "R", "Retired rule", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "R", "Retired rule", "github:alice"))
 
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "supersede", "TST-001",
 		"--body", "Replacement for retired rule",
-		"--added-by", "@bob",
+		"--added-by", "github:bob",
 		"--dir", dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -93,12 +93,12 @@ func TestRuleSupersedeRetired(t *testing.T) {
 
 func TestRuleSupersedeInvalidState(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft", "github:alice"))
 
 	root := NewRootCmd()
 	_, err := testutil.ExecuteCommand(root, "rule", "supersede", "TST-001",
 		"--body", "Try to supersede draft",
-		"--added-by", "@bob",
+		"--added-by", "github:bob",
 		"--dir", dir)
 	if err == nil {
 		t.Fatal("expected error superseding Draft rule")

@@ -9,7 +9,7 @@ import (
 
 func TestRulePromoteDraftToPublished(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft rule", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft rule", "github:alice"))
 
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "promote", "TST-001", "--dir", dir)
@@ -27,7 +27,7 @@ func TestRulePromoteDraftToPublished(t *testing.T) {
 
 func TestRulePromotePublishedToImplemented(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "P", "Published rule", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "P", "Published rule", "github:alice"))
 
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "promote", "TST-001", "--dir", dir)
@@ -45,7 +45,7 @@ func TestRulePromotePublishedToImplemented(t *testing.T) {
 
 func TestRulePromoteJSON(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft", "github:alice"))
 
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "promote", "TST-001", "--dir", dir, "--json")
@@ -64,7 +64,7 @@ func TestRulePromoteJSON(t *testing.T) {
 
 func TestRulePromoteInvalidState(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "I", "Implemented", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "I", "Implemented", "github:alice"))
 
 	root := NewRootCmd()
 	_, err := testutil.ExecuteCommand(root, "rule", "promote", "TST-001", "--dir", dir)

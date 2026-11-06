@@ -9,7 +9,7 @@ import (
 
 func TestRuleUpdateBasic(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Original body", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Original body", "github:alice"))
 
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "update", "TST-001",
@@ -33,7 +33,7 @@ func TestRuleUpdateBasic(t *testing.T) {
 
 func TestRuleUpdateJSON(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Original", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Original", "github:alice"))
 
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "update", "TST-001",
@@ -55,7 +55,7 @@ func TestRuleUpdateJSON(t *testing.T) {
 
 func TestRuleUpdateNonDraft(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "P", "Published rule", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "P", "Published rule", "github:alice"))
 
 	root := NewRootCmd()
 	_, err := testutil.ExecuteCommand(root, "rule", "update", "TST-001",

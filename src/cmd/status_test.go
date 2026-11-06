@@ -125,7 +125,7 @@ func TestStatusCountsSubEntitiesAndSkipsOtherFiles(t *testing.T) {
 	rules := filepath.Join(dir, "rules")
 	sub := `[{"entity": {"id": "SUB", "parent": "APP", "title": "t", "description": "d"},
 	  "rule_set": {"version": "0.1.0", "timestamp": "2026-01-01T00:00:00Z", "hash": null},
-	  "rules": [{"id": "SUB-001", "revision": 0, "state": "I", "body": "b", "added_by": "@t", "added_at": "2026-01-01", "supersedes": null}],
+	  "rules": [{"id": "SUB-001", "revision": 0, "state": "I", "body": "b", "added_by": "github:t", "added_at": "2026-01-01", "supersedes": null}],
 	  "notes": [], "sub_entities": []}]`
 	writeInheritFile(t, rules, "APP", inheritEntityJSON("APP", "", sub, inheritRule{id: "APP-001", state: "P"}))
 	writeRefsFile(t, dir, "rules/package.json", `{"name": "not an entity"}`)

@@ -253,8 +253,9 @@ added, revised, or retyped to `reference` and back in any rule state, without ch
 **Contributors.** `--added-by` takes a contributor identifier, `<idp>:<login>` with `github` as the
 only provider (CTRB-001, CTRB-002). When the Realm lists `realm.contributors`, the value must name
 one of them (CTRB-005), and a sub-realm uses its parent's list (CTRB-006). An `@handle` or an email
-address is still accepted during the transition and matches the listed contributor it names.
-`strspc diff` reports a new rule or note by someone the Realm doesn't list (`RD023`, Info).
+address is refused; `realm rewrite-added-by` migrates files that still hold them, and `strspc lint`
+reports any left (`RL032`, an error). `strspc diff` fails on a new rule or note by someone the Realm
+doesn't list (`RD023`, an error).
 
 `realm contributor` edits the list, so realm.json is never edited by hand. A sub-realm's list is its
 parent's, so it is edited there:

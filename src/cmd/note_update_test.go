@@ -10,14 +10,14 @@ import (
 func addTestNote(t *testing.T, dir, ruleID, noteType, body string) {
 	t.Helper()
 	if _, err := testutil.ExecuteCommand(NewRootCmd(), "note", "add", ruleID,
-		"--type", noteType, "--body", body, "--added-by", "@alice", "--dir", dir); err != nil {
+		"--type", noteType, "--body", body, "--added-by", "github:alice", "--dir", dir); err != nil {
 		t.Fatalf("note add: %v", err)
 	}
 }
 
 func TestNoteUpdateBody(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Rule", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Rule", "github:alice"))
 	addTestNote(t, dir, "TST-001", "rationale", "old")
 
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "note", "update", "TST-001/01", "--body", "new", "--dir", dir)
@@ -28,7 +28,7 @@ func TestNoteUpdateBody(t *testing.T) {
 
 	f := loadEntityFile(t, dir, "TST")
 	n := f.Notes[0]
-	if n.Content != "new" || n.Type != "rationale" || n.Revision != 1 || n.AddedBy != "@alice" {
+	if n.Content != "new" || n.Type != "rationale" || n.Revision != 1 || n.AddedBy != "github:alice" {
 		t.Errorf("unexpected note: %+v", n)
 	}
 	if f.RuleSet.Version != "0.1.2" {
@@ -39,7 +39,7 @@ func TestNoteUpdateBody(t *testing.T) {
 
 func TestNoteUpdateTypeAndBodyBumpsRevisionOnce(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Rule", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Rule", "github:alice"))
 	addTestNote(t, dir, "TST-001", "rationale", "old")
 
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "note", "update", "TST-001/01",
@@ -62,7 +62,7 @@ func TestNoteUpdateTypeAndBodyBumpsRevisionOnce(t *testing.T) {
 
 func TestNoteUpdateTypeOnly(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Rule", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Rule", "github:alice"))
 	addTestNote(t, dir, "TST-001", "rationale", "keep")
 
 	if _, err := testutil.ExecuteCommand(NewRootCmd(), "note", "update", "TST-001/01", "--type", "example", "--dir", dir); err != nil {
@@ -76,7 +76,7 @@ func TestNoteUpdateTypeOnly(t *testing.T) {
 
 func TestNoteUpdateErrors(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Rule", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Rule", "github:alice"))
 	addTestNote(t, dir, "TST-001", "rationale", "r")
 	addTestNote(t, dir, "TST-001", "changelog", "c")
 
@@ -110,7 +110,7 @@ func TestNoteUpdateErrors(t *testing.T) {
 
 func TestNoteUpdateSubEntity(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Rule", "@alice"))
+	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Rule", "github:alice"))
 	addTestNote(t, dir, "SUB-001", "rationale", "old")
 
 	if _, err := testutil.ExecuteCommand(NewRootCmd(), "note", "update", "SUB-001/01", "--body", "new", "--dir", dir); err != nil {

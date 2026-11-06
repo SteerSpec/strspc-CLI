@@ -72,7 +72,7 @@ func TestRuleAddOverrides(t *testing.T) {
 	setupEntityFile(t, dir, "SAVACCT")
 
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "SAVACCT", "--body", "Withdrawals MUST be capped.",
-		"--added-by", "@alice", "--overrides", "dev.globalbank.core:ACCT-005", "--dir", dir)
+		"--added-by", "github:alice", "--overrides", "dev.globalbank.core:ACCT-005", "--dir", dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestRuleAddOverridesInvalid(t *testing.T) {
 	setupEntityFile(t, dir, "SAVACCT")
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "SAVACCT", "--body", "b",
-		"--added-by", "@alice", "--overrides", "acct-5", "--dir", dir)
+		"--added-by", "github:alice", "--overrides", "acct-5", "--dir", dir)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -101,7 +101,7 @@ func TestRuleAddOverridesInvalid(t *testing.T) {
 }
 
 func TestRuleSupersedeOverrides(t *testing.T) {
-	overriding := makeRule("SAVACCT-001", "I", "Old cap", "@alice")
+	overriding := makeRule("SAVACCT-001", "I", "Old cap", "github:alice")
 	target := "core:ACCT-005"
 	overriding.Overrides = &target
 
@@ -109,7 +109,7 @@ func TestRuleSupersedeOverrides(t *testing.T) {
 		dir := t.TempDir()
 		setupEntityFile(t, dir, "SAVACCT", overriding)
 		out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "supersede", "SAVACCT-001", "--body", "New cap",
-			"--added-by", "@bob", "--overrides", target, "--dir", dir)
+			"--added-by", "github:bob", "--overrides", target, "--dir", dir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -125,7 +125,7 @@ func TestRuleSupersedeOverrides(t *testing.T) {
 		dir := t.TempDir()
 		setupEntityFile(t, dir, "SAVACCT", overriding)
 		out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "supersede", "SAVACCT-001", "--body", "New cap",
-			"--added-by", "@bob", "--dir", dir)
+			"--added-by", "github:bob", "--dir", dir)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -141,7 +141,7 @@ func TestRuleSupersedeOverrides(t *testing.T) {
 func TestInheritanceFieldsSurviveRewrite(t *testing.T) {
 	dir := t.TempDir()
 	target := "core:ACCT-005"
-	r := makeRule("SAVACCT-001", "D", "Cap", "@alice")
+	r := makeRule("SAVACCT-001", "D", "Cap", "github:alice")
 	r.Overrides = &target
 	setupEntityFile(t, dir, "SAVACCT", r)
 	f := loadEntityFile(t, dir, "SAVACCT")

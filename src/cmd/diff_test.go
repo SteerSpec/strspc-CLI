@@ -25,7 +25,7 @@ func entityV1(euid string) []byte {
       "body": "Initial rule body.",
       "state": "D",
       "revision": 0,
-      "added_by": "@alice"
+      "added_by": "github:alice"
     }
   ],
   "notes": []
@@ -44,7 +44,7 @@ func entityV2Draft(euid string) []byte {
       "body": "Edited rule body.",
       "state": "D",
       "revision": 1,
-      "added_by": "@alice"
+      "added_by": "github:alice"
     }
   ],
   "notes": []
@@ -63,7 +63,7 @@ func entityV2Promote(euid string) []byte {
       "body": "Initial rule body.",
       "state": "P",
       "revision": 0,
-      "added_by": "@alice"
+      "added_by": "github:alice"
     }
   ],
   "notes": []
@@ -82,7 +82,7 @@ func entityV2InvalidEdit(euid string) []byte {
       "body": "EDITED after published — not allowed.",
       "state": "P",
       "revision": 0,
-      "added_by": "@alice"
+      "added_by": "github:alice"
     }
   ],
   "notes": []
@@ -286,8 +286,8 @@ func TestDiffStrictMode(t *testing.T) {
   "entity": {"id": "ENT", "title": "Test"},
   "rule_set": {"version": "0.1.0", "timestamp": "2026-01-01T00:00:00Z"},
   "rules": [
-    {"id": "ENT-001", "body": "Old rule.", "state": "P", "revision": 0, "added_by": "@alice"},
-    {"id": "ENT-002", "body": "New rule.", "state": "P", "revision": 0, "added_by": "@bob", "supersedes": "ENT-001"}
+    {"id": "ENT-001", "body": "Old rule.", "state": "P", "revision": 0, "added_by": "github:alice"},
+    {"id": "ENT-002", "body": "New rule.", "state": "P", "revision": 0, "added_by": "github:bob", "supersedes": "ENT-001"}
   ],
   "notes": []
 }`)
@@ -296,8 +296,8 @@ func TestDiffStrictMode(t *testing.T) {
   "entity": {"id": "ENT", "title": "Test"},
   "rule_set": {"version": "0.2.0", "timestamp": "` + time.Now().UTC().Format(time.RFC3339) + `"},
   "rules": [
-    {"id": "ENT-001", "body": "Old rule.", "state": "P", "revision": 0, "added_by": "@alice"},
-    {"id": "ENT-002", "body": "New rule.", "state": "I", "revision": 0, "added_by": "@bob", "supersedes": "ENT-001"}
+    {"id": "ENT-001", "body": "Old rule.", "state": "P", "revision": 0, "added_by": "github:alice"},
+    {"id": "ENT-002", "body": "New rule.", "state": "I", "revision": 0, "added_by": "github:bob", "supersedes": "ENT-001"}
   ],
   "notes": []
 }`)

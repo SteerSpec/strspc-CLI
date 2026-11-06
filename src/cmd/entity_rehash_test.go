@@ -21,7 +21,7 @@ func setupEntityFileHash(t *testing.T, dir, entityID string, hash *string) {
 		Schema:  "./_schema/entity.v1.schema.json",
 		Entity:  entity.Entity{ID: entityID, Title: "Test"},
 		RuleSet: entity.RuleSet{Version: "0.1.0", Timestamp: "2026-01-01T00:00:00Z", Hash: hash},
-		Rules:   []entity.Rule{makeRule(entityID+"-001", "D", "Rule", "@alice")},
+		Rules:   []entity.Rule{makeRule(entityID+"-001", "D", "Rule", "github:alice")},
 		Notes:   []entity.Note{},
 	}
 	data, err := json.MarshalIndent(f, "", "  ")
@@ -160,7 +160,7 @@ func TestEntityRehashHelp(t *testing.T) {
 
 func TestEntityRehashFillsSubEntityHashes(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Rule", "@alice"))
+	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Rule", "github:alice"))
 	// Null the sub-entity hash by hand, as a bulk import would leave it.
 	f := loadEntityFile(t, dir, "TST")
 	f.SubEntities[0].RuleSet.Hash = nil
@@ -195,7 +195,7 @@ func TestEntityRehashFillsSubEntityHashes(t *testing.T) {
 
 func TestEntityRehashFreshParentWithNullChildIsRewritten(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Rule", "@alice"))
+	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Rule", "github:alice"))
 	// Make the parent hash correct while the child hash is null: the
 	// contract is that the file is still rewritten to repair the child.
 	f := loadEntityFile(t, dir, "TST")

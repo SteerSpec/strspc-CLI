@@ -28,7 +28,7 @@ func withStandardNotes(body string, pairs ...[2]string) string {
 	notes := make([]string, 0, len(pairs))
 	for _, p := range pairs {
 		notes = append(notes, fmt.Sprintf(`{"id": "%s/01", "rule_ref": %q, "type": "standard",`+
-			` "content": %q, "added_by": "@test", "added_at": "2026-01-01", "revision": 0}`, p[0], p[0], p[1]))
+			` "content": %q, "added_by": "github:test", "added_at": "2026-01-01", "revision": 0}`, p[0], p[0], p[1]))
 	}
 	return strings.Replace(body, `"notes": []`, `"notes": [`+strings.Join(notes, ",")+`]`, 1)
 }
@@ -412,12 +412,12 @@ func TestRewritesKeepStandards(t *testing.T) {
 		},
 		{
 			"rule add", "TST.json",
-			[]string{"rule", "add", "TST", "--body", "A new rule MUST exist.", "--added-by", "@test"},
+			[]string{"rule", "add", "TST", "--body", "A new rule MUST exist.", "--added-by", "github:test"},
 			[]string{`"owasp.asvs"`, `"standard"`, "owasp.asvs:2.1.1"},
 		},
 		{
 			"note add", "TST.json",
-			[]string{"note", "add", "TST-001", "--type", "standard", "--body", "owasp.asvs:2.1.2", "--added-by", "@test"},
+			[]string{"note", "add", "TST-001", "--type", "standard", "--body", "owasp.asvs:2.1.2", "--added-by", "github:test"},
 			[]string{`"owasp.asvs"`, "owasp.asvs:2.1.1", "owasp.asvs:2.1.2"},
 		},
 	}
