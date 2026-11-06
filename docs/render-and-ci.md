@@ -2,6 +2,24 @@
 
 Back to the [README](../README.md).
 
+## Show rules
+
+`strspc rule show` prints rules looked up by ID or by entity, with their state, body and notes, so a
+prompt or a doc can name a rule instead of copying it. Like `refs`, it reads `.strspc/config.yaml` in
+the current directory and includes the realm dependencies it pins:
+
+```bash
+strspc rule show CMD-001                      # one rule
+strspc rule show CFG --state I,P              # an entity's own rules, narrowed by state
+strspc rule show dev.steerspec.core:ENT-001   # only in that realm
+strspc rule show CMD-001 CFG --json           # a JSON list
+```
+
+An unqualified ID resolves to the first source that holds it, the way `refs` resolves citations.
+`--state` narrows what an EUID selects; a rule named by its ID is shown whatever its state. A
+sub-entity is selected by its own EUID. If any argument matches nothing, nothing is printed and the
+command exits 1; a configuration or resolution error exits 2.
+
 ## Render rules
 
 ```bash

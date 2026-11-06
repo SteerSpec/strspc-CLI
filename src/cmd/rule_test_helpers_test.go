@@ -132,7 +132,7 @@ func TestSaveEntityDoesNotEscapeHTML(t *testing.T) {
 
 	body := "IS referenced as [<EUID>-NNN] and compared with a < b > c."
 	if _, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "TST",
-		"--body", body, "--added-by", "@alice", "--dir", dir); err != nil {
+		"--body", body, "--added-by", "github:alice", "--dir", dir); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -168,7 +168,7 @@ func TestSaveEntityDoesNotEscapeHTML(t *testing.T) {
 	if f.Rules[0].Body != body {
 		t.Errorf("body changed on parse: %q", f.Rules[0].Body)
 	}
-	if err := saveEntity(path, f); err != nil {
+	if err := replaceEntityFile(path, f); err != nil {
 		t.Fatal(err)
 	}
 	second, _ := os.ReadFile(path)

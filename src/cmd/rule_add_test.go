@@ -14,7 +14,7 @@ func TestRuleAddBasic(t *testing.T) {
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "add", "TST",
 		"--body", "The system MUST validate input",
-		"--added-by", "@alice",
+		"--added-by", "github:alice",
 		"--dir", dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -42,7 +42,7 @@ func TestRuleAddJSON(t *testing.T) {
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "add", "TST",
 		"--body", "Test rule",
-		"--added-by", "@bob",
+		"--added-by", "github:bob",
 		"--dir", dir,
 		"--json")
 	if err != nil {
@@ -64,7 +64,7 @@ func TestRuleAddJSON(t *testing.T) {
 func TestRuleAddMissingBody(t *testing.T) {
 	root := NewRootCmd()
 	_, err := testutil.ExecuteCommand(root, "rule", "add", "TST",
-		"--added-by", "@alice",
+		"--added-by", "github:alice",
 		"--dir", t.TempDir())
 	if err == nil {
 		t.Fatal("expected error for missing --body")
@@ -87,7 +87,7 @@ func TestRuleAddNoEntityFile(t *testing.T) {
 	root := NewRootCmd()
 	_, err := testutil.ExecuteCommand(root, "rule", "add", "NOPE",
 		"--body", "Test",
-		"--added-by", "@alice",
+		"--added-by", "github:alice",
 		"--dir", dir)
 	if err == nil {
 		t.Fatal("expected error for missing entity file")

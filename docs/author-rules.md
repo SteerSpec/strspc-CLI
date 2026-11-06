@@ -45,6 +45,11 @@ strspc entity rehash --all                                     # fix hashes afte
 **Sub-entities.** Rule commands accept a sub-entity EUID anywhere a top-level EUID is accepted: the
 CLI scans `sub_entities[]` of every entity file under `--dir` and refreshes the parent hash.
 
+**Symbolic links.** Commands never write through an entity file that is a symbolic link, since its
+target may lie outside `--dir`: rule, note and entity commands refuse it, and `entity rehash --all`
+and `realm rewrite-added-by` list it as skipped. Edit the target where it lives. Commands that only
+read, such as `entity standards list`, follow the link.
+
 **Superseding.** Rules that have left Draft are immutable, so `rule supersede` creates a Draft that
 replaces them. It leaves the original unchanged: when the new rule reaches Implemented, the old one
 must be Retired, or `strspc diff` warns (`RD006`). `rule retire` moves a rule from Implemented to
@@ -60,8 +65,9 @@ added, revised, or retyped to `reference` and back in any rule state, without ch
 **Contributors.** `--added-by` takes a contributor identifier, `<idp>:<login>` with `github` as the
 only provider (CTRB-001, CTRB-002). When the Realm lists `realm.contributors`, the value must name
 one of them (CTRB-005), and a sub-realm uses its parent's list (CTRB-006). An `@handle` or an email
-address is still accepted during the transition and matches the listed contributor it names.
-`strspc diff` reports a new rule or note by someone the Realm doesn't list (`RD023`, Info).
+address is refused; `realm rewrite-added-by` migrates files that still hold them, and `strspc lint`
+reports any left (`RL032`, an error). `strspc diff` fails on a new rule or note by someone the Realm
+doesn't list (`RD023`, an error).
 
 `realm contributor` edits the list, so realm.json is never edited by hand. A sub-realm's list is its
 parent's, so it is edited there:

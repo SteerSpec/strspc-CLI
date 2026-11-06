@@ -61,6 +61,10 @@ strspc refs --format github                    # annotations; --json for diagnos
 | RF006 | Draft | warning | error |
 | RF007 | No ID is cited: the text holds the whole body of a rule of five words or more, in any state | error | error |
 
+Text that copies the body of a rule instead of citing it, five words or more, is an error (RF007),
+whatever the rule's state. Cite the ID and look the rule up with `strspc rule show`. Committed
+`strspc render` output copies every body, so exclude it, for example with `--exclude 'docs/rules/**'`.
+
 The stored `<EUID>-<NNN>` form always matches, in text or code spans, and so does the realm's own
 rendered form. An unknown prefix is reported only when it is uppercase and starts with a letter, so
 <!-- strspc-refs: ignore -->

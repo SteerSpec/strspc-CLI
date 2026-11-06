@@ -18,13 +18,13 @@ func editEntityFile(t *testing.T, dir, entityID string, edit func(*entity.File))
 	t.Helper()
 	f := loadEntityFile(t, dir, entityID)
 	edit(f)
-	if err := saveEntity(filepath.Join(dir, entityID+".json"), f); err != nil {
+	if err := replaceEntityFile(filepath.Join(dir, entityID+".json"), f); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func standardNote(id, ruleRef, noteType, content string) entity.Note {
-	return entity.Note{ID: id, RuleRef: ruleRef, Type: noteType, Content: content, AddedBy: "@test", AddedAt: "2026-01-01"}
+	return entity.Note{ID: id, RuleRef: ruleRef, Type: noteType, Content: content, AddedBy: "github:test", AddedAt: "2026-01-01"}
 }
 
 func TestEntityStandardsAdd(t *testing.T) {
@@ -184,7 +184,7 @@ func TestEntityStandardsRemove(t *testing.T) {
 func TestEntityStandardsRemoveGuard(t *testing.T) {
 	setup := func(t *testing.T, noteType string) string {
 		dir := t.TempDir()
-		setupEntityFileWithSub(t, dir, "PARENT", "CHILD", makeRule("CHILD-001", "D", "MUST x.", "@test"))
+		setupEntityFileWithSub(t, dir, "PARENT", "CHILD", makeRule("CHILD-001", "D", "MUST x.", "github:test"))
 		editEntityFile(t, dir, "PARENT", func(f *entity.File) {
 			f.Entity.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}
 			sub := findSubEntity(f, "CHILD")
@@ -229,7 +229,7 @@ func TestEntityStandardsRemoveGuard(t *testing.T) {
 
 	t.Run("sub-entity removal is refused when only it declares", func(t *testing.T) {
 		dir := t.TempDir()
-		setupEntityFileWithSub(t, dir, "PARENT", "CHILD", makeRule("CHILD-001", "D", "MUST x.", "@test"))
+		setupEntityFileWithSub(t, dir, "PARENT", "CHILD", makeRule("CHILD-001", "D", "MUST x.", "github:test"))
 		editEntityFile(t, dir, "PARENT", func(f *entity.File) {
 			sub := findSubEntity(f, "CHILD")
 			sub.Entity.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}
@@ -286,7 +286,7 @@ func TestEntityStandardsRemoveGuardSubRealm(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		setupEntityFile(t, sub, "SYN", makeRule("SYN-001", "D", "MUST x.", "@test"))
+		setupEntityFile(t, sub, "SYN", makeRule("SYN-001", "D", "MUST x.", "github:test"))
 		editEntityFile(t, sub, "SYN", func(f *entity.File) {
 			f.Entity.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}
 			f.Notes = []entity.Note{standardNote("SYN-001/01", "SYN-001", entity.NoteTypeStandard, "owasp.asvs:V2.1")}

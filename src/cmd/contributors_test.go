@@ -63,14 +63,14 @@ func TestAuthoringChecksAddedBy(t *testing.T) {
 		wantErr        string // "" means accepted
 	}{
 		{"listed", "github:alice", ""},
-		{"listed", "@alice", ""},
-		{"listed", "alice@example.com", ""},
+		{"listed", "@alice", "CTRB-001"},
+		{"listed", "alice@example.com", "CTRB-001"},
 		{"listed", "github:BOB", ""},
 		{"listed", "github:carol", "CTRB-005"},
-		{"listed", "@carol", "CTRB-005"},
+		{"listed", "@carol", "CTRB-001"},
 		{"listed", "alice", "added_by"},
 		{"unlisted", "github:carol", ""},
-		{"no manifest", "@anyone", ""},
+		{"no manifest", "@anyone", "CTRB-001"},
 		{"no manifest", "gitlab:anyone", "CTRB-002"},
 		{"sub-realm alone", "github:alice", ""},
 		{"sub-realm alone", "github:carol", "CTRB-005"},
@@ -199,9 +199,9 @@ func manifestJSON(t *testing.T, id string, contributors []entity.Contributor, su
 	return data
 }
 
-// TestDiffContributors checks that diff reports RD023 (Info) for a new entry
-// naming none of the Realm's contributors, resolving the Realm of each file,
-// and that it does not fail the run.
+// TestDiffContributors checks that diff reports RD023, an error, for a new
+// entry naming none of the Realm's contributors, resolving the Realm of each
+// file.
 func TestDiffContributors(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -216,9 +216,9 @@ func TestDiffContributors(t *testing.T) {
 			"ENT.json", 1,
 		},
 		{
-			"listed new rule as a handle",
+			"listed new rule, login in another case",
 			map[string][]byte{"realm.json": manifestJSON(t, "dev.test", testContributors), "ENT.json": diffEntity("ENT", "0.1.0", "github:alice")},
-			map[string][]byte{"ENT.json": diffEntity("ENT", "0.2.0", "github:alice", "@bob")},
+			map[string][]byte{"ENT.json": diffEntity("ENT", "0.2.0", "github:alice", "github:Bob")},
 			"ENT.json", 0,
 		},
 		{
@@ -263,8 +263,11 @@ func TestDiffContributors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := gitRepoWith(t, tt.base, tt.head)
 			out, err := testutil.ExecuteCommand(NewRootCmd(), "diff", filepath.Join(repo, tt.target))
-			if err != nil {
+			if tt.want == 0 && err != nil {
 				t.Fatalf("unexpected error: %v\n%s", err, out)
+			}
+			if tt.want > 0 && err == nil {
+				t.Fatalf("want diff to fail on RD023, got no error:\n%s", out)
 			}
 			if got := strings.Count(out, "RD023"); got != tt.want {
 				t.Errorf("RD023 reported %d times, want %d:\n%s", got, tt.want, out)

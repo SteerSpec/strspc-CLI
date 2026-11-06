@@ -94,6 +94,7 @@ full data model.
 | `strspc rule retire` | Move a rule I→R or R→T |
 | `strspc rule abandon` | Abandon a Draft rule (D→A) |
 | `strspc rule supersede` | Create a Draft rule that supersedes a P, I or R rule |
+| `strspc rule show` | Print rules by ID or entity, from the configured sources and their dependencies |
 | `strspc note add` | Attach a typed note to a rule |
 | `strspc note update` | Revise a note in place; notes are never removed |
 | `strspc entity add` | Add a sub-entity under an existing entity |

@@ -12,7 +12,7 @@ func TestRuleAddSubEntityAutoDetect(t *testing.T) {
 	setupEntityFileWithSub(t, dir, "TST", "SUB")
 
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "SUB",
-		"--body", "Sub rule", "--added-by", "@alice", "--dir", dir)
+		"--body", "Sub rule", "--added-by", "github:alice", "--dir", dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestRuleAddSubEntityFlag(t *testing.T) {
 	setupEntityFileWithSub(t, dir, "TST", "SUB")
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "TST", "--sub-entity", "SUB",
-		"--body", "Sub rule", "--added-by", "@alice", "--dir", dir)
+		"--body", "Sub rule", "--added-by", "github:alice", "--dir", dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestRuleAddSubEntityFlagUnknown(t *testing.T) {
 	setupEntityFileWithSub(t, dir, "TST", "SUB")
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "TST", "--sub-entity", "NOPE",
-		"--body", "x", "--added-by", "@alice", "--dir", dir)
+		"--body", "x", "--added-by", "github:alice", "--dir", dir)
 	if err == nil {
 		t.Fatal("expected error for unknown sub-entity")
 	}
@@ -73,7 +73,7 @@ func TestRuleAddTopLevelUnchangedWithSubPresent(t *testing.T) {
 	setupEntityFileWithSub(t, dir, "TST", "SUB")
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "TST",
-		"--body", "Parent rule", "--added-by", "@alice", "--dir", dir)
+		"--body", "Parent rule", "--added-by", "github:alice", "--dir", dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestRuleAddUnknownEntityMentionsSubEntities(t *testing.T) {
 	setupEntityFileWithSub(t, dir, "TST", "SUB")
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "NOPE",
-		"--body", "x", "--added-by", "@alice", "--dir", dir)
+		"--body", "x", "--added-by", "github:alice", "--dir", dir)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -100,7 +100,7 @@ func TestRuleAddUnknownEntityMentionsSubEntities(t *testing.T) {
 
 func TestRulePromoteSubEntity(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Draft", "@alice"))
+	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Draft", "github:alice"))
 
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "promote", "SUB-001", "--dir", dir)
 	if err != nil {
@@ -121,7 +121,7 @@ func TestRulePromoteSubEntity(t *testing.T) {
 
 func TestRuleUpdateSubEntity(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Draft", "@alice"))
+	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Draft", "github:alice"))
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "update", "SUB-001", "--body", "New body", "--dir", dir)
 	if err != nil {
@@ -136,7 +136,7 @@ func TestRuleUpdateSubEntity(t *testing.T) {
 
 func TestRuleAbandonSubEntity(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Draft", "@alice"))
+	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Draft", "github:alice"))
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "abandon", "SUB-001", "--dir", dir)
 	if err != nil {
@@ -150,7 +150,7 @@ func TestRuleAbandonSubEntity(t *testing.T) {
 
 func TestRuleRetireSubEntity(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "I", "Impl", "@alice"))
+	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "I", "Impl", "github:alice"))
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "retire", "SUB-001", "--dir", dir)
 	if err != nil {
@@ -164,10 +164,10 @@ func TestRuleRetireSubEntity(t *testing.T) {
 
 func TestRuleSupersedeSubEntity(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "P", "Published", "@alice"))
+	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "P", "Published", "github:alice"))
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "supersede", "SUB-001",
-		"--body", "Replacement", "--added-by", "@bob", "--dir", dir)
+		"--body", "Replacement", "--added-by", "github:bob", "--dir", dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -200,11 +200,11 @@ func TestRulePromoteNestedSubEntityRefreshesAllAncestors(t *testing.T) {
 		Schema:  "./_schema/entity.v1.schema.json",
 		Entity:  entity.Entity{ID: "LEAF", Title: "Leaf", Parent: "SUB"},
 		RuleSet: entity.RuleSet{Version: "0.1.0", Timestamp: "2026-01-01T00:00:00Z"},
-		Rules:   []entity.Rule{makeRule("LEAF-001", "D", "Rule", "@alice")},
+		Rules:   []entity.Rule{makeRule("LEAF-001", "D", "Rule", "github:alice")},
 		Notes:   []entity.Note{},
 	}
 	f.SubEntities[0].SubEntities = append(f.SubEntities[0].SubEntities, leaf)
-	if err := saveEntity(resolveEntityPath(dir, "TST"), f); err != nil {
+	if err := replaceEntityFile(resolveEntityPath(dir, "TST"), f); err != nil {
 		t.Fatal(err)
 	}
 
@@ -238,13 +238,13 @@ func TestRuleAddSubEntityFlagWithNestedParent(t *testing.T) {
 		Rules:   []entity.Rule{},
 		Notes:   []entity.Note{},
 	})
-	if err := saveEntity(resolveEntityPath(dir, "TST"), f); err != nil {
+	if err := replaceEntityFile(resolveEntityPath(dir, "TST"), f); err != nil {
 		t.Fatal(err)
 	}
 
 	// The positional parent SUB is itself nested; --sub-entity LEAF must resolve.
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "SUB", "--sub-entity", "LEAF",
-		"--body", "Leaf rule", "--added-by", "@alice", "--dir", dir)
+		"--body", "Leaf rule", "--added-by", "github:alice", "--dir", dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestRuleAddSubEntityFlagWithNestedParent(t *testing.T) {
 
 	// A sub-entity that is not under the named parent is rejected.
 	if _, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "LEAF", "--sub-entity", "SUB",
-		"--body", "x", "--added-by", "@alice", "--dir", dir); err == nil {
+		"--body", "x", "--added-by", "github:alice", "--dir", dir); err == nil {
 		t.Error("expected an error when --sub-entity is not under the positional parent")
 	}
 }

@@ -87,7 +87,7 @@ const checkEntityJSON = `{
       "revision": 0,
       "state": "I",
       "body": "Exported functions must have a doc comment.",
-      "added_by": "@test",
+      "added_by": "github:test",
       "added_at": "2026-01-01",
       "supersedes": null
     },
@@ -96,7 +96,7 @@ const checkEntityJSON = `{
       "revision": 0,
       "state": "P",
       "body": "Errors must be wrapped with context.",
-      "added_by": "@test",
+      "added_by": "github:test",
       "added_at": "2026-01-01",
       "supersedes": null
     },
@@ -105,7 +105,7 @@ const checkEntityJSON = `{
       "revision": 0,
       "state": "D",
       "body": "Prefer early returns.",
-      "added_by": "@test",
+      "added_by": "github:test",
       "added_at": "2026-01-01",
       "supersedes": null
     },
@@ -114,7 +114,7 @@ const checkEntityJSON = `{
       "revision": 0,
       "state": "R",
       "body": "Use tabs.",
-      "added_by": "@test",
+      "added_by": "github:test",
       "added_at": "2026-01-01",
       "supersedes": null
     }
