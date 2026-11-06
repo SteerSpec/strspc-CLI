@@ -19,7 +19,7 @@
 `strspc` is the command-line tool, built on the [strspc-manager](https://github.com/SteerSpec/strspc-manager)
 engine, for engineers who keep behavioral rules as structured JSON next to the code they govern:
 it writes rule files with valid versions and hashes, validates them and their lifecycle, and asks an
-AI evaluator whether a code change complies, with authoring and validation running locally and no server.
+AI evaluator whether a code change complies, with authoring and validation running locally and no server of ours.
 
 **Status.** The [latest release](https://github.com/SteerSpec/strspc-CLI/releases/latest) is under the
 [Apache 2.0 licence](LICENSE). `strspc check` sends the diff to an AI provider: only Claude
