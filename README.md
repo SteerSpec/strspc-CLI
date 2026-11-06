@@ -6,69 +6,28 @@
 
 **Author, validate and enforce behavioral rules from the command line.**
 
-[![CI](https://github.com/SteerSpec/strspc-CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/SteerSpec/strspc-CLI/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/SteerSpec/strspc-CLI)](https://github.com/SteerSpec/strspc-CLI/releases)
-[![Go](https://img.shields.io/github/go-mod/go-version/SteerSpec/strspc-CLI)](go.mod)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/SteerSpec/strspc-CLI/ci.yml?label=CI&labelColor=161B22)](https://github.com/SteerSpec/strspc-CLI/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/SteerSpec/strspc-CLI?labelColor=161B22&color=161B22)](https://github.com/SteerSpec/strspc-CLI/releases)
+[![Go](https://img.shields.io/github/go-mod/go-version/SteerSpec/strspc-CLI?labelColor=161B22&color=161B22)](go.mod)
+[![License](https://img.shields.io/badge/License-Apache_2.0-161B22?labelColor=161B22)](LICENSE)
 
-[Architecture](#architecture) · [Install](#installation) · [Quick start](#quick-start) ·
-[Concepts](#concepts) · [Commands](#commands) · [Author rules](#author-rules) ·
-[Configure](#configure-a-project) · [Validate](#validate-rules) · [Check code](#check-code-changes) ·
-[Render](#render-rules) · [CI](#continuous-integration) · [Reference](#reference) ·
-[Work in progress](#work-in-progress) · [Development](#development) ·
-[Releases](#branching-and-releases)
+[Install](#installation) · [Quick start](#quick-start) · [Where to go](#where-to-go) ·
+[Architecture](#architecture) · [Concepts](#concepts) · [Commands](#commands) ·
+[Reference](#reference) · [Development](#development) · [Releases](#branching-and-releases) ·
+[Security](#security) · [Community](#community)
 
 </div>
 
-[SteerSpec](https://steerspec.dev) keeps behavioral rules as structured JSON, next to the code they
-govern. `strspc` wraps the [strspc-manager](https://github.com/SteerSpec/strspc-manager) engine: it
-writes rule files with valid versions and hashes, validates them and their lifecycle, and asks an AI
-evaluator whether a code change complies. Authoring and validation run locally, with no server.
+`strspc` is the command-line tool for engineers who keep behavioral rules as structured JSON next to
+the code they govern: it writes rule files with valid versions and hashes, validates them and their
+lifecycle, and asks an AI evaluator whether a code change complies. It wraps the
+[strspc-manager](https://github.com/SteerSpec/strspc-manager) engine, and authoring and validation
+run locally, with no server.
 
-The [Rule Manager specification](https://github.com/SteerSpec/strspc-manager/blob/main/docs/SPEC.md)
-(cited below as SPEC) is normative. Its principles shape how the CLI works:
-
-- **JSON is the source of truth.** Markdown is a rendered view.
-- **Rules are immutable after Draft.** A change to a later rule is a new rule that supersedes it.
-- **Enforcement is AI by default.** Rules are natural language read by an LLM; static checks are an
-  optimization.
-- **Severity belongs to the consumer.** A project's `fail_on` decides which violations block a merge.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    R["<b>strspc-rules</b><br/>rule format and schemas"]
-    M["<b>strspc-manager</b><br/>enforcement engine"]
-    C["<b>strspc-CLI</b><br/>command line"]
-    K["<b>strspc-cloud</b><br/>hosted service, planned"]
-
-    R -->|consumed by| M
-    M -->|imported by| C
-    M -.->|imported by| K
-
-    classDef here fill:#1a7f37,stroke:#1a7f37,color:#ffffff
-    classDef shipped fill:#1f6feb,stroke:#1f6feb,color:#ffffff
-    classDef planned fill:#6e7781,stroke:#6e7781,color:#ffffff
-    class C here
-    class R,M shipped
-    class K planned
-```
-
-Dependencies point one way, and releases land in the same order. Rule logic lives in the manager;
-the CLI presents its results. [strspc-spec](https://github.com/SteerSpec/strspc-spec) holds the rules
-that govern these tiers, and this repository owns the `dev.steerspec.cli` realm in [`rules/`](rules)
-(`CFG`, `CMD`, `CONV`), which pins `dev.steerspec.core` in [`rules/realm.json`](rules/realm.json).
-
-| Command | Manager modules (SPEC §6.2) |
-| ------- | --------------------------- |
-| `strspc lint` | `rule-lint` |
-| `strspc diff` | `rule-diff` |
-| `strspc realm validate` | `realm-lint`, `rule-lint`, `remote` |
-| `strspc render` | `rule-render`, plus `realm-resolve` for an entity that declares `inherits` |
-| `strspc sync` | `rule-resolve`, `remote` |
-| `strspc check` | `rule-resolve`, `realm-resolve`, `remote`, `rule-eval`, `eval-cache` |
-| `strspc realm dep upgrade` | `remote`, then the `realm validate` checks |
+**Status.** The [latest release](https://github.com/SteerSpec/strspc-CLI/releases/latest) is under the
+[Apache 2.0 licence](LICENSE). `strspc check` sends the diff to an AI provider: only Claude
+is implemented, and it needs an `ANTHROPIC_API_KEY` (see [Work in progress](#work-in-progress)). The
+hosted service, `strspc-cloud`, is planned and not available.
 
 ## Installation
 
@@ -95,7 +54,7 @@ The composite action installs a release for the runner and verifies its checksum
 ```yaml
 - uses: SteerSpec/strspc-CLI/.github/actions/setup-strspc@main
   with:
-    version: "1.28.0"       # or "latest" (the default)
+    version: "1.36.0"       # or "latest" (the default)
 - run: strspc version
 ```
 
@@ -133,6 +92,72 @@ ANTHROPIC_API_KEY=... strspc check
 
 Add `./rules/` to `.strspc/config.yaml` to [evaluate your own realm](#configure-a-project).
 
+## Where to go
+
+| I want to | Go to |
+| --------- | ----- |
+| Install `strspc` | [Installation](#installation) |
+| Write and promote my first rule | [Quick start](#quick-start), [Author rules](#author-rules) |
+| Understand entities, rules and realms | [Concepts](#concepts) |
+| Find a command | [Commands](#commands) |
+| Configure a project | [Configure a project](#configure-a-project) |
+| Validate rules and their lifecycle | [Validate rules](#validate-rules) |
+| Check that docs cite live rules | [Validate rule citations](#validate-rule-citations) |
+| Check a code change against my rules | [Check code changes](#check-code-changes) |
+| Run SteerSpec in CI | [Continuous integration](#continuous-integration) |
+| Diagnose my setup | [Diagnose problems](#diagnose-problems) |
+| Map rules to an external standard | [Report coverage of a standard](#report-coverage-of-a-standard) |
+| Look up an environment variable or schema URL | [Reference](#reference) |
+| Contribute or release | [Development](#development), [Branching and releases](#branching-and-releases) |
+| Report a vulnerability | [Security](#security) |
+
+## Architecture
+
+The [Rule Manager specification](https://github.com/SteerSpec/strspc-manager/blob/v1.41.0/docs/SPEC.md)
+(cited below as SPEC, at v1.41.0, the manager version this CLI imports) is normative. Its principles
+shape how the CLI works:
+
+- **JSON is the source of truth.** Markdown is a rendered view.
+- **Rules are immutable after Draft.** A change to a later rule is a new rule that supersedes it.
+- **Enforcement is AI by default.** Rules are natural language read by an LLM; static checks are an
+  optimization.
+- **Severity belongs to the consumer.** A project's `fail_on` decides which violations block a merge.
+
+```mermaid
+flowchart LR
+    R["<b>strspc-rules</b><br/>rule format and schemas"]
+    M["<b>strspc-manager</b><br/>enforcement engine"]
+    C["<b>strspc-CLI</b><br/>command line"]
+    K["<b>strspc-cloud</b><br/>hosted service, planned"]
+
+    R -->|consumed by| M
+    M -->|imported by| C
+    M -.->|imported by| K
+
+    classDef here fill:#3FB950,stroke:#3FB950,color:#0D1117
+    classDef shipped fill:#161B22,stroke:#A0A8B1,color:#E6EDF3
+    classDef planned fill:#0D1117,stroke:#6E7681,color:#A0A8B1,stroke-dasharray:5 5
+    class C here
+    class R,M shipped
+    class K planned
+```
+
+Dependencies point one way, and releases land in the same order. Rule logic lives in the manager;
+the CLI presents its results. [strspc-spec](https://github.com/SteerSpec/strspc-spec) holds the rules
+that govern these tiers, and this repository owns the `dev.steerspec.cli` realm in [`rules/`](rules)
+(`CFG`, `CMD`, `CONV`), which pins `dev.steerspec.core` in [`rules/realm.json`](rules/realm.json).
+
+| Command | Manager modules (SPEC §6.2) |
+| ------- | --------------------------- |
+| `strspc lint` | `rule-lint` |
+| `strspc diff` | `rule-diff` |
+| `strspc realm validate` | `realm-lint`, `rule-lint`, `remote` |
+| `strspc render` | `rule-render`, plus `realm-resolve` for an entity that declares `inherits` |
+| `strspc sync` | `rule-resolve`, `remote` |
+| `strspc check` | `rule-resolve`, `realm-resolve`, `remote`, `rule-eval`, `eval-cache` |
+| `strspc refs` | `rule-refs`, `realm-resolve` |
+| `strspc realm dep upgrade` | `remote`, then the `realm validate` checks |
+
 ## Concepts
 
 | Concept | What it is |
@@ -144,7 +169,7 @@ Add `./rules/` to `.strspc/config.yaml` to [evaluate your own realm](#configure-
 | **Realm** | A namespace of entities in a directory with a `realm.json` manifest and `_schema/`. Its ID is in reverse domain notation (`com.acme.app`) |
 | **Configuration** | A project's `.strspc/config.yaml`: the rules it consumes and how they are enforced |
 
-See SPEC [§2](https://github.com/SteerSpec/strspc-manager/blob/main/docs/SPEC.md#2-data-model) for the
+See SPEC [§2](https://github.com/SteerSpec/strspc-manager/blob/v1.41.0/docs/SPEC.md#2-data-model) for the
 full data model.
 
 ## Commands
@@ -207,16 +232,16 @@ flowchart LR
     R -->|rule retire| T
     D -->|rule abandon| A
 
-    classDef draft fill:#6e7781,stroke:#6e7781,color:#ffffff
-    classDef published fill:#1f6feb,stroke:#1f6feb,color:#ffffff
-    classDef implemented fill:#1a7f37,stroke:#1a7f37,color:#ffffff
+    classDef draft fill:#161B22,stroke:#6E7681,color:#A0A8B1
+    classDef published fill:#161B22,stroke:#A0A8B1,color:#E6EDF3
+    classDef implemented fill:#3FB950,stroke:#3FB950,color:#0D1117
     class D,A,R,T draft
     class P published
     class I implemented
 ```
 
 Transitions are forward-only and no state may be skipped
-([SPEC §3](https://github.com/SteerSpec/strspc-manager/blob/main/docs/SPEC.md#3-rule-lifecycle)).
+([SPEC §3](https://github.com/SteerSpec/strspc-manager/blob/v1.41.0/docs/SPEC.md#3-rule-lifecycle)).
 Every change bumps the rule set version: minor when a rule is promoted or retired, patch otherwise.
 
 ```bash
@@ -289,7 +314,7 @@ force on the replacement rule.
 ### Realms and dependencies
 
 `strspc realm init` creates `realm.json` and vendors the schemas in `_schema/`
-([SPEC §2.8](https://github.com/SteerSpec/strspc-manager/blob/main/docs/SPEC.md#28-realm)). Non-core
+([SPEC §2.8](https://github.com/SteerSpec/strspc-manager/blob/v1.41.0/docs/SPEC.md#28-realm)). Non-core
 realms should depend on `dev.steerspec.core`, as in the [quick start](#quick-start).
 
 ```bash
@@ -327,7 +352,7 @@ a branch or a commit SHA, are skipped. See [GitHub sources](#github-sources) for
 `strspc init` writes `.strspc/config.yaml` and a `.strspc/.gitignore` that keeps `cache.db` and
 `cache/` out of version control. Pass `--provider null` for an offline setup without an API key, and
 `--force` to overwrite. This example adds a local realm to the generated config
-([SPEC §2.9](https://github.com/SteerSpec/strspc-manager/blob/main/docs/SPEC.md#29-configuration)):
+([SPEC §2.9](https://github.com/SteerSpec/strspc-manager/blob/v1.41.0/docs/SPEC.md#29-configuration)):
 
 ```yaml
 rules:
@@ -368,7 +393,7 @@ fail_on:
 
 ```text
 $ strspc status
-SteerSpec CLI 1.34.0
+SteerSpec CLI 1.36.0
 
 Config: .strspc/config.yaml
   Evaluator: claude
@@ -399,10 +424,10 @@ failure comes with the command that fixes it:
 
 ```text
 $ strspc doctor
-strspc doctor v1.42.0
+strspc doctor v1.36.0
 
 install
-  ✓ version    v1.42.0
+  ✓ version    v1.36.0
   ⚠ path       /usr/local/bin/strspc comes first on PATH, not this binary (/Users/me/go/bin/strspc)
                → remove /usr/local/bin/strspc, or put /Users/me/go/bin before it on PATH
 ...
@@ -610,8 +635,9 @@ strspc check --static-only                     # resolve sources, verify hashes 
 ```
 
 These implement the checks of
-[SPEC §7](https://github.com/SteerSpec/strspc-manager/blob/main/docs/SPEC.md#7-cicd-workflows). All
-but `check` take `--strict`, which treats warnings as errors, and `--json`. `lint --cross-ref` adds
+[SPEC §7](https://github.com/SteerSpec/strspc-manager/blob/v1.41.0/docs/SPEC.md#7-cicd-workflows). `lint`,
+`realm validate` and `diff` take `--strict`, which treats warnings as errors, and `--json`; `check`
+takes `--format json`. `lint --cross-ref` adds
 cross-file reference checks in directory mode. `diff` exits 0 when all checks pass and 1 on a
 violation.
 
@@ -655,6 +681,7 @@ strspc refs --format github                    # annotations; --json for diagnos
 | RF004 | Draft, Published or Implemented, replaced by a rule in I, R or T | error | error |
 | RF005 | Draft, Published or Implemented, replaced by a Published rule | warning | error |
 | RF006 | Draft | warning | error |
+| RF007 | No ID is cited: the text holds the whole body of a rule of five words or more, in any state | error | error |
 
 The stored `<EUID>-<NNN>` form always matches, in text or code spans, and so does the realm's own
 rendered form. An unknown prefix is reported only when it is uppercase and starts with a letter, so
@@ -730,7 +757,7 @@ never evaluated. The check only writes inside `.strspc/` (`cache/`, `cache.db`).
 ### How evaluation works
 
 The flow follows
-[SPEC §8.3](https://github.com/SteerSpec/strspc-manager/blob/main/docs/SPEC.md#83-evaluation-flow):
+[SPEC §8.3](https://github.com/SteerSpec/strspc-manager/blob/v1.41.0/docs/SPEC.md#83-evaluation-flow):
 
 1. Resolve the rule sources and collect the rules in `evaluate_on` states.
 2. Collect the diff. An empty diff ends evaluation with `RE004`.
@@ -799,7 +826,7 @@ strspc render rules/CFG.json --template my.md.tmpl  # custom Go template
 Rule identifiers follow the `rule_identifier_format` of the realm that owns the entity file (the
 nearest `realm.json`; for a sub-realm, its parent's format). Without one, the RLIFRMT defaults apply,
 as in `[ENT-001.0/D]`. Only the rendered form changes, never the stored ID
-([SPEC §4](https://github.com/SteerSpec/strspc-manager/blob/main/docs/SPEC.md#4-rule-identifier-format)).
+([SPEC §4](https://github.com/SteerSpec/strspc-manager/blob/v1.41.0/docs/SPEC.md#4-rule-identifier-format)).
 
 An entity that declares `inherits` gets an "Inherited rules" section listing the rules it inherits,
 with their owner and state, and which of its own rules overrides them. `--json` adds them as an
@@ -883,7 +910,7 @@ Outside those workflows, run the CLI through the [setup action](#installation):
 ### GitHub sources
 
 Rule sources and realm dependencies can point at a directory of a GitHub repository
-([SPEC §6.4](https://github.com/SteerSpec/strspc-manager/blob/main/docs/SPEC.md#64-remote-sources-github)):
+([SPEC §6.4](https://github.com/SteerSpec/strspc-manager/blob/v1.41.0/docs/SPEC.md#64-remote-sources-github)):
 
 ```text
 github://<owner>/<repo>@<ref>[/<path>]
@@ -903,6 +930,7 @@ through the GitHub tarball API and cached under `.strspc/cache/`.
 | -------- | -------- |
 | `ANTHROPIC_API_KEY` | The Claude evaluator |
 | `STRSPC_EVALUATOR_ENDPOINT` | Opt in to a non-Anthropic endpoint |
+| `STRSPC_ADDED_BY` | Default for `--added-by` in `rule add`, `note add` and `rule supersede` |
 | `GITHUB_TOKEN`, then `GH_TOKEN` | Private `github://` sources and higher rate limits |
 | `STRSPC_TOKEN_OWNERS` | Comma-separated owners who may also receive the GitHub token |
 | `GITHUB_REPOSITORY_OWNER` | Owner who may receive the GitHub token; set in GitHub Actions |
@@ -917,7 +945,7 @@ through the GitHub tarball API and cached under `.strspc/cache/`.
 ### Diagnostic codes
 
 Every code the manager emits (`RL`, `RD`, `RM`, `RR`, `RSV`, `RE`, `EC`, `RF`) is listed in
-[SPEC §6.3](https://github.com/SteerSpec/strspc-manager/blob/main/docs/SPEC.md#63-diagnostic-codes).
+[SPEC §6.3](https://github.com/SteerSpec/strspc-manager/blob/v1.41.0/docs/SPEC.md#63-diagnostic-codes).
 The CLI adds two warnings of its own, `CHK002` and `CHK003`, described under
 [check](#check-code-changes). `strspc explain` covers all of them.
 
@@ -1008,6 +1036,19 @@ END_COMMIT_OVERRIDE
 
 release-please reads that block in place of the promotion's merge commit, so list each skipped
 commit, one per paragraph, ending in its `(#<pr>)`.
+
+## Security
+
+Report a vulnerability privately: on this repository, go to **Security**, then **Report a
+vulnerability**, or open the [advisory form](https://github.com/SteerSpec/strspc-CLI/security/advisories/new).
+Do not open a public issue, discussion or pull request for a security problem. The
+[SteerSpec security policy](https://github.com/SteerSpec/.github/blob/main/SECURITY.md) covers
+supported versions and what happens after a report.
+
+## Community
+
+Participation follows the [SteerSpec code of conduct](https://github.com/SteerSpec/.github/blob/main/CODE_OF_CONDUCT.md).
+To contribute, read the [contributing guide](https://github.com/SteerSpec/.github/blob/main/CONTRIBUTING.md).
 
 ## License
 
