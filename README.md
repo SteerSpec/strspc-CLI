@@ -116,7 +116,8 @@ Add `./rules/` to `.strspc/config.yaml` to [evaluate your own realm](#configure-
 ## Architecture
 
 The [Rule Manager specification](https://github.com/SteerSpec/strspc-manager/blob/v1.41.0/docs/SPEC.md)
-(cited below as SPEC, at v1.41.0, the manager version this CLI imports) is normative. Its principles
+(cited below as SPEC, at v1.41.0, the manager version this CLI imports) is a draft that this CLI
+follows. Its principles
 shape how the CLI works:
 
 - **JSON is the source of truth.** Markdown is a rendered view.
@@ -157,7 +158,7 @@ that govern these tiers, and this repository owns the `dev.steerspec.cli` realm 
 | `strspc render` | `rule-render`, plus `realm-resolve` for an entity that declares `inherits` |
 | `strspc sync` | `rule-resolve`, `remote` |
 | `strspc check` | `rule-resolve`, `realm-resolve`, `remote`, `rule-eval`, `eval-cache` |
-| `strspc refs` | `rule-refs`, `realm-resolve` |
+| `strspc refs` | `rule-refs`, `rule-resolve`, `realm-resolve`, `remote` |
 | `strspc realm dep upgrade` | `remote`, then the `realm validate` checks |
 
 ## Concepts
@@ -1000,7 +1001,7 @@ strspc-CLI/
 └── .github/actions/setup-strspc/
 ```
 
-See the [SteerSpec contributing guide](https://github.com/SteerSpec/.github/blob/main/CONTRIBUTING.md).
+See the [SteerSpec contributing guide](https://github.com/SteerSpec/.github/blob/v1.2.0/CONTRIBUTING.md).
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/), as
 `<type>(<scope>): <description>`. The types are `feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
 `test`, `build`, `ci`, `chore` and `revert`.
@@ -1044,13 +1045,13 @@ commit, one per paragraph, ending in its `(#<pr>)`.
 Report a vulnerability privately: on this repository, go to **Security**, then **Report a
 vulnerability**, or open the [advisory form](https://github.com/SteerSpec/strspc-CLI/security/advisories/new).
 Do not open a public issue, discussion or pull request for a security problem. The
-[SteerSpec security policy](https://github.com/SteerSpec/.github/blob/main/SECURITY.md) covers
+[SteerSpec security policy](https://github.com/SteerSpec/.github/blob/v1.2.0/SECURITY.md) covers
 supported versions and what happens after a report.
 
 ## Community
 
-Participation follows the [SteerSpec code of conduct](https://github.com/SteerSpec/.github/blob/main/CODE_OF_CONDUCT.md).
-To contribute, read the [contributing guide](https://github.com/SteerSpec/.github/blob/main/CONTRIBUTING.md).
+Participation follows the [SteerSpec code of conduct](https://github.com/SteerSpec/.github/blob/v1.2.0/CODE_OF_CONDUCT.md).
+To contribute, read the [contributing guide](https://github.com/SteerSpec/.github/blob/v1.2.0/CONTRIBUTING.md).
 
 ## License
 
