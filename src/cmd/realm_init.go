@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,20 +12,24 @@ import (
 	"time"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/remote"
 	"github.com/spf13/cobra"
 )
 
-// schemaBaseURL is the base URL for fetching schemas. Package-level so tests can override it.
-var schemaBaseURL = "https://steerspec.dev/schemas"
+// schemaBaseURL is the raw-content root schemas are fetched from, as
+// <schemaBaseURL>/<core tag>/<schemaPath>/<file>. Package-level so tests can override it.
+var schemaBaseURL = "https://raw.githubusercontent.com/SteerSpec/strspc-rules"
 
-// schemaFiles maps remote schema paths to local filenames under _schema/.
+// schemaPath is the directory holding the schemas inside the strspc-rules repository.
+const schemaPath = "rules/core/_schema"
+
+// schemaFiles lists the schemas vendored under _schema/ (same names upstream).
 var schemaFiles = []struct {
-	remote string // path under schemaBaseURL
-	local  string // filename under _schema/
+	local string
 }{
-	{"entity/bootstrap.json", "bootstrap.schema.json"},
-	{"entity/v1.json", "entity.v1.schema.json"},
-	{"realm/v1.json", "realm.v1.schema.json"},
+	{"bootstrap.schema.json"},
+	{"entity.v1.schema.json"},
+	{"realm.v1.schema.json"},
 }
 
 // realmJSON is the structure written to realm.json.
@@ -110,6 +115,7 @@ func newRealmInitCmd() *cobra.Command {
 		dir     string
 		force   bool
 		deps    []string
+		core    string
 	)
 
 	cmd := &cobra.Command{
@@ -168,7 +174,11 @@ func newRealmInitCmd() *cobra.Command {
 				return fmt.Errorf("creating _schema/: %w", err)
 			}
 
-			if err := fetchSchemas(schemaDir); err != nil {
+			tag, err := resolveSchemaTag(cmd.Context(), core, realmDeps)
+			if err != nil {
+				return err
+			}
+			if err := fetchSchemas(schemaDir, tag); err != nil {
 				return err
 			}
 
@@ -217,6 +227,7 @@ func newRealmInitCmd() *cobra.Command {
 	cmd.Flags().StringVar(&title, "title", "", "realm title")
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "target directory")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing realm")
+	cmd.Flags().StringVar(&core, "core-version", "", "dev.steerspec.core release to vendor schemas from (default: the dev.steerspec.core dependency, else the latest release)")
 	cmd.Flags().StringArrayVar(&deps, "dependency", nil, "realm dependency (format: realm_id@version[=source])")
 
 	return cmd
@@ -224,34 +235,68 @@ func newRealmInitCmd() *cobra.Command {
 
 var schemaHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
-func fetchSchemas(schemaDir string) error {
+// coreTag turns a core version ("1.17.1" or "v1.17.1") into its release tag.
+func coreTag(version string) (string, error) {
+	v := strings.TrimPrefix(strings.TrimSpace(version), "v")
+	if !semverPattern.MatchString(v) {
+		return "", fmt.Errorf("invalid core version %q: must be SemVer, e.g. 1.17.1", version)
+	}
+	return "v" + v, nil
+}
+
+// resolveSchemaTag picks the strspc-rules release tag the schemas are fetched
+// from: the explicit version if given, else the realm's dev.steerspec.core
+// dependency, else the latest release.
+func resolveSchemaTag(ctx context.Context, explicit string, deps []entity.RealmDep) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if explicit != "" {
+		return coreTag(explicit)
+	}
+	for _, d := range deps {
+		if d.RealmID == coreRealmID {
+			return coreTag(d.Version)
+		}
+	}
+	ref := remote.Ref{Owner: "SteerSpec", Repo: "strspc-rules"}
+	tag, err := latestReleaseTag(ctx, ref, remote.TokenForOwner(ref.Owner))
+	if err != nil {
+		return "", fmt.Errorf("resolving core version for schemas (pass --core-version to pin one): %w", err)
+	}
+	return coreTag(tag)
+}
+
+func fetchSchemas(schemaDir, tag string) error {
 	for _, sf := range schemaFiles {
-		if err := fetchSchema(schemaDir, sf.remote, sf.local); err != nil {
+		if err := fetchSchema(schemaDir, tag, sf.local); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func fetchSchema(schemaDir, remote, local string) error {
-	url := schemaBaseURL + "/" + remote
+func fetchSchema(schemaDir, tag, local string) error {
+	url := schemaBaseURL + "/" + tag + "/" + schemaPath + "/" + local
 	outPath := filepath.Join(schemaDir, local)
 
-	resp, err := schemaHTTPClient.Get(url) //nolint:gosec // URL is a compile-time constant
+	resp, err := schemaHTTPClient.Get(url) //nolint:gosec // tag is validated SemVer; host is a constant
 	if err != nil {
-		return fmt.Errorf("fetching schema %s: %w", remote, err)
+		return fmt.Errorf("fetching schema %s@%s: %w", local, tag, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("fetching schema %s: HTTP %d", remote, resp.StatusCode)
+		return fmt.Errorf("fetching schema %s@%s: HTTP %d", local, tag, resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("reading schema %s: %w", remote, err)
+		return fmt.Errorf("reading schema %s: %w", local, err)
 	}
 
+	// Written verbatim: RM015 requires _schema/ to match core's copies, so any
+	// version marker has to come from the core release itself.
 	return os.WriteFile(outPath, body, 0o644)
 }
 

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,17 +12,22 @@ import (
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/remote"
 )
 
 // setupSchemaServer starts a test HTTP server that serves fake schema files
 // and sets schemaBaseURL to point to it, registering cleanup via t.Cleanup.
-func setupSchemaServer(t *testing.T) {
+//
+// The latest release is stubbed as testLatestCoreTag; the returned slice holds
+// the core tag of every schema request, in order.
+func setupSchemaServer(t *testing.T) *[]string {
 	t.Helper()
+	var tags []string
 	mux := http.NewServeMux()
 	for _, sf := range schemaFiles {
 		contentCopy := fmt.Sprintf(`{"$id": "test-%s"}`, sf.local)
-		remoteCopy := sf.remote
-		mux.HandleFunc("/"+remoteCopy, func(w http.ResponseWriter, _ *http.Request) {
+		mux.HandleFunc("/{tag}/"+schemaPath+"/"+sf.local, func(w http.ResponseWriter, r *http.Request) {
+			tags = append(tags, r.PathValue("tag"))
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(contentCopy))
 		})
@@ -32,6 +38,76 @@ func setupSchemaServer(t *testing.T) {
 	original := schemaBaseURL
 	schemaBaseURL = server.URL
 	t.Cleanup(func() { schemaBaseURL = original })
+
+	latest := latestReleaseTag
+	latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) { return testLatestCoreTag, nil }
+	t.Cleanup(func() { latestReleaseTag = latest })
+	return &tags
+}
+
+const testLatestCoreTag = "v9.9.9"
+
+// TestRealmInitFetchesSchemasFromPinnedCoreTag also checks the files are
+// written verbatim: RM015 requires _schema/ to match core's copies.
+func TestRealmInitFetchesSchemasFromPinnedCoreTag(t *testing.T) {
+	tags := setupSchemaServer(t)
+	target := filepath.Join(t.TempDir(), "rules")
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo", "--core-version", "1.17.1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(*tags) != len(schemaFiles) {
+		t.Errorf("got %d schema requests, want %d", len(*tags), len(schemaFiles))
+	}
+	for _, sf := range schemaFiles {
+		got, err := os.ReadFile(filepath.Join(target, "_schema", sf.local))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := fmt.Sprintf(`{"$id": "test-%s"}`, sf.local); string(got) != want {
+			t.Errorf("%s = %q, want upstream bytes %q", sf.local, got, want)
+		}
+	}
+	for _, tag := range *tags {
+		if tag != "v1.17.1" {
+			t.Errorf("fetched from tag %q, want v1.17.1", tag)
+		}
+	}
+}
+
+func TestRealmInitSchemaTagFromCoreDependency(t *testing.T) {
+	tags := setupSchemaServer(t)
+	target := filepath.Join(t.TempDir(), "rules")
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo", "--dependency", "dev.steerspec.core@1.2.3"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(*tags) == 0 || (*tags)[0] != "v1.2.3" {
+		t.Errorf("tags = %v, want v1.2.3 from the core dependency", *tags)
+	}
+}
+
+func TestRealmInitSchemaTagDefaultsToLatestRelease(t *testing.T) {
+	tags := setupSchemaServer(t)
+	target := filepath.Join(t.TempDir(), "rules")
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(*tags) == 0 || (*tags)[0] != testLatestCoreTag {
+		t.Errorf("tags = %v, want %s", *tags, testLatestCoreTag)
+	}
+}
+
+func TestRealmInitRejectsBadCoreVersion(t *testing.T) {
+	setupSchemaServer(t)
+	target := filepath.Join(t.TempDir(), "rules")
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo", "--core-version", "../evil")
+	if err == nil {
+		t.Fatal("expected error for a non-SemVer core version")
+	}
+	testutil.AssertContains(t, err.Error(), "invalid core version")
 }
 
 func TestRealmInitCreatesRealm(t *testing.T) {

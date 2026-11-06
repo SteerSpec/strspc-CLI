@@ -110,6 +110,11 @@ force on the replacement rule.
 ([SPEC §2.8](https://github.com/SteerSpec/strspc-manager/blob/v1.42.0/docs/SPEC.md#28-realm)). Non-core
 realms should depend on `dev.steerspec.core`, as in the [quick start](../README.md#quick-start).
 
+The schemas are copied unchanged from the `dev.steerspec.core` release tag in `strspc-rules`: the
+`--core-version` you pass, else the core dependency's version, else the latest release. Since core
+release 1.20.0 each file carries its release as a top-level `x-steerspec-core-version`. Copies of
+older releases have no such field.
+
 ```bash
 strspc realm dep add com.acme.shared@1.0.0=../shared
 strspc realm dep list
