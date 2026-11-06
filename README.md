@@ -18,11 +18,10 @@
 
 </div>
 
-`strspc` is the command-line tool for engineers who keep behavioral rules as structured JSON next to
-the code they govern: it writes rule files with valid versions and hashes, validates them and their
-lifecycle, and asks an AI evaluator whether a code change complies. It wraps the
-[strspc-manager](https://github.com/SteerSpec/strspc-manager) engine, and authoring and validation
-run locally, with no server.
+`strspc` is the command-line tool, built on the [strspc-manager](https://github.com/SteerSpec/strspc-manager)
+engine, for engineers who keep behavioral rules as structured JSON next to the code they govern:
+it writes rule files with valid versions and hashes, validates them and their lifecycle, and asks an
+AI evaluator whether a code change complies, with authoring and validation running locally and no server.
 
 **Status.** The [latest release](https://github.com/SteerSpec/strspc-CLI/releases/latest) is under the
 [Apache 2.0 licence](LICENSE). `strspc check` sends the diff to an AI provider: only Claude
@@ -104,7 +103,10 @@ Add `./rules/` to `.strspc/config.yaml` to [evaluate your own realm](#configure-
 | Validate rules and their lifecycle | [Validate rules](#validate-rules) |
 | Check that docs cite live rules | [Validate rule citations](#validate-rule-citations) |
 | Check a code change against my rules | [Check code changes](#check-code-changes) |
+| Render rules to Markdown | [Render rules](#render-rules) |
+| Understand a diagnostic code | [Understand a diagnostic](#understand-a-diagnostic) |
 | Run SteerSpec in CI | [Continuous integration](#continuous-integration) |
+| See what is not implemented yet | [Work in progress](#work-in-progress) |
 | Diagnose my setup | [Diagnose problems](#diagnose-problems) |
 | Map rules to an external standard | [Report coverage of a standard](#report-coverage-of-a-standard) |
 | Look up an environment variable or schema URL | [Reference](#reference) |
@@ -549,7 +551,7 @@ when:
 
 A baseline that can't be read or parsed exits 2. The comparison comes from strspc-manager
 ([strspc-manager#269](https://github.com/SteerSpec/strspc-manager/issues/269)), so the CLI, the pull
-request review and the cloud dashboard share one definition of a regression.
+request review and the planned cloud dashboard share one definition of a regression.
 
 In GitHub Actions, a push to `develop` records the baseline, and a pull request into `develop` is
 gated against the latest one. A pull request into another branch would need that branch's own
