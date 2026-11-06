@@ -120,6 +120,9 @@ Add `./rules/` to `.strspc/config.yaml` to
 
 Open source software by Consulare.
 
+Consulare is the copyright holder named in the [NOTICE](NOTICE) file, and the code is licensed under
+the [Apache 2.0 licence](LICENSE).
+
 ### Development
 
 Build, test and commit conventions are in [Development](docs/development.md), and the

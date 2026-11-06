@@ -16,7 +16,7 @@ make install-hooks  # install conventional commits git hook
 
 ```text
 strspc-CLI/
-├── src/cmd/                   # one file per command
+├── src/cmd/                   # command implementations
 ├── src/internal/              # UI and test helpers
 ├── rules/                     # the dev.steerspec.cli realm
 ├── docs/                      # reference pages linked from the README
