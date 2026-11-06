@@ -111,7 +111,7 @@ Add `./rules/` to `.strspc/config.yaml` to
 | Map rules to an external standard | [Report coverage of a standard](docs/standards.md) |
 | Look up an environment variable or schema URL | [Reference](docs/reference.md) |
 | See what is not implemented yet | [Work in progress](docs/reference.md#work-in-progress) |
-| Contribute or release | [Governance](#governance) |
+| Contribute or release | [Governance](#governance), [Branching and releases](docs/releases.md) |
 | Report a vulnerability | [Security](#security) |
 
 ## Governance
