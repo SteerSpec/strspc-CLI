@@ -17,9 +17,10 @@
 </div>
 
 `strspc` is the command-line tool, built on the [strspc-manager](https://github.com/SteerSpec/strspc-manager)
-engine, for engineers who keep behavioral rules as structured JSON next to the code they govern:
-it writes rule files with valid versions and hashes, validates them and their lifecycle, and asks an
-AI evaluator whether a code change complies, with authoring and validation running locally and no server of ours.
+engine, for engineers who keep behavioral rules as structured JSON next to the code they govern.
+It writes rule files with valid versions and hashes, validates them and their lifecycle, and asks an
+AI evaluator whether a code change complies; authoring and validation run locally, with no backend
+service of ours.
 
 **Status.** The [latest release](https://github.com/SteerSpec/strspc-CLI/releases/latest) is under the
 [Apache 2.0 licence](LICENSE). `strspc check` sends the diff to an AI provider: only Claude
@@ -34,8 +35,8 @@ hosted service is planned and not available.
 brew install --cask SteerSpec/tap/strspc
 ```
 
-Recent Homebrew versions require trusting a third-party tap before its first install. If brew
-refuses, run `brew trust --cask steerspec/tap/strspc` (or `brew trust steerspec/tap`) and retry.
+Homebrew can refuse to load a cask from a third-party tap until you trust it. If brew refuses, run
+`brew trust --cask SteerSpec/tap/strspc` (or `brew trust SteerSpec/tap`) and retry.
 
 **GitHub Releases**
 
@@ -111,7 +112,8 @@ Add `./rules/` to `.strspc/config.yaml` to
 | Map rules to an external standard | [Report coverage of a standard](docs/standards.md) |
 | Look up an environment variable or schema URL | [Reference](docs/reference.md) |
 | See what is not implemented yet | [Work in progress](docs/reference.md#work-in-progress) |
-| Contribute or release | [Governance](#governance), [Branching and releases](docs/releases.md) |
+| Build and contribute | [Development](docs/development.md) |
+| Release | [Branching and releases](docs/releases.md) |
 | Report a vulnerability | [Security](#security) |
 
 ## Governance
@@ -120,32 +122,9 @@ Open source software by Consulare.
 
 ### Development
 
-Requires Go 1.26+ and [golangci-lint](https://golangci-lint.run/) v2.
-
-```bash
-make build          # build binary → ./strspc
-make test           # run tests with -race
-make lint           # golangci-lint
-make fmt            # formatting via golangci-lint fmt
-make strspc-lint    # lint this repository's rules/
-make clean          # remove build artifacts
-make install-hooks  # install conventional commits git hook
-```
-
-```text
-strspc-CLI/
-├── src/cmd/                   # one file per command
-├── src/internal/              # UI and test helpers
-├── rules/                     # the dev.steerspec.cli realm
-├── docs/                      # reference pages linked from this README
-├── .strspc/config.yaml        # strspc check configuration
-└── .github/actions/setup-strspc/
-```
-
-See the [SteerSpec contributing guide](https://github.com/SteerSpec/.github/blob/v1.2.0/CONTRIBUTING.md).
-Commits follow [Conventional Commits](https://www.conventionalcommits.org/), as
-`<type>(<scope>): <description>`. The types are `feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
-`test`, `build`, `ci`, `chore` and `revert`.
+Build, test and commit conventions are in [Development](docs/development.md), and the
+[SteerSpec contributing guide](https://github.com/SteerSpec/.github/blob/v1.2.0/CONTRIBUTING.md)
+applies to every contribution.
 
 ### Branching and releases
 

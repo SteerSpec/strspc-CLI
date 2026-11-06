@@ -68,4 +68,4 @@ The specification already covers these, but this CLI doesn't do them yet:
 | **`effort: xhigh` and `max`** | The spec and the Claude provider accept them; the published `config.v1` schema doesn't yet, so they give warning `CHK002` |
 | **OpenAI and Ollama providers** | Reserved names that fail with a not-implemented error |
 | **Fallback without an LLM** | SPEC §8.4 falls back to structural checks; today `strspc check` exits 3 with provider `claude` and no key, so pass `--static-only` |
-| **Cloud mode** | SPEC §8.5 plans a paid CI action that calls a hosted SteerSpec evaluator, with shared caching and a compliance dashboard. The hosted service is planned, and the CLI has no cloud commands |
+| **Cloud mode** | SPEC §8.5 plans a CI action that calls a hosted SteerSpec evaluator, with shared caching and a compliance dashboard. The hosted service is planned, and the CLI has no cloud commands |
