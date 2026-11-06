@@ -11,7 +11,7 @@ Back to the [README](../README.md).
 
 ```yaml
 rules:
-  - source: github://SteerSpec/strspc-rules@v1.18.0/rules/core   # bumped per rules release
+  - source: github://SteerSpec/strspc-rules@v1.20.0/rules/core   # bumped per rules release
     scope: global
   - source: ./rules/
     scope: global
@@ -57,7 +57,7 @@ Config: .strspc/config.yaml
   Cache TTL: 24h0m0s
 
 Sources:
-  - github://SteerSpec/strspc-rules@v1.18.0/rules/core (global): pinned, cached, 154 rule(s)
+  - github://SteerSpec/strspc-rules@v1.20.0/rules/core (global): pinned, cached, 154 rule(s)
   - ./rules/ (global): local, 13 rule(s)
 
 Rules: 167 total
