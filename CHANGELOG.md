@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.38.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.37.0...v1.38.0) (2026-11-07)
+
+
+### Features
+
+* **cli:** show licence and steerspec.dev in --version, version and root help ([#280](https://github.com/SteerSpec/strspc-CLI/issues/280)) ([fee294f](https://github.com/SteerSpec/strspc-CLI/commit/fee294f78b50a66a3373e6e50a6037b1d71aaa82))
+
+
+### Bug Fixes
+
+* **check:** exit 4 when the report can't be written (CMD-007) ([#269](https://github.com/SteerSpec/strspc-CLI/issues/269)) ([bc4df31](https://github.com/SteerSpec/strspc-CLI/commit/bc4df3117932e48a34954d17ec2e33d639efef3a))
+* **output:** exit 4 when JSON output can't be written ([#271](https://github.com/SteerSpec/strspc-CLI/issues/271)) ([eaa25c9](https://github.com/SteerSpec/strspc-CLI/commit/eaa25c9555e967f5cbc395e782cadbfd98067429))
+* **output:** exit 4 when status, explain or render can't write --json ([#274](https://github.com/SteerSpec/strspc-CLI/issues/274)) ([a0f134e](https://github.com/SteerSpec/strspc-CLI/commit/a0f134e7bc1e2905683b3f97bc840335e98f60ce))
+
 ## [1.37.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.36.0...v1.37.0) (2026-11-07)
 
 
