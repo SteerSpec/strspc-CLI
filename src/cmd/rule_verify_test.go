@@ -75,7 +75,8 @@ func TestTreePathspecs(t *testing.T) {
 		{"absolute", ".", []string{"/etc"}, nil, nil, true},
 		{"exclude only", ".", nil, []string{"**/*_test.go", " "}, []string{".", ":(exclude,glob)**/*_test.go"}, false},
 		{"path and exclude in subdir", "svc", []string{"cmd"}, []string{"cmd/gen"}, []string{":(glob)svc/cmd", ":(exclude,glob)svc/cmd/gen"}, false},
-		{"subdir with glob characters", "a*b[1]?", []string{"x/*.go"}, nil, []string{`:(glob)a\*b\[1\]\?/x/*.go`}, false},
+		{"subdir with glob characters", "a*b[1]?", []string{"x/*.go"}, nil, []string{`:(glob)a[*]b[[]1[]][?]/x/*.go`}, false},
+		{"subdir with a backslash", `a\b`, []string{"x"}, nil, []string{`:(glob)a[\\]b/x`}, false},
 		{"exclude climbs out", ".", nil, []string{"../x"}, nil, true},
 	}
 	for _, tt := range tests {

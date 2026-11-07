@@ -262,15 +262,25 @@ func projectGlob(flag, subDir, p string) (glob string, ok bool, err error) {
 	return escapeGlob(filepath.ToSlash(subDir)) + "/" + clean, true, nil
 }
 
-// escapeGlob backslash-escapes the characters git's glob pathspec magic
-// treats as pattern syntax.
+// escapeGlob makes the characters git's glob pathspec magic treats as
+// pattern syntax literal by wrapping each in a one-character class (`[` →
+// `[[]`, `]` → `[]]`, `*` → `[*]`, `?` → `[?]`). A backslash escape would
+// do on Unix, but Git for Windows turns backslashes in a pathspec into path
+// separators. A backslash, which only Unix allows in a name, is escaped
+// inside its class.
 func escapeGlob(s string) string {
 	var b strings.Builder
 	for _, c := range s {
-		if strings.ContainsRune(`\*?[]`, c) {
-			b.WriteByte('\\')
+		switch c {
+		case '*', '?', '[', ']':
+			b.WriteByte('[')
+			b.WriteRune(c)
+			b.WriteByte(']')
+		case '\\':
+			b.WriteString(`[\\]`)
+		default:
+			b.WriteRune(c)
 		}
-		b.WriteRune(c)
 	}
 	return b.String()
 }
