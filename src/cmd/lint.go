@@ -253,8 +253,10 @@ func writeJSON(w io.Writer, res *result.Result, explain bool) error {
 	if err != nil {
 		return fmt.Errorf("marshaling diagnostics: %w", err)
 	}
-	_, writeErr := w.Write(append(printableJSON(data), '\n'))
-	return writeErr
+	if _, err := w.Write(append(printableJSON(data), '\n')); err != nil {
+		return withExitCode(exitOutput, fmt.Errorf("writing JSON output: %w", err))
+	}
+	return nil
 }
 
 // pinnedSubRealmLinters returns, by directory name, the linters of the

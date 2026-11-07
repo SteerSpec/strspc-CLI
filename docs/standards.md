@@ -58,7 +58,7 @@ sub-realms, and `--all-sources` adds the remote ones. A source with no `realm.js
 standard, so its `standard` notes are left out with a warning. `--json` prints the same report as one
 document, or on failure `strspc check`'s document with its `error` field. It exits 0 when the report
 is printed, and 2 when the configuration can't be read or a source or dependency doesn't resolve, as a
-report would then understate the coverage.
+report would then understate the coverage. A `--json` report that can't be written exits 4.
 
 ## Planned: a coverage gate in CI
 

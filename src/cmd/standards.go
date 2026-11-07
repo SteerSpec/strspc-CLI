@@ -81,7 +81,8 @@ func newStandardsCoverageCmd() *cobra.Command {
 			"The report covers the local sources in .strspc/config.yaml that have a realm.json, with their\n" +
 			"sub-realms. --all-sources adds the remote ones.\n\n" +
 			"Exit codes: 0 when the report is printed; 2 when the configuration can't be read or a source\n" +
-			"or dependency doesn't resolve, as a report would then understate the coverage.",
+			"or dependency doesn't resolve, as a report would then understate the coverage; 4 when the\n" +
+			"JSON report can't be written.",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
