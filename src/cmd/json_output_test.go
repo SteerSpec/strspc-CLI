@@ -103,6 +103,16 @@ func TestJSONCommandsWriteError(t *testing.T) {
 			setupRehashRealm(t, dir, "1.21.0")
 			return []string{"realm", "rehash", "--dir", dir, "--json"}
 		}},
+		{"realm note add", func(t *testing.T) []string {
+			dir := t.TempDir()
+			setupNoteRealm(t, dir)
+			return []string{"realm", "note", "add", "--type", "rationale", "--body", "x", "--added-by", "github:alice", "--dir", dir, "--json"}
+		}},
+		{"realm note list", func(t *testing.T) []string {
+			dir := t.TempDir()
+			setupNoteRealm(t, dir)
+			return []string{"realm", "note", "list", "--dir", dir, "--json"}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

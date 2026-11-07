@@ -327,6 +327,11 @@ Examples:
 				if err != nil {
 					return err
 				}
+				if before.Realm != "" && after.Realm == "" {
+					if err := checkNoExclusionNames(rf, edit.id, "unlink"); err != nil {
+						return err
+					}
+				}
 				rf.Realm.Standards = refs
 				u.Realm, u.Standard, u.OldStandard = rf.Realm.ID, after, before
 				if before.Version != after.Version {

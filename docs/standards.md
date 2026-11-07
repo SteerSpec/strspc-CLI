@@ -37,6 +37,24 @@ strspc realm standards add --id owasp.asvs --relation implements --version 5.0.0
   --realm dev.steerspec.std.owasp.asvs.v5 --profile L1
 ```
 
+**Exclude a clause.** A Realm Note sits in the `notes` array of `realm.json`, not next to a rule
+(NTE-029). Its ID is `REALM/NNN`, numbered from `REALM/001` in each manifest (NTE-030). It is one of
+four types: `exclusion`, `rationale`, `clarification` or `reference` (NTE-031). An `exclusion`
+declares one clause not applicable to the realm, and its content is the justification (NTE-033). Its
+`--ref` is `<id>:<clause>`, and the `<id>` must name a reference of the same manifest that is linked
+with `--realm` (NTE-034). An exclusion is never deleted. To withdraw it, retype it to `reference`,
+which keeps its ref and content (NTE-035). `--added-by` is checked as for rule notes, against the
+realm's contributors, or for a sub-realm its parent's. A sub-realm holds its own notes, for its own
+linked references. Removing a reference, or clearing its `realm`, is refused while an exclusion names
+it. The notes are Draft rules of core 1.21.0 and need that core pin. Every write recomputes the
+manifest hash when the manifest has one.
+
+```bash
+strspc realm note add --type exclusion --ref owasp.asvs:V3.1.1 --body "The CLI renders no HTML." --added-by github:alice
+strspc realm note list
+strspc realm note update REALM/001 --type reference   # withdraw the exclusion
+```
+
 `strspc standards coverage` then lists each mapped clause, per standard and entity. The output below
 is a sample:
 
@@ -157,9 +175,11 @@ There is no percentage threshold: without a standard's clause list, a report has
 
 ## Planned: standards published as realms
 
-> **Not yet implemented.** Proposed in
-> [strspc-rules#144](https://github.com/SteerSpec/strspc-rules/issues/144); still a design under
-> discussion.
+> **Partly implemented.** Designed in
+> [strspc-rules#144](https://github.com/SteerSpec/strspc-rules/issues/144). The rules are Draft in core
+> 1.21.0. Linking a reference to a Standard Realm (`--realm`) and excluding a clause (`realm note`) work
+> today, as above, and lint checks a note's clause against the linked realm. The coverage changes below
+> are not yet implemented: the `unmapped` status, the figure, and an exclusion lowering the total.
 
 A standard's publisher, or anyone its licence allows, publishes it as a SteerSpec realm with one rule
 per clause, for example OWASP ASVS 5.0.0 in a GitHub repository. A project declares it as a

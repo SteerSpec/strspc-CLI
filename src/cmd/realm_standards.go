@@ -98,7 +98,9 @@ func newRealmStandardsRemoveCmd() *cobra.Command {
 		Long: `Remove the Standard Reference with the given id from realm.json. The removal
 is refused while a ` + "`standard`" + ` note in the Realm or its sub-realms would no longer
 resolve (NTE-016): withdraw those mappings first with
-` + "`strspc note update <note_id> --type reference`" + `.
+` + "`strspc note update <note_id> --type reference`" + `. It is refused too while
+an exclusion names the standard (NTE-034): withdraw it first with
+` + "`strspc realm note update <REALM/NNN> --type reference`" + `.
 
 Example:
   strspc realm standards remove --id owasp.asvs`,
@@ -125,6 +127,9 @@ Example:
 				rf.Realm.Standards = refs
 				if notes := notesNaming(rulelint.UnresolvedStandardNotes(dir, rf), id); len(notes) > 0 {
 					return unresolvedNotesError(id, notes)
+				}
+				if err := checkNoExclusionNames(rf, id, "remove"); err != nil {
+					return err
 				}
 				realmID, removed = rf.Realm.ID, r
 				return nil
