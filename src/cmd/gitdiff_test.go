@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -436,5 +437,110 @@ func TestGitHubAnnotationSkipsNonWorkspacePaths(t *testing.T) {
 	want := "::error file=src/x.go,line=7,title=rule-resolve RSV007::fetching: 404"
 	if got := githubAnnotation(&d); got != want {
 		t.Errorf("got %s\nwant %s", got, want)
+	}
+}
+
+func TestDiffSourceString(t *testing.T) {
+	tests := []struct {
+		src  diffSource
+		want string
+	}{
+		{diffSource{Kind: diffFromFile, Ref: "x.diff"}, "diff file x.diff"},
+		{diffSource{Kind: diffFromStaged}, "staged changes (index vs HEAD)"},
+		{diffSource{Kind: diffFromPR, Ref: "7"}, "PR #7 base vs working tree"},
+		{diffSource{Kind: diffFromBase, Ref: "main"}, "base main vs working tree"},
+		{diffSource{Kind: diffFromGitHubBase, Ref: "main"}, "GITHUB_BASE_REF origin/main vs working tree"},
+		{diffSource{Kind: diffFromHead}, "working tree vs HEAD"},
+	}
+	for _, tt := range tests {
+		if got := tt.src.String(); got != tt.want {
+			t.Errorf("%s: String() = %q, want %q", tt.src.Kind, got, tt.want)
+		}
+	}
+}
+
+func TestCollectDiffPRErrors(t *testing.T) {
+	dir := newDiffRepo(t)
+	if _, err := collectDiff(context.Background(), dir, ".", diffSource{Kind: diffFromPR, Ref: "x"}); err == nil ||
+		!strings.Contains(err.Error(), `invalid PR number "x"`) {
+		t.Errorf("non-numeric PR: got %v", err)
+	}
+
+	orig := resolvePRBase
+	t.Cleanup(func() { resolvePRBase = orig })
+	resolvePRBase = func(int, string) (string, error) { return "", errors.New("gh is missing") }
+	if _, err := collectDiff(context.Background(), dir, ".", diffSource{Kind: diffFromPR, Ref: "7"}); err == nil ||
+		!strings.Contains(err.Error(), "gh is missing") {
+		t.Errorf("failing gh: got %v", err)
+	}
+}
+
+func TestCollectDiffGitHubBaseRef(t *testing.T) {
+	dir := newDiffRepo(t)
+	// origin/main already tracked: no fetch is needed, and there is no origin.
+	gitRun(t, dir, "update-ref", "refs/remotes/origin/main", "main")
+	diff, err := collectDiff(context.Background(), dir, ".", diffSource{Kind: diffFromGitHubBase, Ref: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFiles(t, diff, "a.go", "b.go", "c.go")
+
+	_, err = collectDiff(context.Background(), dir, ".", diffSource{Kind: diffFromGitHubBase, Ref: "nope"})
+	if err == nil || !strings.Contains(err.Error(), `fetching GITHUB_BASE_REF "nope" from origin`) {
+		t.Errorf("missing branch without origin: got %v", err)
+	}
+}
+
+func TestCollectDiffOutsideARepository(t *testing.T) {
+	_, err := collectDiff(context.Background(), t.TempDir(), ".", diffSource{Kind: diffFromStaged})
+	if err == nil || !strings.Contains(err.Error(), "collecting diff: git diff:") {
+		t.Errorf("got %v, want git's own message", err)
+	}
+}
+
+func TestGitDiffArgsEmptySubDir(t *testing.T) {
+	got := strings.Join(gitDiffArgs("", "HEAD"), " ")
+	if !strings.Contains(got, "HEAD -- . :(exclude,literal).strspc :(exclude,literal)rules") {
+		t.Errorf("gitDiffArgs(\"\") = %s, want the repository root", got)
+	}
+	if got := filterDiff(checkDiff, ""); got != filterDiff(checkDiff, ".") {
+		t.Error(`filterDiff with "" must behave as "."`)
+	}
+}
+
+func TestDiffHeaderPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		section string
+		want    string
+		ok      bool
+	}{
+		{"plus line", "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n", "x", true},
+		{"hunk before any plus line", "diff --git a/x b/x\n@@ -1 +1 @@\n+++ b/y\n", "x", true},
+		{"deleted file", "diff --git a/x b/x\n--- a/x\n+++ /dev/null\n", "", false},
+		{"not a diff header", "index 123..456\n", "", false},
+		{"quoted, one side only", "diff --git \"a/x y\" b/x\n", "", false},
+		{"quoted, sides differ", "diff --git \"a/x\" \"b/y\"\n", "", false},
+		{"quoted, bad escape", "diff --git \"a/\\q\" \"b/\\q\"\n", "", false},
+		{"odd length", "diff --git a/x b/xy\n", "", false},
+		{"halves differ", "diff --git a/x b/y\n", "", false},
+		{"bad quoted plus line", "diff --git a/x b/x\n+++ \"b/\\q\"\n", "", false},
+		{"empty plus path", "diff --git a/x b/x\n+++ b/\n", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := diffHeaderPath(tt.section)
+			if got != tt.want || ok != tt.ok {
+				t.Errorf("diffHeaderPath = %q, %v; want %q, %v", got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
+func TestRepoRelativeUnresolvableRepo(t *testing.T) {
+	// A relative repository that doesn't exist can't be made relative to an
+	// absolute directory.
+	if _, err := repoRelative(filepath.Join("no", "such", "repo"), t.TempDir()); err == nil {
+		t.Error("expected an error")
 	}
 }

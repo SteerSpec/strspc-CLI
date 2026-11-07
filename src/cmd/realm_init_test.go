@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/remote"
 )
 
@@ -121,7 +122,7 @@ func TestRealmInitRejectsDuplicateCoreDependency(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "rules")
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo",
-		"--core-version", "1.19.0", "--dependency", "dev.steerspec.core@1.19.0", "--dependency", "dev.steerspec.core@1.20.0")
+		"--core-version", "1.19.0", "--dependency", "dev.steerspec.core@1.19.0", "--dependency", "dev.steerspec.core@1.18.0")
 	if err == nil {
 		t.Fatal("expected an error for two core dependencies")
 	}
@@ -140,7 +141,7 @@ func TestRealmInitCoreDependencySourceTagMustMatchVersion(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "rules")
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo",
-		"--dependency", "dev.steerspec.core@1.20.0="+fmt.Sprintf(src, "v1.19.0"))
+		"--dependency", "dev.steerspec.core@1.18.0="+fmt.Sprintf(src, "v1.19.0"))
 	if err == nil {
 		t.Fatal("expected an error for a source tag that differs from the version")
 	}
@@ -154,17 +155,17 @@ func TestRealmInitCoreDependencySourceTagMustMatchVersion(t *testing.T) {
 
 	// A release tag with build metadata is still a release tag, so it is compared.
 	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", filepath.Join(t.TempDir(), "rules"), "--id", "com.test.demo",
-		"--dependency", "dev.steerspec.core@1.20.0="+fmt.Sprintf(src, "v1.20.0+build.5")); err == nil {
+		"--dependency", "dev.steerspec.core@1.18.0="+fmt.Sprintf(src, "v1.18.0+build.5")); err == nil {
 		t.Error("expected an error for a source tag with build metadata that differs from the version")
 	}
 
 	// Refs that name no release can't be compared and are accepted, and so is
 	// a mismatch on a dependency other than core.
 	for name, args := range map[string][]string{
-		"same tag":    {"--dependency", "dev.steerspec.core@1.20.0=" + fmt.Sprintf(src, "v1.20.0")},
-		"latest":      {"--dependency", "dev.steerspec.core@1.20.0=" + fmt.Sprintf(src, "latest")},
-		"commit SHA":  {"--dependency", "dev.steerspec.core@1.20.0=" + fmt.Sprintf(src, "0123456789abcdef0123456789abcdef01234567")},
-		"other realm": {"--core-version", "1.20.0", "--dependency", "com.acme.shared@1.0.0=github://acme/shared@v2.0.0/rules"},
+		"same tag":    {"--dependency", "dev.steerspec.core@1.18.0=" + fmt.Sprintf(src, "v1.18.0")},
+		"latest":      {"--dependency", "dev.steerspec.core@1.18.0=" + fmt.Sprintf(src, "latest")},
+		"commit SHA":  {"--dependency", "dev.steerspec.core@1.18.0=" + fmt.Sprintf(src, "0123456789abcdef0123456789abcdef01234567")},
+		"other realm": {"--core-version", "1.18.0", "--dependency", "com.acme.shared@1.0.0=github://acme/shared@v2.0.0/rules"},
 	} {
 		dir := filepath.Join(t.TempDir(), "rules")
 		full := append([]string{"realm", "init", "--dir", dir, "--id", "com.test.demo"}, args...)
@@ -179,7 +180,7 @@ func TestRealmInitCoreVersionMustMatchCoreDependency(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "rules")
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo",
-		"--core-version", "1.20.0", "--dependency", "dev.steerspec.core@1.19.0")
+		"--core-version", "1.18.0", "--dependency", "dev.steerspec.core@1.19.0")
 	if err == nil {
 		t.Fatal("expected an error for conflicting --core-version and core dependency")
 	}
@@ -554,6 +555,105 @@ func TestParseDependencyVersion(t *testing.T) {
 	if _, err := parseDependency("dev.steerspec.core@v1.0.0"); err == nil || !strings.Contains(err.Error(), "leading") {
 		t.Errorf("expected leading-v hint, got %v", err)
 	}
+}
+
+func TestParseDependencyEmptySource(t *testing.T) {
+	_, err := parseDependency("dev.lib@1.0.0=  ")
+	if err == nil || !strings.Contains(err.Error(), "source must not be empty") {
+		t.Errorf("error = %v, want source must not be empty", err)
+	}
+}
+
+func TestResolveSchemaTagErrors(t *testing.T) {
+	origTag := latestReleaseTag
+	t.Cleanup(func() { latestReleaseTag = origTag })
+	latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) {
+		return "", fmt.Errorf("rate limited")
+	}
+
+	_, err := resolveSchemaTag(context.Background(), "", nil)
+	if err == nil || !strings.Contains(err.Error(), "pass --core-version to pin one") || !strings.Contains(err.Error(), "rate limited") {
+		t.Errorf("latest lookup failure: error = %v", err)
+	}
+	_, err = resolveSchemaTag(context.Background(), "", []entity.RealmDep{{RealmID: coreRealmID, Version: "one"}})
+	if err == nil {
+		t.Error("a core dependency without a SemVer version: want an error, got none")
+	}
+
+	// A nil context is taken for context.Background().
+	var noCtx context.Context
+	if tag, err := resolveSchemaTag(noCtx, "1.2.3", nil); err != nil || tag != "v1.2.3" {
+		t.Errorf("explicit version with a nil context: got %q, %v", tag, err)
+	}
+}
+
+func TestFetchSchemaErrors(t *testing.T) {
+	t.Run("transport error", func(t *testing.T) {
+		original := schemaBaseURL
+		t.Cleanup(func() { schemaBaseURL = original })
+		schemaBaseURL = "http://[::1"
+		err := fetchSchema(t.TempDir(), "v1.0.0", schemaFiles[0].local)
+		if err == nil || !strings.Contains(err.Error(), "fetching schema "+schemaFiles[0].local+"@v1.0.0") {
+			t.Errorf("error = %v, want a fetch error", err)
+		}
+	})
+
+	t.Run("truncated body", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Length", "100")
+			_, _ = w.Write([]byte(`{"$id"`))
+		}))
+		t.Cleanup(server.Close)
+		original := schemaBaseURL
+		t.Cleanup(func() { schemaBaseURL = original })
+		schemaBaseURL = server.URL
+		dir := t.TempDir()
+		err := fetchSchema(dir, "v1.0.0", schemaFiles[0].local)
+		if err == nil || !strings.Contains(err.Error(), "reading schema "+schemaFiles[0].local) {
+			t.Errorf("error = %v, want a read error", err)
+		}
+		if _, statErr := os.Stat(filepath.Join(dir, schemaFiles[0].local)); statErr == nil {
+			t.Error("a truncated schema was written")
+		}
+	})
+}
+
+// TestRealmInitFilesystemErrors covers a --dir that can't hold the realm.
+func TestRealmInitFilesystemErrors(t *testing.T) {
+	setupSchemaServer(t)
+
+	t.Run("under a regular file", func(t *testing.T) {
+		file := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", filepath.Join(file, "rules"), "--id", "dev.test.spec", "--core-version", "1.0.0")
+		if err == nil || !strings.Contains(err.Error(), "creating directory") {
+			t.Fatalf("error = %v, want creating directory", err)
+		}
+	})
+
+	t.Run("_schema is a file", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "_schema"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", dir, "--id", "dev.test.spec", "--core-version", "1.0.0")
+		if err == nil || !strings.Contains(err.Error(), "creating _schema/") {
+			t.Fatalf("error = %v, want creating _schema/", err)
+		}
+	})
+
+	t.Run("realm.json is a directory, with --force", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.Mkdir(filepath.Join(dir, "realm.json"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", dir, "--id", "dev.test.spec", "--core-version", "1.0.0", "--force")
+		if err == nil || !strings.Contains(err.Error(), "writing realm.json") {
+			t.Fatalf("error = %v, want writing realm.json", err)
+		}
+	})
 }
 
 func TestRealmInitRejectsNonSemVerDependency(t *testing.T) {

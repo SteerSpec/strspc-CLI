@@ -112,7 +112,7 @@ func newSyncCmd() *cobra.Command {
 					return fmt.Errorf("marshaling output: %w", marshalErr)
 				}
 				if _, err := w.Write(append(printableJSON(enc), '\n')); err != nil {
-					return fmt.Errorf("writing JSON output: %w", err)
+					return withExitCode(exitOutput, fmt.Errorf("writing JSON output: %w", err))
 				}
 				if !res.OK() {
 					return fmt.Errorf("sync found %d error(s)", len(res.Errors()))

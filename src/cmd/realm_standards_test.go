@@ -116,3 +116,46 @@ func TestRealmStandardsRemoveGuard(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestRealmStandardsHumanAndJSONOutput(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "standards", "list", "--dir", dir)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	testutil.AssertContains(t, out, "declares no standard")
+
+	out, err = testutil.ExecuteCommand(NewRootCmd(), "realm", "standards", "add",
+		"--id", "owasp.asvs", "--relation", "implements", "--version", "4.0.3", "--dir", dir, "--json")
+	if err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	testutil.AssertContains(t, out, `"standard": {`)
+	testutil.AssertContains(t, out, `"id": "owasp.asvs"`)
+	testutil.AssertContains(t, out, `"path": `)
+
+	out, err = testutil.ExecuteCommand(NewRootCmd(), "realm", "standards", "list", "--dir", dir)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	testutil.AssertContains(t, out, "owasp.asvs")
+	testutil.AssertContains(t, out, "implements")
+	testutil.AssertContains(t, out, "4.0.3")
+
+	out, err = testutil.ExecuteCommand(NewRootCmd(), "realm", "standards", "remove", "--id", "owasp.asvs", "--dir", dir)
+	if err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	testutil.AssertContains(t, out, "Removed standard owasp.asvs 4.0.3 (implements)")
+}
+
+func TestRealmStandardsRemoveNeedsID(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "standards", "remove", "--dir", dir)
+	if err == nil || err.Error() != "--id is required" {
+		t.Fatalf("error = %v, want --id is required", err)
+	}
+}

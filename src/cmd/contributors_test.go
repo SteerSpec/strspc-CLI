@@ -331,7 +331,8 @@ func readFiles(t *testing.T, dir string, names ...string) map[string][]byte {
 // included, in file order.
 func allAddedBy(f *entity.File) []string {
 	var out []string
-	for _, r := range f.Rules {
+	for i := range f.Rules {
+		r := &f.Rules[i]
 		out = append(out, r.ID+"="+r.AddedBy)
 	}
 	for _, n := range f.Notes {
@@ -517,5 +518,45 @@ func TestRealmRewriteAddedByErrors(t *testing.T) {
 				t.Error("TST.json changed although the command failed")
 			}
 		})
+	}
+}
+
+// TestRealmDirOfWalksUp finds the manifest of a directory above the file, and
+// none past stop.
+func TestRealmDirOfWalksUp(t *testing.T) {
+	root := t.TempDir()
+	setupValidRealm(t, root)
+	nested := filepath.Join(root, "a", "b")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := realmDirOf(filepath.Join(nested, "TST.json"), root)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != resolvedPath(root) {
+		t.Errorf("realm dir = %q, want %q", got, resolvedPath(root))
+	}
+	got, err = realmDirOf(filepath.Join(nested, "TST.json"), filepath.Join(root, "a"))
+	if err != nil || got != "" {
+		t.Errorf("stopping below the manifest: got %q, %v; want none", got, err)
+	}
+}
+
+// In a repository with no user.email set, there is no git default.
+func TestGitUserEmailUnset(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+	global := filepath.Join(t.TempDir(), "gitconfig")
+	if err := os.WriteFile(global, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	dir := t.TempDir()
+	gitRun(t, dir, "init", "-q")
+	if got := realGitUserEmail(dir); got != "" {
+		t.Errorf("git user.email = %q, want none", got)
 	}
 }

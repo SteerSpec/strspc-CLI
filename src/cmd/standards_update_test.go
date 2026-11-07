@@ -225,3 +225,56 @@ func TestRealmStandardsUpdate(t *testing.T) {
 		t.Error("realm.json changed on error")
 	}
 }
+
+// TestRealmStandardsUpdateSubRealms: the notes of a sub-realm resolve to the
+// Realm's declaration unless the sub-realm declares the id itself, and a
+// version given for the first time reads "no version" before.
+func TestRealmStandardsUpdateSubRealms(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	setupSubRealm(t, dir, "auth", "dev.steerspec.test")
+	setupSubRealm(t, dir, "billing", "dev.steerspec.test")
+	if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+		rf.Realm.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}
+		rf.SubRealms = []string{"auth", "billing"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := loadModifyWriteRealm(filepath.Join(dir, "billing", "realm.json"), func(rf *entity.RealmFile) error {
+		rf.Realm.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for sub, euid := range map[string]string{"auth": "AAA", "billing": "BBB"} {
+		subDir := filepath.Join(dir, sub)
+		setupEntityFile(t, subDir, euid, makeRule(euid+"-001", "D", "MUST x.", "github:test"))
+		editEntityFile(t, subDir, euid, func(f *entity.File) {
+			f.Notes = []entity.Note{standardNote(euid+"-001/01", euid+"-001", entity.NoteTypeStandard, "owasp.asvs:V2.1")}
+		})
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "standards", "update", "--id", "owasp.asvs", "--version", "5.0.0", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, out, "now map clauses of owasp.asvs 5.0.0 instead of no version (STDREF-011): AAA-001/01")
+	testutil.AssertNotContains(t, out, "BBB-001/01")
+}
+
+// An entity whose version isn't SemVer can't be bumped, and is left as it was.
+func TestEntityStandardsUpdateUnbumpableVersion(t *testing.T) {
+	dir := t.TempDir()
+	setupStandardsTree(t, dir, false)
+	editEntityFile(t, dir, "MYE", func(f *entity.File) { f.RuleSet.Version = "one" })
+	before, _ := os.ReadFile(filepath.Join(dir, "MYE.json"))
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "standards", "update", "MYE", "--id", "owasp.asvs", "--version", "5.0.0", "--dir", dir)
+	if err == nil {
+		t.Fatal("want an error for an entity version that isn't SemVer")
+	}
+	testutil.AssertContains(t, err.Error(), "bumping version")
+	if after, _ := os.ReadFile(filepath.Join(dir, "MYE.json")); !bytes.Equal(before, after) {
+		t.Error("entity file changed on error")
+	}
+}

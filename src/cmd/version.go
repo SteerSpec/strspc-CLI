@@ -8,7 +8,7 @@ func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
 		Short: "Show version information",
-		Long:  "Print the strspc version, build time, commit and branch the binary was built from.",
+		Long:  "Print the strspc version, build time, commit and branch the binary was built from, plus its licence and the project website.",
 		Run: func(cmd *cobra.Command, _ []string) {
 			w := cmd.OutOrStdout()
 
@@ -24,6 +24,8 @@ func newVersionCmd() *cobra.Command {
 			writeln(w, labelStyle.Render("Built")+valueStyle.Render(versionInfo.BuildTime))
 			writeln(w, labelStyle.Render("Commit")+valueStyle.Render(commit))
 			writeln(w, labelStyle.Render("Branch")+valueStyle.Render(versionInfo.GitBranch))
+			writeln(w, labelStyle.Render("License")+valueStyle.Render(licenseName))
+			writeln(w, labelStyle.Render("Web")+valueStyle.Render(websiteURL))
 		},
 	}
 }

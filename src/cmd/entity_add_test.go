@@ -1,12 +1,15 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/entity"
 )
 
 func TestEntityAddUnderTopLevel(t *testing.T) {
@@ -88,6 +91,21 @@ func TestEntityAddErrors(t *testing.T) {
 			}
 			testutil.AssertContains(t, err.Error(), tt.want)
 		})
+	}
+}
+
+// A parent whose version isn't SemVer can't be bumped, and is left as it was.
+func TestEntityAddUnbumpableParent(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "PARENT")
+	editEntityFile(t, dir, "PARENT", func(f *entity.File) { f.RuleSet.Version = "one" })
+	before := readFiles(t, dir, "PARENT.json")
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "add", "CHILD", "--parent", "PARENT", "--title", "Child", "--dir", dir)
+	if err == nil || !strings.Contains(err.Error(), "bumping version of PARENT") {
+		t.Fatalf("error = %v, want bumping version of PARENT", err)
+	}
+	if !bytes.Equal(readFiles(t, dir, "PARENT.json")["PARENT.json"], before["PARENT.json"]) {
+		t.Error("PARENT.json changed on error")
 	}
 }
 

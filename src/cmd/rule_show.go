@@ -64,7 +64,7 @@ func newRuleShowCmd() *cobra.Command {
 			"by its own EUID. --state narrows the rules an EUID selects; a rule named by its ID is\n" +
 			"shown whatever its state.\n\n" +
 			"Exit codes: 0 found, 1 an argument matched no rule or entity (nothing is printed),\n" +
-			"2 configuration or resolution error.\n\n" +
+			"2 configuration or resolution error, 4 the JSON output can't be written.\n\n" +
 			"Examples:\n" +
 			"  strspc rule show MOD-010\n" +
 			"  strspc rule show GOTEST --state D\n" +
@@ -178,10 +178,7 @@ func runRuleShow(ctx context.Context, out, errOut io.Writer, cwd string, args []
 		if shown == nil {
 			shown = []*shownRule{}
 		}
-		if err := writeJSONOutput(out, shown); err != nil {
-			return withExitCode(exitOutput, err)
-		}
-		return nil
+		return writeJSONOutput(out, shown)
 	}
 	writeShownRules(out, shown)
 	return nil

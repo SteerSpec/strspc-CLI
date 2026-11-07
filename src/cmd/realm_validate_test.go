@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
@@ -479,4 +481,33 @@ func TestRealmValidateRecursiveGroupedOutput(t *testing.T) {
 	output, _ := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir, "--recursive")
 	// Grouped output should include section headers.
 	testutil.AssertContains(t, output, `Sub-realm "auth"`)
+}
+
+// TestOutputGroupedText checks that a diagnostic without a path, and one under
+// no sub-realm, go to the root realm's group, and one under a sub-realm to its
+// own, after the root's.
+func TestOutputGroupedText(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealmWithSubs(t, dir)
+	res := &result.Result{Diagnostics: []result.Diagnostic{
+		{Code: "RM001", Severity: result.Error, Message: "no path"},
+		{Code: "RM002", Severity: result.Warning, Message: "in the sub-realm", Path: filepath.Join(dir, "auth", "AUTH.json") + ": rules[0]"},
+		{Code: "RM003", Severity: result.Warning, Message: "in the root", Path: filepath.Join(dir, "ROOT.json")},
+	}}
+	var buf bytes.Buffer
+	outputGroupedText(&buf, res, dir, false)
+	out := buf.String()
+
+	root := strings.Index(out, "── Root realm ──")
+	sub := strings.Index(out, `── Sub-realm "auth" ──`)
+	if root < 0 || sub < root {
+		t.Fatalf("want the root group, then the sub-realm's:\n%s", out)
+	}
+	for code, inRoot := range map[string]bool{"RM001": true, "RM003": true, "RM002": false} {
+		at := strings.Index(out, code)
+		if at < 0 || (at < sub) != inRoot {
+			t.Errorf("%s in the wrong group:\n%s", code, out)
+		}
+	}
+	testutil.AssertContains(t, out, "1 error(s), 2 warning(s)")
 }

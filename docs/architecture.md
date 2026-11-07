@@ -4,8 +4,8 @@ Back to the [README](../README.md).
 
 ## Architecture
 
-The [Rule Manager specification](https://github.com/SteerSpec/strspc-manager/blob/v1.43.0/docs/SPEC.md)
-(cited below as SPEC, at v1.43.0, the manager version this CLI imports) is a draft that this CLI
+The [Rule Manager specification](https://github.com/SteerSpec/strspc-manager/blob/v1.44.0/docs/SPEC.md)
+(cited below as SPEC, at v1.44.0, the manager version this CLI imports) is a draft that this CLI
 follows. Its principles shape how the CLI works:
 
 - **JSON is the source of truth.** Markdown is a rendered view.
@@ -61,7 +61,7 @@ that govern these tiers, and this repository owns the `dev.steerspec.cli` realm 
 | **Realm** | A namespace of entities in a directory with a `realm.json` manifest and `_schema/`. Its ID is in reverse domain notation (`com.acme.app`) |
 | **Configuration** | A project's `.strspc/config.yaml`: the rules it consumes and how they are enforced |
 
-See SPEC [§2](https://github.com/SteerSpec/strspc-manager/blob/v1.43.0/docs/SPEC.md#2-data-model) for the
+See SPEC [§2](https://github.com/SteerSpec/strspc-manager/blob/v1.44.0/docs/SPEC.md#2-data-model) for the
 full data model.
 
 ## Commands
@@ -103,7 +103,7 @@ full data model.
 | `strspc entity rehash` | Recompute null or stale `rule_set.hash` values |
 | `strspc entity standards add\|update\|remove\|list` | Declare the external standards an entity cites |
 | `strspc completion` | Generate a shell completion script (bash, fish, powershell, zsh) |
-| `strspc version` | Show version, commit and build info |
+| `strspc version` | Show version, commit, build info, licence and site |
 
 Run `strspc <command> --help` for every flag. Commands that edit rules take `--json`, and `--dir`
 defaults to `./rules`.

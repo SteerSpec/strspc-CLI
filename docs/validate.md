@@ -13,11 +13,11 @@ strspc check --static-only                     # resolve sources, verify hashes 
 ```
 
 These implement the checks of
-[SPEC §7](https://github.com/SteerSpec/strspc-manager/blob/v1.43.0/docs/SPEC.md#7-cicd-workflows). `lint`,
+[SPEC §7](https://github.com/SteerSpec/strspc-manager/blob/v1.44.0/docs/SPEC.md#7-cicd-workflows). `lint`,
 `realm validate` and `diff` take `--strict`, which treats warnings as errors, and `--json`; `check`
 takes `--format json`. `lint --cross-ref` adds
 cross-file reference checks in directory mode. `diff` exits 0 when all checks pass and 1 on a
-violation.
+violation. `lint`, `diff` and `realm validate` exit 4 when `--json` output can't be written.
 
 **Schemas.** `lint` and `realm validate` use the schemas of the `dev.steerspec.core` version the realm
 pins, so a schema change reaches a realm when it bumps its pin. A realm with no pin uses the latest
@@ -87,8 +87,8 @@ RUL-004 was retired in 2026.
 
 `.strspc/` and `CHANGELOG.md` are always skipped. A pattern with no slash matches a file name in any
 directory, and `dir/**` matches everything under `dir`. A file named as an argument is scanned
-whatever its extension. `refs` exits 0 when clean, 1 on findings and 2 on a configuration or
-resolution error.
+whatever its extension. `refs` exits 0 when clean, 1 on findings, 2 on a configuration or
+resolution error and 4 when `--json` output can't be written.
 
 ## Understand a diagnostic
 

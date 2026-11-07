@@ -64,7 +64,8 @@ Examples:
 
 			err = modifyEntity(target, func(f *entity.File) error {
 				oldVersion = f.RuleSet.Version
-				for _, r := range f.Rules {
+				for i := range f.Rules {
+					r := &f.Rules[i]
 					if r.ID == ruleID && r.Overrides != nil && *r.Overrides != overridesID {
 						lapsed = *r.Overrides
 					}

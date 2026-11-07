@@ -18,7 +18,8 @@ strspc rule show CMD-001 CFG --json           # a JSON list
 An unqualified ID resolves to the first source that holds it, the way `refs` resolves citations.
 `--state` narrows what an EUID selects; a rule named by its ID is shown whatever its state. A
 sub-entity is selected by its own EUID. If any argument matches nothing, nothing is printed and the
-command exits 1; a configuration or resolution error exits 2.
+command exits 1; a configuration or resolution error exits 2, and `--json` output that can't be
+written exits 4.
 
 ## Rule history
 
@@ -43,7 +44,7 @@ A sub-entity EUID shows that sub-entity's changes only.
 
 History needs a full git checkout. A shallow clone (GitHub Actions: check out with `fetch-depth: 0`),
 a realm downloaded into `.strspc/cache/` and a file never committed are errors that exit 2. An
-unknown entity or a malformed rule ID exits 1.
+unknown entity or a malformed rule ID exits 1, and `--json` output that can't be written exits 4.
 
 ## Render rules
 
@@ -57,7 +58,7 @@ strspc render rules/CFG.json --template my.md.tmpl  # custom Go template
 Rule identifiers follow the `rule_identifier_format` of the realm that owns the entity file (the
 nearest `realm.json`; for a sub-realm, its parent's format). Without one, the RLIFRMT defaults apply,
 as in `[ENT-001.0/D]`. Only the rendered form changes, never the stored ID
-([SPEC §4](https://github.com/SteerSpec/strspc-manager/blob/v1.43.0/docs/SPEC.md#4-rule-identifier-format)).
+([SPEC §4](https://github.com/SteerSpec/strspc-manager/blob/v1.44.0/docs/SPEC.md#4-rule-identifier-format)).
 
 An entity that declares `inherits` gets an "Inherited rules" section listing the rules it inherits,
 with their owner and state, and which of its own rules overrides them. `--json` adds them as an

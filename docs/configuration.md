@@ -7,11 +7,11 @@ Back to the [README](../README.md).
 `strspc init` writes `.strspc/config.yaml` and a `.strspc/.gitignore` that keeps `cache.db` and
 `cache/` out of version control. Pass `--provider null` for an offline setup without an API key, and
 `--force` to overwrite. This example adds a local realm to the generated config
-([SPEC §2.9](https://github.com/SteerSpec/strspc-manager/blob/v1.43.0/docs/SPEC.md#29-configuration)):
+([SPEC §2.9](https://github.com/SteerSpec/strspc-manager/blob/v1.44.0/docs/SPEC.md#29-configuration)):
 
 ```yaml
 rules:
-  - source: github://SteerSpec/strspc-rules@v1.20.0/rules/core   # bumped per rules release
+  - source: github://SteerSpec/strspc-rules@v1.21.0/rules/core   # bumped per rules release
     scope: global
   - source: ./rules/
     scope: global
@@ -57,7 +57,7 @@ Config: .strspc/config.yaml
   Cache TTL: 24h0m0s
 
 Sources:
-  - github://SteerSpec/strspc-rules@v1.20.0/rules/core (global): pinned, cached, 154 rule(s)
+  - github://SteerSpec/strspc-rules@v1.21.0/rules/core (global): pinned, cached, 154 rule(s)
   - ./rules/ (global): local, 13 rule(s)
 
 Rules: 167 total
@@ -71,7 +71,8 @@ Realm: dev.steerspec.cli 0.1.0
 It only reads: it makes no network call and fills no cache, so a source that was never fetched shows
 as `not synced`, and `strspc sync` fetches it. Only `@latest` can go stale, once it resolved longer ago
 than `cache.ttl`; a pinned source can't. `--json` prints the same report as one document. It exits 0,
-also in a project with no configuration, and 2 when the configuration can't be parsed.
+also in a project with no configuration, 2 when the configuration can't be parsed, and 4 when the
+`--json` report can't be written.
 
 ## Diagnose problems
 

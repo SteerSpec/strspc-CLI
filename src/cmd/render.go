@@ -279,8 +279,10 @@ func renderFileJSON(cmd *cobra.Command, chains *chainResolver, path, outputDir, 
 	}
 
 	if outputDir == "" {
-		_, err = cmd.OutOrStdout().Write(append(printableJSON(data), '\n'))
-		return err
+		if _, err := cmd.OutOrStdout().Write(append(printableJSON(data), '\n')); err != nil {
+			return withExitCode(exitOutput, fmt.Errorf("writing JSON output: %w", err))
+		}
+		return nil
 	}
 
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {

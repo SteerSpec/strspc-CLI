@@ -1,4 +1,4 @@
-.PHONY: build test lint fmt install-hooks clean strspc-lint
+.PHONY: build test cover lint fmt install-hooks clean strspc-lint
 
 VERSION ?= dev
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -15,6 +15,12 @@ build:
 
 test:
 	go test -race ./...
+
+# cover runs the tests the way CI does and fails below the coverage CONV-005 requires.
+COVER_MIN ?= 95
+cover:
+	go test -race -coverprofile=coverage.out ./...
+	scripts/coverage-gate.sh coverage.out $(COVER_MIN)
 
 lint:
 	golangci-lint run

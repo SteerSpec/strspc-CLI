@@ -76,7 +76,7 @@ strspc init
 
 # Author rules in your own realm, pinned to the core realm
 strspc realm init --dir rules --id com.acme.app --title "Acme App" \
-  --dependency dev.steerspec.core@1.20.0=github://SteerSpec/strspc-rules@v1.20.0/rules/core
+  --dependency dev.steerspec.core@1.21.0=github://SteerSpec/strspc-rules@v1.21.0/rules/core
 strspc realm add CFG --title "Configuration"
 strspc rule add CFG --body "The CLI MUST write a config file." --added-by github:alice
 

@@ -5,9 +5,9 @@
     "title": "Conventions"
   },
   "rule_set": {
-    "version": "0.3.1",
-    "timestamp": "2026-11-05T07:49:22Z",
-    "hash": "blake3:707bd65825001ec752f20664c532e801396d150def6d1f052265ab5c4a2e3f6d"
+    "version": "0.5.0",
+    "timestamp": "2026-11-07T09:50:02Z",
+    "hash": "blake3:c72e0a133c161aad39a5e0432f5310d926e2ad7fba1773c36d8db85a6a031fb4"
   },
   "rules": [
     {
@@ -44,6 +44,15 @@
       "body": "MUST wrap an underlying error with %w when returning it so callers can inspect the cause with errors.Is and errors.As.",
       "added_by": "github:pleberre",
       "added_at": "2026-10-19",
+      "supersedes": null
+    },
+    {
+      "id": "CONV-005",
+      "revision": 0,
+      "state": "I",
+      "body": "The total statement coverage of the module's Go packages, as measured by go test with -coverprofile, MUST be at least 95%",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-07",
       "supersedes": null
     }
   ],
