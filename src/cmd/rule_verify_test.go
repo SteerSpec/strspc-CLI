@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -55,6 +56,12 @@ func verdictsOf(vo *verifyOutput) map[string]string {
 }
 
 func TestTreePathspecs(t *testing.T) {
+	// A backslash is a name character on Unix, escaped as such; on Windows
+	// it is a path separator, which filepath.ToSlash turns into "/".
+	backslashSpec := `:(glob)a[\\]b/x`
+	if runtime.GOOS == "windows" {
+		backslashSpec = ":(glob)a/b/x"
+	}
 	tests := []struct {
 		name     string
 		subDir   string
@@ -76,7 +83,7 @@ func TestTreePathspecs(t *testing.T) {
 		{"exclude only", ".", nil, []string{"**/*_test.go", " "}, []string{".", ":(exclude,glob)**/*_test.go"}, false},
 		{"path and exclude in subdir", "svc", []string{"cmd"}, []string{"cmd/gen"}, []string{":(glob)svc/cmd", ":(exclude,glob)svc/cmd/gen"}, false},
 		{"subdir with glob characters", "a*b[1]?", []string{"x/*.go"}, nil, []string{`:(glob)a[*]b[[]1[]][?]/x/*.go`}, false},
-		{"subdir with a backslash", `a\b`, []string{"x"}, nil, []string{`:(glob)a[\\]b/x`}, false},
+		{"subdir with a backslash", `a\b`, []string{"x"}, nil, []string{backslashSpec}, false},
 		{"exclude climbs out", ".", nil, []string{"../x"}, nil, true},
 	}
 	for _, tt := range tests {
