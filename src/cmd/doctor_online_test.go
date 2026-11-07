@@ -362,3 +362,59 @@ func TestContentsPath(t *testing.T) {
 		}
 	}
 }
+
+func TestDoctorOnlineLatestSourceUnreachable(t *testing.T) {
+	fakeDoctorHost(t)
+	srv := httptest.NewServer(http.NotFoundHandler())
+	srv.Close()
+	orig := githubAPIBase
+	githubAPIBase = srv.URL
+	t.Cleanup(func() { githubAPIBase = orig })
+	const src = "github://acme/rules@latest"
+	report, _ := runDoctorJSON(t, writeDoctorProject(t, "rules:\n  - source: "+src+"\n    scope: global\n"), "--online")
+	c := assertDoctorStatus(t, report, "online.sources", src, doctorFail)
+	testutil.AssertContains(t, c.Message, "acme/rules@latest: unreachable")
+}
+
+func TestDoctorOnlineLatestSourceWithoutTag(t *testing.T) {
+	fakeDoctorHost(t)
+	fakeGitHub(t, map[string]fakeGitHubReply{
+		latestCLIRelease:                     release("v1.2.3"),
+		"/repos/acme/rules/releases/latest?": {status: http.StatusOK, body: `{}`},
+	})
+	const src = "github://acme/rules@latest"
+	report, _ := runDoctorJSON(t, writeDoctorProject(t, "rules:\n  - source: "+src+"\n    scope: global\n"), "--online")
+	c := assertDoctorStatus(t, report, "online.sources", src, doctorFail)
+	testutil.AssertContains(t, c.Remedy, "pin a release tag")
+}
+
+// A malformed github:// source is sources.state's to report; online sends no
+// request for it.
+func TestDoctorOnlineSkipsMalformedSource(t *testing.T) {
+	fakeDoctorHost(t)
+	requests := fakeGitHub(t, map[string]fakeGitHubReply{latestCLIRelease: release("v1.2.3")})
+	report, _ := runDoctorJSON(t, writeDoctorProject(t, "rules:\n  - source: github://nothing\n    scope: global\n"), "--online")
+	assertDoctorStatus(t, report, "online.sources", "", doctorSkip)
+	for _, r := range requests() {
+		if r.target != latestCLIRelease {
+			t.Errorf("unexpected request %s", r.target)
+		}
+	}
+}
+
+// With a token that is sent to the owner, a rate limit can only be waited out.
+func TestDoctorOnlineRateLimitedWithToken(t *testing.T) {
+	fakeDoctorHost(t)
+	t.Setenv("GITHUB_TOKEN", "ghp-test")
+	t.Setenv("STRSPC_TOKEN_OWNERS", "acme")
+	fakeGitHub(t, map[string]fakeGitHubReply{
+		latestCLIRelease:                        release("v1.2.3"),
+		"/repos/acme/rules/contents?ref=v1.0.0": rateLimited,
+	})
+	const src = "github://acme/rules@v1.0.0"
+	report, _ := runDoctorJSON(t, writeDoctorProject(t, "rules:\n  - source: "+src+"\n    scope: global\n"), "--online")
+	c := assertDoctorStatus(t, report, "online.sources", src, doctorWarn)
+	if c.Remedy != "retry later" {
+		t.Errorf("remedy %q, want retry later", c.Remedy)
+	}
+}

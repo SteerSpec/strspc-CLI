@@ -206,3 +206,38 @@ func TestRenderWarnsWhenInheritsHasNoRealm(t *testing.T) {
 	testutil.AssertContains(t, out, "warning:")
 	testutil.AssertContains(t, out, "SAVACCT-001")
 }
+
+// An entity and its sub-entity that both inherit list their inherited rules
+// together, and a second inheriting entity of the same realm reuses the
+// realm's resolved chains.
+func TestRenderDirectoryJSONInheritedByEntityAndSubEntity(t *testing.T) {
+	dir := t.TempDir()
+	writeRealmManifest(t, dir, "dev.app")
+	writeInheritEntity(t, dir, "ACCT", "", inheritRule{id: "ACCT-001", state: "P"})
+	sub := inheritEntityJSON("SAVSUB", "ACCT", "", inheritRule{id: "SAVSUB-001", state: "P"})
+	writeInheritFile(t, dir, "TOP", inheritEntityJSON("TOP", "ACCT", "["+sub+"]", inheritRule{id: "TOP-001", state: "P"}))
+	writeInheritEntity(t, dir, "SAV2", "ACCT", inheritRule{id: "SAV2-001", state: "P"})
+
+	out := t.TempDir()
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "render", dir, "--json", "-o", out); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for file, by := range map[string][]string{"TOP.json": {"TOP", "SAVSUB"}, "SAV2.json": {"SAV2"}} {
+		data, err := os.ReadFile(filepath.Join(out, file))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got renderedInherited
+		if err := json.Unmarshal(data, &got); err != nil {
+			t.Fatalf("%s: invalid JSON: %v", file, err)
+		}
+		if got.Inherited == nil || len(*got.Inherited) != len(by) {
+			t.Fatalf("%s: inherited = %+v, want %d rows", file, got.Inherited, len(by))
+		}
+		for i, want := range by {
+			if row := (*got.Inherited)[i]; row.InheritedBy != want || row.ID != "dev.app:ACCT-001" {
+				t.Errorf("%s row %d = %+v, want dev.app:ACCT-001 inherited by %s", file, i, row, want)
+			}
+		}
+	}
+}

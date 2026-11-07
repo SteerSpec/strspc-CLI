@@ -427,3 +427,24 @@ func TestStatusDefaultsToCurrentDirectory(t *testing.T) {
 		t.Fatal(statErr)
 	}
 }
+
+// The human report covers a config with no sources, an evaluator without a
+// model, and rules it could not classify or read.
+func TestWriteStatusEdgeLines(t *testing.T) {
+	var b bytes.Buffer
+	writeStatus(&b, &statusReport{
+		Version:     "dev",
+		Initialized: true,
+		Config:      &statusConfig{Path: ".strspc/config.yaml", Evaluator: "null", CacheTTL: "24h"},
+		Rules:       ruleCounts{Total: 1, Unknown: 1, Unreadable: 2},
+	}, time.Now())
+	out := b.String()
+	for _, want := range []string{
+		"Evaluator: null\n",
+		"Sources:\n  none",
+		"1 in an unknown state",
+		"2 unreadable file(s), not counted",
+	} {
+		testutil.AssertContains(t, out, want)
+	}
+}
