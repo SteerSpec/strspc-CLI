@@ -5,9 +5,9 @@
     "title": "Commands"
   },
   "rule_set": {
-    "version": "0.12.2",
-    "timestamp": "2026-11-07T11:18:15Z",
-    "hash": "blake3:1589ef6203eef56056d289ec2b6a455174b457e60b0c414017df42ffe8cbdb22"
+    "version": "0.13.0",
+    "timestamp": "2026-11-07T11:24:04Z",
+    "hash": "blake3:8cf74f2f5831c7508e182f8ba81ce37541b93fe5b8df64ce25c66d6e80c8738d"
   },
   "rules": [
     {
@@ -76,7 +76,7 @@
     {
       "id": "CMD-008",
       "revision": 0,
-      "state": "D",
+      "state": "P",
       "body": "A command given --json MUST exit 4 when its JSON document can't be written to stdout, unless it has already failed with another exit code, and MUST NOT exit 4 for any other failure.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-07",
