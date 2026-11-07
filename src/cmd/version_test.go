@@ -73,5 +73,18 @@ func TestRootVersionFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	testutil.AssertContains(t, out, "strspc 9.9.9")
+	testutil.AssertContains(t, out, "strspc 9.9.9\n")
+	testutil.AssertContains(t, out, "Apache License 2.0")
+	testutil.AssertContains(t, out, "https://steerspec.dev")
+}
+
+func TestVersionCommandShowsLicenseAndSite(t *testing.T) {
+	setTestVersionInfo(t, VersionInfo{Version: "1.0.0"})
+
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "version")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, output, "Apache 2.0")
+	testutil.AssertContains(t, output, "https://steerspec.dev")
 }

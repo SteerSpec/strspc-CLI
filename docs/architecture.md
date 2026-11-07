@@ -103,7 +103,7 @@ full data model.
 | `strspc entity rehash` | Recompute null or stale `rule_set.hash` values |
 | `strspc entity standards add\|update\|remove\|list` | Declare the external standards an entity cites |
 | `strspc completion` | Generate a shell completion script (bash, fish, powershell, zsh) |
-| `strspc version` | Show version, commit and build info |
+| `strspc version` | Show version, commit, build info, licence and site |
 
 Run `strspc <command> --help` for every flag. Commands that edit rules take `--json`, and `--dir`
 defaults to `./rules`.
