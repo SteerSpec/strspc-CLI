@@ -104,7 +104,7 @@ func newStatusCmd() *cobra.Command {
 			"synced shows as such. Run strspc sync to fetch it. A pinned source can't go stale; only @latest\n" +
 			"has a TTL.\n\n" +
 			"Exit codes: 0 when the report is printed, also for a project with no configuration; 2 when\n" +
-			"the configuration can't be parsed.",
+			"the configuration can't be parsed; 4 when the --json report can't be written.",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -321,8 +321,10 @@ func writeStatusJSON(w io.Writer, report *statusReport) error {
 	if err != nil {
 		return fmt.Errorf("marshaling status: %w", err)
 	}
-	_, err = w.Write(append(printableJSON(data), '\n'))
-	return err
+	if _, err := w.Write(append(printableJSON(data), '\n')); err != nil {
+		return withExitCode(exitOutput, fmt.Errorf("writing JSON output: %w", err))
+	}
+	return nil
 }
 
 // writeStatus prints report. Values come from the project's files, so every line
