@@ -56,11 +56,11 @@ func (s *standardFlags) ref(cmd *cobra.Command) (entity.StandardRef, error) {
 
 // addStandardRef appends ref to refs, refusing an id already declared there
 // (STDREF-003).
-func addStandardRef(refs []entity.StandardRef, ref entity.StandardRef) ([]entity.StandardRef, error) {
+func addStandardRef(refs []entity.StandardRef, ref *entity.StandardRef) ([]entity.StandardRef, error) {
 	if entity.FindStandard(refs, ref.ID) != nil {
 		return nil, fmt.Errorf("standard %q is already declared (STDREF-003): remove it first to change it", ref.ID)
 	}
-	out := append(slices.Clone(refs), ref)
+	out := append(slices.Clone(refs), *ref)
 	if errs := entity.ValidateStandardRefs(out); len(errs) > 0 {
 		return nil, errors.Join(errs...)
 	}
@@ -90,7 +90,7 @@ func standardsOrEmpty(refs []entity.StandardRef) []entity.StandardRef {
 }
 
 // describeStandard renders one reference on one line for human output.
-func describeStandard(ref entity.StandardRef) string {
+func describeStandard(ref *entity.StandardRef) string {
 	s := ref.ID
 	if ref.Version != "" {
 		s += " " + ref.Version

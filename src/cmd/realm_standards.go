@@ -56,7 +56,7 @@ Example:
 			}
 			var realmID string
 			err = loadModifyWriteRealm(realmPath, func(rf *entity.RealmFile) error {
-				refs, err := addStandardRef(rf.Realm.Standards, ref)
+				refs, err := addStandardRef(rf.Realm.Standards, &ref)
 				if err != nil {
 					return err
 				}
@@ -67,7 +67,7 @@ Example:
 			if err != nil {
 				return err
 			}
-			return writeRealmStandardChange(cmd, jsonOut, "Declared", realmID, realmPath, ref)
+			return writeRealmStandardChange(cmd, jsonOut, "Declared", realmID, realmPath, &ref)
 		},
 	}
 	std.register(cmd)
@@ -122,7 +122,7 @@ Example:
 			if err != nil {
 				return err
 			}
-			return writeRealmStandardChange(cmd, jsonOut, "Removed", realmID, realmPath, removed)
+			return writeRealmStandardChange(cmd, jsonOut, "Removed", realmID, realmPath, &removed)
 		},
 	}
 	cmd.Flags().StringVar(&id, "id", "", "id of the standard to remove (required)")
@@ -169,7 +169,7 @@ func newRealmStandardsListCmd() *cobra.Command {
 	return cmd
 }
 
-func writeRealmStandardChange(cmd *cobra.Command, jsonOut bool, verb, realmID, path string, ref entity.StandardRef) error {
+func writeRealmStandardChange(cmd *cobra.Command, jsonOut bool, verb, realmID, path string, ref *entity.StandardRef) error {
 	w := cmd.OutOrStdout()
 	if jsonOut {
 		return writeJSONOutput(w, map[string]any{
