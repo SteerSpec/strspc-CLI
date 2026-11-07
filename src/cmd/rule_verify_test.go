@@ -75,6 +75,7 @@ func TestTreePathspecs(t *testing.T) {
 		{"absolute", ".", []string{"/etc"}, nil, nil, true},
 		{"exclude only", ".", nil, []string{"**/*_test.go", " "}, []string{".", ":(exclude,glob)**/*_test.go"}, false},
 		{"path and exclude in subdir", "svc", []string{"cmd"}, []string{"cmd/gen"}, []string{":(glob)svc/cmd", ":(exclude,glob)svc/cmd/gen"}, false},
+		{"subdir with glob characters", "a*b[1]?", []string{"x/*.go"}, nil, []string{`:(glob)a\*b\[1\]\?/x/*.go`}, false},
 		{"exclude climbs out", ".", nil, []string{"../x"}, nil, true},
 	}
 	for _, tt := range tests {
@@ -113,6 +114,28 @@ func TestCollectTreeDiff(t *testing.T) {
 	if !strings.Contains(only, "run()") {
 		t.Errorf("working tree edit missing:\n%s", only)
 	}
+}
+
+// A glob in --path must not reach a sibling of a project whose directory
+// name holds glob characters.
+func TestCollectTreeDiffEscapesProjectDir(t *testing.T) {
+	dir := t.TempDir()
+	gitRun(t, dir, "init", "-q", "-b", "main")
+	writeFile(t, dir, "svc[1]/cmd/a.go", "package cmd\n")
+	writeFile(t, dir, "svc[1]/cmd/a_test.go", "package cmd\n")
+	writeFile(t, dir, "svc1/cmd/b.go", "package cmd\n")
+	gitRun(t, dir, "add", ".")
+	gitRun(t, dir, "commit", "-q", "-m", "base")
+
+	specs, err := treePathspecs("svc[1]", []string{"cmd/*.go"}, []string{"**/*_test.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff, err := collectTreeDiff(context.Background(), dir, "svc[1]", specs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertFiles(t, diff, "svc[1]/cmd/a.go")
 }
 
 func TestCollectTreeDiffNotARepo(t *testing.T) {
@@ -420,7 +443,7 @@ func TestRuleVerifyJSONWriteFailure(t *testing.T) {
 }
 
 func TestVerdictProviderForwards(t *testing.T) {
-	rec := &verdictRecorder{verdicts: map[string]*ruleeval.EvalResponse{}}
+	rec := newVerdictRecorder()
 	plain := wrapRecording(&stubProvider{}, rec)
 	if _, ok := plain.(ruleeval.BatchProvider); ok {
 		t.Error("a non-batch provider must not gain EvaluateBatch")
@@ -443,6 +466,59 @@ func TestVerdictProviderForwards(t *testing.T) {
 	got := rec.report([]ruleeval.RuleInput{{Rule: entity.Rule{ID: "X-1"}}, {Rule: entity.Rule{ID: "X-2"}}})
 	if got[0].Verdict != verifyUnknown || got[1].Verdict != verifyUnknown {
 		t.Errorf("an unrecognised or missing verdict is unknown: %+v", got)
+	}
+}
+
+// A rule reported more than once (one response per part) keeps the
+// strongest verdict: a later compliant part never hides a violation.
+func TestVerdictRecorderMerges(t *testing.T) {
+	rec := newVerdictRecorder()
+	loc := func(line int) []ruleeval.Location { return []ruleeval.Location{{File: "a.go", Line: line}} }
+	rec.put("R-1", &ruleeval.EvalResponse{Verdict: ruleeval.Compliant, Explanation: "part 1"})
+	rec.put("R-1", &ruleeval.EvalResponse{Verdict: ruleeval.Violated, Evidence: loc(3), Confidence: 0.6})
+	rec.put("R-1", &ruleeval.EvalResponse{Verdict: ruleeval.Compliant, Explanation: "part 3"})
+	rec.put("R-1", &ruleeval.EvalResponse{Verdict: ruleeval.Violated, Evidence: loc(9), Confidence: 0.9, Explanation: "part 4"})
+	rec.put("R-2", &ruleeval.EvalResponse{Verdict: ruleeval.NotApplicable})
+	rec.put("R-2", &ruleeval.EvalResponse{Verdict: ruleeval.Compliant, Explanation: "touched"})
+	rec.put("R-2", &ruleeval.EvalResponse{Verdict: ruleeval.NotApplicable})
+
+	got := rec.report([]ruleeval.RuleInput{{Rule: entity.Rule{ID: "R-1"}}, {Rule: entity.Rule{ID: "R-2"}}})
+	if r := got[0]; r.Verdict != verifyViolated || len(r.Evidence) != 2 || r.Confidence != 0.9 || r.Explanation != "part 4" {
+		t.Errorf("R-1 = %+v, want violated with both locations, confidence 0.9, part 4's explanation", r)
+	}
+	if r := got[1]; r.Verdict != verifyCompliant || r.Explanation != "touched" {
+		t.Errorf("R-2 = %+v, want compliant", r)
+	}
+}
+
+// partialBatchProvider is a batch provider that judged only part of the
+// tree: its response carries Errors next to the verdicts.
+type partialBatchProvider struct{ batchStubProvider }
+
+func (p *partialBatchProvider) EvaluateBatch(ctx context.Context, req ruleeval.BatchRequest) (*ruleeval.BatchResponse, error) {
+	resp, err := p.batchStubProvider.EvaluateBatch(ctx, req)
+	if resp != nil {
+		resp.Errors = []error{errors.New("hunk in big.go exceeds the input budget and was not evaluated")}
+	}
+	return resp, err
+}
+
+func TestRuleVerifyPartialBatchIsUnknown(t *testing.T) {
+	dir := setupVerifyRepo(t, "claude")
+	stubEvalProvider(t, &partialBatchProvider{batchStubProvider{stubProvider: stubProvider{verdicts: map[string]*ruleeval.EvalResponse{
+		"TST-001": violatedResponse("found anyway"),
+		"TST-002": {Verdict: ruleeval.Compliant, Explanation: "fine where seen"},
+	}}}}, nil)
+
+	out, err := runVerifyCmd(t, "TST-001", "TST-002", "TST-003", "--project", dir, "--format", "json")
+	assertExit(t, err, exitViolations)
+	vo := decodeVerify(t, out)
+	want := map[string]string{"TST-001": verifyViolated, "TST-002": verifyUnknown, "TST-003": verifyUnknown}
+	if got := verdictsOf(&vo); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("verdicts = %v, want %v", got, want)
+	}
+	if e := vo.Rules[1].Explanation; !strings.Contains(e, "Partial verdict: compliant. fine where seen") {
+		t.Errorf("TST-002 explanation = %q", e)
 	}
 }
 

@@ -298,7 +298,7 @@ func estimateVerify(diff string, inputs []ruleeval.RuleInput) verifyEstimate {
 
 // runVerifyEvaluation sends the tree and reports one verdict per rule.
 func (r *checkRun) runVerifyEvaluation(est verifyEstimate) error {
-	rec := &verdictRecorder{verdicts: map[string]*ruleeval.EvalResponse{}}
+	rec := newVerdictRecorder()
 	obs := &checkObserver{}
 	ctx, cancel := context.WithCancel(r.ctx)
 	defer cancel()
@@ -586,21 +586,68 @@ func locateExcerpt(lines []string, needle string, want int) (line int, ok bool) 
 	return line, line != 0
 }
 
-// verdictRecorder keeps the last response the provider gave for each rule:
-// the evaluator only turns violations into diagnostics, and verify needs to
-// tell compliant from not applicable.
+// verdictRecorder keeps the provider's verdict for each rule: the evaluator
+// only turns violations into diagnostics, and verify needs to tell compliant
+// from not applicable.
 type verdictRecorder struct {
 	mu       sync.Mutex
 	verdicts map[string]*ruleeval.EvalResponse
+	// incomplete lists rules whose batch left part of the tree unjudged
+	// (BatchResponse.Errors: a hunk over the input budget, say).
+	incomplete map[string]bool
 }
 
+func newVerdictRecorder() *verdictRecorder {
+	return &verdictRecorder{verdicts: map[string]*ruleeval.EvalResponse{}, incomplete: map[string]bool{}}
+}
+
+// put records resp for id. The Claude provider already merges the parts of
+// a split tree into one verdict per call, but a provider may report a rule
+// more than once, so responses are merged rather than overwritten: violated
+// outranks compliant, which outranks not_applicable (the provider's own
+// precedence), and violations pool their evidence.
 func (v *verdictRecorder) put(id string, resp *ruleeval.EvalResponse) {
 	if resp == nil {
 		return
 	}
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	v.verdicts[id] = resp
+	cur, ok := v.verdicts[id]
+	switch {
+	case !ok || verdictRank(resp.Verdict) > verdictRank(cur.Verdict):
+		c := *resp
+		c.Evidence = append([]ruleeval.Location(nil), resp.Evidence...)
+		v.verdicts[id] = &c
+	case resp.Verdict == ruleeval.Violated && cur.Verdict == ruleeval.Violated:
+		cur.Evidence = append(cur.Evidence, resp.Evidence...)
+		if resp.Confidence > cur.Confidence {
+			cur.Confidence = resp.Confidence
+		}
+		if cur.Explanation == "" {
+			cur.Explanation = resp.Explanation
+		}
+	}
+}
+
+// markIncomplete records that ids were not judged against the whole tree.
+func (v *verdictRecorder) markIncomplete(ids ...string) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	for _, id := range ids {
+		v.incomplete[id] = true
+	}
+}
+
+func verdictRank(v ruleeval.Verdict) int {
+	switch v {
+	case ruleeval.Violated:
+		return 3
+	case ruleeval.Compliant:
+		return 2
+	case ruleeval.NotApplicable:
+		return 1
+	}
+	return 0
 }
 
 func (v *verdictRecorder) report(inputs []ruleeval.RuleInput) []verifyRule {
@@ -624,6 +671,15 @@ func (v *verdictRecorder) report(inputs []ruleeval.RuleInput) []verifyRule {
 			for _, loc := range resp.Evidence {
 				vr.Evidence = append(vr.Evidence, verifyEvidence{Location: loc})
 			}
+		}
+		// A violation found in the parts that were judged stands; anything
+		// else says nothing about the parts that were not.
+		if v.incomplete[rule.ID] && vr.Verdict != verifyViolated {
+			if vr.Verdict != verifyUnknown {
+				vr.Explanation = strings.TrimSpace("Only part of the tree was judged (see RE002); the rest could be " +
+					"in breach. Partial verdict: " + vr.Verdict + ". " + vr.Explanation)
+			}
+			vr.Verdict = verifyUnknown
 		}
 		out = append(out, vr)
 	}
@@ -678,6 +734,13 @@ func (p *verdictBatchProvider) EvaluateBatch(ctx context.Context, req ruleeval.B
 	if resp != nil {
 		for id, v := range resp.Verdicts {
 			p.rec.put(id, v)
+		}
+		if len(resp.Errors) > 0 {
+			ids := make([]string, len(req.Inputs))
+			for i := range req.Inputs {
+				ids[i] = req.Inputs[i].Rule.ID
+			}
+			p.rec.markIncomplete(ids...)
 		}
 	}
 	return resp, err

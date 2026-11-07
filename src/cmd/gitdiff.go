@@ -243,7 +243,10 @@ func treePathspecs(subDir string, paths, excludes []string) ([]string, error) {
 }
 
 // projectGlob cleans one --path or --exclude value and roots it at subDir.
-// ok is false for a blank value, which is skipped.
+// The project prefix is escaped so that a directory such as `svc[1]` is
+// matched literally and a glob cannot reach a sibling such as `svc1`; only
+// the user's value is a pattern. ok is false for a blank value, which is
+// skipped.
 func projectGlob(flag, subDir, p string) (glob string, ok bool, err error) {
 	p = filepath.ToSlash(strings.TrimSpace(p))
 	if p == "" {
@@ -253,7 +256,23 @@ func projectGlob(flag, subDir, p string) (glob string, ok bool, err error) {
 	if path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
 		return "", false, fmt.Errorf("%s %q must be relative to the project and stay inside it", flag, p)
 	}
-	return path.Join(filepath.ToSlash(subDir), clean), true, nil
+	if subDir == "." || subDir == "" {
+		return clean, true, nil
+	}
+	return escapeGlob(filepath.ToSlash(subDir)) + "/" + clean, true, nil
+}
+
+// escapeGlob backslash-escapes the characters git's glob pathspec magic
+// treats as pattern syntax.
+func escapeGlob(s string) string {
+	var b strings.Builder
+	for _, c := range s {
+		if strings.ContainsRune(`\*?[]`, c) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(c)
+	}
+	return b.String()
 }
 
 // collectTreeDiff returns every tracked file under pathspecs (minus the
