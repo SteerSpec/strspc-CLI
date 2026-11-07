@@ -21,6 +21,10 @@ var standardsMinCore = semver.MustParse("1.15.0")
 // schema accepts a `contributors` array (CTRB-004).
 var contributorsMinCore = semver.MustParse("1.16.0")
 
+// manifestMinCore is the first dev.steerspec.core release whose realm schema
+// accepts a manifest `hash` (RLMMNFST-013) and Realm Notes (RLMMNFST-012).
+var manifestMinCore = semver.MustParse("1.21.0")
+
 // coreReleasePin matches a pin that selects a core release's schemas, as the
 // manager's schema.WithCoreVersion reads it. Lint ignores any other form and
 // uses the latest schemas.

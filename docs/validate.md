@@ -13,7 +13,7 @@ strspc check --static-only                     # resolve sources, verify hashes 
 ```
 
 These implement the checks of
-[SPEC §7](https://github.com/SteerSpec/strspc-manager/blob/v1.44.0/docs/SPEC.md#7-cicd-workflows). `lint`,
+[SPEC §7](https://github.com/SteerSpec/strspc-manager/blob/v1.45.0/docs/SPEC.md#7-cicd-workflows). `lint`,
 `realm validate` and `diff` take `--strict`, which treats warnings as errors, and `--json`; `check`
 takes `--format json`. `lint --cross-ref` adds
 cross-file reference checks in directory mode. `diff` exits 0 when all checks pass and 1 on a

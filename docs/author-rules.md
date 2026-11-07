@@ -28,7 +28,7 @@ flowchart LR
 ```
 
 Transitions are forward-only and no state may be skipped
-([SPEC §3](https://github.com/SteerSpec/strspc-manager/blob/v1.44.0/docs/SPEC.md#3-rule-lifecycle)).
+([SPEC §3](https://github.com/SteerSpec/strspc-manager/blob/v1.45.0/docs/SPEC.md#3-rule-lifecycle)).
 Every change bumps the rule set version: minor when a rule is promoted or retired, patch otherwise.
 
 ```bash
@@ -107,7 +107,7 @@ force on the replacement rule.
 ## Realms and dependencies
 
 `strspc realm init` creates `realm.json` and vendors the schemas in `_schema/`
-([SPEC §2.8](https://github.com/SteerSpec/strspc-manager/blob/v1.44.0/docs/SPEC.md#28-realm)). Non-core
+([SPEC §2.8](https://github.com/SteerSpec/strspc-manager/blob/v1.45.0/docs/SPEC.md#28-realm)). Non-core
 realms should depend on `dev.steerspec.core`, as in the [quick start](../README.md#quick-start).
 
 The schemas are copied unchanged from the `dev.steerspec.core` release tag in `strspc-rules`: the
@@ -146,3 +146,15 @@ restored and the command exits non-zero.
 Dependencies are never downgraded. Sources that aren't `github://` references, and those on `@latest`,
 a branch or a commit SHA, are skipped. See [GitHub sources](reference.md#github-sources) for private
 repositories.
+
+**Manifest hash.** Since core 1.21.0, `realm.json` may carry a `hash`: the Blake3 hash of the manifest
+without that field (RLMMNFST-013, a Draft rule), which `realm validate` checks (RM025). Every `realm`
+command that rewrites a manifest with a hash recomputes it (RLMMNFST-014). `realm init` writes none.
+After editing `realm.json` by hand or by a script, such as a release bump or a pin change,
+`strspc realm rehash` adds the hash or refreshes it, in the realm and each sub-realm it lists. Adding
+one needs a `dev.steerspec.core` pin of 1.21.0 or later.
+
+```bash
+strspc realm rehash                 # add or refresh the hash of ./rules/realm.json and its sub-realms
+strspc realm rehash --json
+```
