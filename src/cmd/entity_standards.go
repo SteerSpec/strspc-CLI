@@ -50,9 +50,15 @@ dot-separated lowercase slug (STDREF-002) not already declared on the entity
 entity's rule_set version is patch-bumped and its timestamp and hash refreshed,
 along with those of the entities containing it.
 
+--realm links the reference to a Standard Realm the Realm tree depends on
+(STDREF-017), whose edition is the --version (STDREF-018); --profile limits it
+to one of that Realm's profiles (STDREF-019, STDREF-027). Lint checks the link
+against the Realm. Both need dev.steerspec.core ` + manifestMinCore.String() + ` or later.
+
 Examples:
   strspc entity standards add KWRD --id ietf.rfc2119 --relation derived_from --url https://www.rfc-editor.org/rfc/rfc2119
-  strspc entity standards add API --id owasp.asvs --relation implements --version 4.0.3 --json`,
+  strspc entity standards add API --id owasp.asvs --relation implements --version 4.0.3 --json
+  strspc entity standards add API --id owasp.asvs --relation implements --version 5.0.0 --realm dev.steerspec.std.owasp.asvs.v5 --profile L1`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -66,6 +72,9 @@ Examples:
 				return err
 			}
 			if err := checkCoreAcceptsStandards(dir, target.path); err != nil {
+				return err
+			}
+			if err := checkCoreAcceptsStandardLink(dir, target.path, &ref); err != nil {
 				return err
 			}
 			change := entityStandardChange{Entity: args[0], Path: target.path, Standard: ref}

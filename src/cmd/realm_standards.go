@@ -37,8 +37,15 @@ func newRealmStandardsAddCmd() *cobra.Command {
 lowercase slug (STDREF-002) not already declared by the Realm (STDREF-003), and
 the relation implements or derived_from (STDREF-004).
 
-Example:
-  strspc realm standards add --id owasp.asvs --relation implements --version 4.0.3 --url https://owasp.org/www-project-application-security-verification-standard/`,
+--realm links the reference to a Standard Realm the Realm tree depends on
+(STDREF-017), whose edition is the --version (STDREF-018); --profile limits it
+to one of that Realm's profiles (STDREF-019, STDREF-027). Lint checks the link
+against the Realm. Both need dev.steerspec.core ` + manifestMinCore.String() + ` or later. A Realm
+Note of type exclusion names a linked reference (NTE-034).
+
+Examples:
+  strspc realm standards add --id owasp.asvs --relation implements --version 4.0.3 --url https://owasp.org/www-project-application-security-verification-standard/
+  strspc realm standards add --id owasp.asvs --relation implements --version 5.0.0 --realm dev.steerspec.std.owasp.asvs.v5`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -52,6 +59,9 @@ Example:
 				return err
 			}
 			if err := checkCoreAcceptsStandards(dir, realmPath); err != nil {
+				return err
+			}
+			if err := checkCoreAcceptsStandardLink(dir, realmPath, &ref); err != nil {
 				return err
 			}
 			var realmID string
