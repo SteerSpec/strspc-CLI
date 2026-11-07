@@ -23,6 +23,7 @@ Go
 ```bash
 make build        # build binary → ./strspc
 make test         # run tests with -race
+make cover        # tests with coverage; fails below 95% (CONV-005)
 make lint         # golangci-lint
 make fmt          # gofumpt formatting
 make clean        # remove build artifacts

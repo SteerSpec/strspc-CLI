@@ -7,6 +7,7 @@ Requires Go 1.26+ and [golangci-lint](https://golangci-lint.run/) v2.
 ```bash
 make build          # build binary → ./strspc
 make test           # run tests with -race
+make cover          # run tests with coverage; fails below 95% (CONV-005)
 make lint           # golangci-lint
 make fmt            # formatting via golangci-lint fmt
 make strspc-lint    # lint this repository's rules/
