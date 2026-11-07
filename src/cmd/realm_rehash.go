@@ -24,9 +24,9 @@ type realmRehashChange struct {
 type realmRehashResult struct {
 	Updated   []realmRehashChange `json:"updated"`
 	Unchanged int                 `json:"unchanged"`
-	// Links lists the realm.json files that are symbolic links. They are never
-	// written, and the sub-realms they list are not visited: the target may lie
-	// outside --dir.
+	// Links lists the realm.json files and sub-realm directories that are
+	// symbolic links. They are never followed, so nothing they lead to is
+	// read or written: the target may lie outside --dir.
 	Links []string `json:"links"`
 }
 
@@ -39,28 +39,21 @@ func isSubRealmName(name string) bool {
 
 // rehashRealmTree adds or refreshes the manifest hash (RLMMNFST-013) of the
 // realm.json in dir, then of each sub-realm it lists, recursively. A manifest
-// whose hash already matches is left as it is, byte for byte. seen holds the
-// directories visited, so a directory linked back into the tree is visited
-// once.
-func rehashRealmTree(dir string, res *realmRehashResult, seen map[string]bool) error {
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return fmt.Errorf("resolving %s: %w", dir, err)
-	}
-	if seen[abs] {
+// whose hash already matches is left as it is, byte for byte. No link is
+// followed below dir: a realm.json or a sub-realm directory that is a symbolic
+// link is listed in res.Links, so every manifest written lies inside dir, and
+// since each step goes one real directory down, the walk can't loop.
+func rehashRealmTree(dir string, res *realmRehashResult) error {
+	path := filepath.Join(dir, "realm.json")
+	// Look at the name itself before checkRealmJSON, which follows a link: a
+	// dangling one is listed too, not reported as missing.
+	if link, err := isLinkPath(path); err == nil && link {
+		res.Links = append(res.Links, path)
 		return nil
 	}
-	seen[abs] = true
-
 	path, err := checkRealmJSON(dir)
 	if err != nil {
 		return err
-	}
-	if link, err := isLinkPath(path); err != nil {
-		return fmt.Errorf("reading %s: %w", path, err)
-	} else if link {
-		res.Links = append(res.Links, path)
-		return nil
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -99,7 +92,19 @@ func rehashRealmTree(dir string, res *realmRehashResult, seen map[string]bool) e
 		if !isSubRealmName(name) {
 			return fmt.Errorf("%s lists sub-realm %q, which is not the name of a directory next to it", path, name)
 		}
-		if err := rehashRealmTree(filepath.Join(dir, name), res, seen); err != nil {
+		subDir := filepath.Join(dir, name)
+		fi, err := os.Lstat(subDir)
+		if err != nil {
+			return fmt.Errorf("reading sub-realm %s: %w", subDir, err)
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			res.Links = append(res.Links, subDir)
+			continue
+		}
+		if !fi.IsDir() {
+			return fmt.Errorf("%s lists sub-realm %q, which is not a directory", path, name)
+		}
+		if err := rehashRealmTree(subDir, res); err != nil {
 			return err
 		}
 	}
@@ -123,8 +128,9 @@ script: the realm commands keep an existing hash current themselves
 (RLMMNFST-014), and realm init writes none.
 
 Adding a hash needs a dev.steerspec.core pin of ` + manifestMinCore.String() + ` or later, whose realm
-schema accepts it. A realm.json that is a symbolic link is listed and never
-followed. Versions are never bumped.
+schema accepts it. A realm.json or a sub-realm directory that is a symbolic
+link is listed and never followed, so nothing outside --dir is written.
+Versions are never bumped.
 
 Examples:
   strspc realm rehash
@@ -134,7 +140,7 @@ Examples:
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			res := realmRehashResult{}
-			if err := rehashRealmTree(dir, &res, map[string]bool{}); err != nil {
+			if err := rehashRealmTree(dir, &res); err != nil {
 				return err
 			}
 

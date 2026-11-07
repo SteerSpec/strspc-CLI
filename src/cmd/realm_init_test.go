@@ -671,3 +671,31 @@ func TestRealmInitRejectsNonSemVerDependency(t *testing.T) {
 		t.Error("realm.json must not be written when validation fails")
 	}
 }
+
+// TestRealmInitForceReplacesLink replaces a realm.json that is a symbolic link
+// with a regular file, and leaves the link's target alone.
+func TestRealmInitForceReplacesLink(t *testing.T) {
+	setupSchemaServer(t)
+	target := filepath.Join(t.TempDir(), "outside.json")
+	if err := os.WriteFile(target, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), "rules")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "realm.json")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", dir, "--id", "com.test.force", "--force"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if isLink, err := isLinkPath(link); err != nil || isLink {
+		t.Errorf("realm.json is still a link (err %v)", err)
+	}
+	if data, err := os.ReadFile(target); err != nil || string(data) != "{}" {
+		t.Errorf("the link's target was written: %q (err %v)", data, err)
+	}
+}

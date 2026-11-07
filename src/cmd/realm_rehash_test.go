@@ -231,3 +231,102 @@ func TestRealmRehashHumanOutput(t *testing.T) {
 	}
 	testutil.AssertContains(t, out, "0 manifest(s) updated, 1 unchanged, 0 skipped")
 }
+
+// TestRealmRehashListsDanglingLink lists a realm.json link to nothing rather
+// than reporting it as missing.
+func TestRealmRehashListsDanglingLink(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(dir, "realm.json")
+	if err := os.Symlink(filepath.Join(dir, "gone.json"), link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	res := runRealmRehash(t, dir)
+	if len(res.Links) != 1 || res.Links[0] != link {
+		t.Errorf("links = %v, want [%s]", res.Links, link)
+	}
+}
+
+// TestRealmRehashSkipsLinkedSubRealm lists a sub-realm directory that is a
+// symbolic link and never writes the manifest it leads to, which lies outside
+// --dir.
+func TestRealmRehashSkipsLinkedSubRealm(t *testing.T) {
+	outside := t.TempDir()
+	setupSubRealm(t, outside, "auth", "dev.steerspec.test")
+	outsidePath := filepath.Join(outside, "auth", "realm.json")
+	before, err := os.ReadFile(outsidePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	if out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@1.21.0", "--dir", dir); err != nil {
+		t.Fatalf("dep add: %v\n%s", err, out)
+	}
+	path := filepath.Join(dir, "realm.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest["sub_realms"] = []string{"auth"}
+	if data, err = json.Marshal(manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	subLink := filepath.Join(dir, "auth")
+	if err := os.Symlink(filepath.Join(outside, "auth"), subLink); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	res := runRealmRehash(t, dir)
+	if len(res.Updated) != 1 || res.Updated[0].Path != path {
+		t.Errorf("updated = %+v, want only %s", res.Updated, path)
+	}
+	if len(res.Links) != 1 || res.Links[0] != subLink {
+		t.Errorf("links = %v, want [%s]", res.Links, subLink)
+	}
+	after, err := os.ReadFile(outsidePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, before) {
+		t.Errorf("the manifest outside --dir was rewritten:\n%s", after)
+	}
+}
+
+// TestRealmRehashRejectsSubRealmFile refuses a sub-realm entry naming a file.
+func TestRealmRehashRejectsSubRealmFile(t *testing.T) {
+	dir := t.TempDir()
+	path := setupRehashRealm(t, dir, "1.21.0")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest["sub_realms"] = []string{"notes.txt"}
+	if data, err = json.Marshal(manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = testutil.ExecuteCommand(NewRootCmd(), "realm", "rehash", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected an error for a sub-realm that is a file")
+	}
+	testutil.AssertContains(t, err.Error(), "is not a directory")
+}
