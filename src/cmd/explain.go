@@ -102,7 +102,7 @@ func writeIndentedJSON(w io.Writer, v any) error {
 		return fmt.Errorf("marshaling output: %w", err)
 	}
 	if _, err := w.Write(append(printableJSON(data), '\n')); err != nil {
-		return fmt.Errorf("writing output: %w", err)
+		return withExitCode(exitOutput, fmt.Errorf("writing JSON output: %w", err))
 	}
 	return nil
 }

@@ -86,6 +86,18 @@ func TestJSONCommandsWriteError(t *testing.T) {
 			writeSyncConfig(t, dir, rulesDir)
 			return []string{"sync", dir, "--json"}
 		}},
+		{"status", func(t *testing.T) []string {
+			return []string{"status", t.TempDir(), "--json"}
+		}},
+		{"explain", func(*testing.T) []string {
+			return []string{"explain", "RD005", "--json"}
+		}},
+		{"explain --list", func(*testing.T) []string {
+			return []string{"explain", "--list", "--json"}
+		}},
+		{"render", func(t *testing.T) []string {
+			return []string{"render", setupRenderInherit(t), "--json"}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

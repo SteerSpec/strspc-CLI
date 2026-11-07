@@ -71,7 +71,8 @@ Realm: dev.steerspec.cli 0.1.0
 It only reads: it makes no network call and fills no cache, so a source that was never fetched shows
 as `not synced`, and `strspc sync` fetches it. Only `@latest` can go stale, once it resolved longer ago
 than `cache.ttl`; a pinned source can't. `--json` prints the same report as one document. It exits 0,
-also in a project with no configuration, and 2 when the configuration can't be parsed.
+also in a project with no configuration, 2 when the configuration can't be parsed, and 4 when the
+`--json` report can't be written.
 
 ## Diagnose problems
 
