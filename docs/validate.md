@@ -71,6 +71,12 @@ rendered form. An unknown prefix is reported only when it is uppercase and start
 `CLAMS-001` is reported and `feat-123` isn't. `SHA-256` has that shape too, so pass it to `--ignore`.
 URLs are skipped.
 
+A clause qualified with a declared standard is not a rule citation, whether an entity declares the
+standard or a Realm Manifest of a realm in scope lists it under `realm.standards`:
+<!-- strspc-refs: ignore -->
+`mitre.cwe:CWE-787` passes once the standard `mitre.cwe` is declared. A realm in scope with the same
+ID still wins.
+
 A line holding `strspc-refs: ignore` exempts itself and the next line, for a historical mention. Any
 comment syntax can carry it:
 

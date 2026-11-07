@@ -128,7 +128,7 @@ func runRuleShow(ctx context.Context, out, errOut io.Writer, cwd string, args []
 		parsed = append(parsed, a)
 	}
 
-	sources, err := refsSources(ctx, errOut, cwd)
+	sources, _, err := refsSources(ctx, errOut, cwd)
 	if err != nil {
 		return withExitCode(exitConfig, err)
 	}
