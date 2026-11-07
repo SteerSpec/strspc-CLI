@@ -3,10 +3,14 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
@@ -148,15 +152,29 @@ func replaceEntityFile(path string, f *entity.File) error {
 // directory and a rename, as replaceEntityFile does; what names the file in an
 // error.
 func replaceFile(path string, data []byte, what string) error {
-	mode := os.FileMode(0o644)
-	if fi, err := os.Lstat(path); err == nil && fi.Mode().IsRegular() {
-		mode = fi.Mode().Perm()
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
+	root, err := os.OpenRoot(filepath.Dir(path))
 	if err != nil {
 		return fmt.Errorf("writing %s: %w", what, err)
 	}
-	name := tmp.Name()
+	defer func() { _ = root.Close() }()
+	return replaceFileIn(root, filepath.Base(path), data, what)
+}
+
+// replaceFileIn writes data to name, a path relative to root, by way of a
+// temporary file next to it and a rename. Every step resolves inside root, so
+// a directory on the way that is swapped for a link leading out of root makes
+// the write fail instead of landing outside it. The rename replaces the
+// directory entry and never follows a link at name. The file keeps its
+// permissions.
+func replaceFileIn(root *os.Root, name string, data []byte, what string) error {
+	mode := os.FileMode(0o644)
+	if fi, err := root.Lstat(name); err == nil && fi.Mode().IsRegular() {
+		mode = fi.Mode().Perm()
+	}
+	tmp, tmpName, err := createTempIn(root, name)
+	if err != nil {
+		return fmt.Errorf("writing %s: %w", what, err)
+	}
 	// The mode is set through the open file, not by name: a name swapped for
 	// a link before a Chmod by path would change the link's target instead.
 	_, err = tmp.Write(data)
@@ -167,13 +185,29 @@ func replaceFile(path string, data []byte, what string) error {
 		err = closeErr
 	}
 	if err == nil {
-		err = os.Rename(name, path)
+		err = root.Rename(tmpName, name)
 	}
 	if err != nil {
-		_ = os.Remove(name)
+		_ = root.Remove(tmpName)
 		return fmt.Errorf("writing %s: %w", what, err)
 	}
 	return nil
+}
+
+// createTempIn creates a new file next to name in root, named
+// .<base>.<random>.tmp as os.CreateTemp would name it, and returns it with its
+// path relative to root.
+func createTempIn(root *os.Root, name string) (*os.File, string, error) {
+	dir, base := filepath.Split(name)
+	for range 100 {
+		tmpName := filepath.Join(dir, "."+base+"."+strconv.FormatUint(rand.Uint64(), 36)+".tmp")
+		f, err := root.OpenFile(tmpName, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if errors.Is(err, fs.ErrExist) {
+			continue
+		}
+		return f, tmpName, err
+	}
+	return nil, "", fmt.Errorf("creating a temporary file for %s: too many name collisions", name)
 }
 
 // entityTarget identifies the entity file to modify and, when subID is set,

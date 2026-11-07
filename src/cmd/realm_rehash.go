@@ -38,24 +38,32 @@ func isSubRealmName(name string) bool {
 }
 
 // rehashRealmTree adds or refreshes the manifest hash (RLMMNFST-013) of the
-// realm.json in dir, then of each sub-realm it lists, recursively. A manifest
-// whose hash already matches is left as it is, byte for byte. No link is
-// followed below dir: a realm.json or a sub-realm directory that is a symbolic
-// link is listed in res.Links, so every manifest written lies inside dir, and
-// since each step goes one real directory down, the walk can't loop.
-func rehashRealmTree(dir string, res *realmRehashResult) error {
-	path := filepath.Join(dir, "realm.json")
-	// Look at the name itself before checkRealmJSON, which follows a link: a
-	// dangling one is listed too, not reported as missing.
-	if link, err := isLinkPath(path); err == nil && link {
+// realm.json in the directory rel of root, then of each sub-realm it lists,
+// recursively. top is the --dir root was opened at, for the paths reported. A
+// manifest whose hash already matches is left as it is, byte for byte.
+//
+// Every read and write goes through root, so it resolves inside --dir even when
+// a directory is swapped for a link while the walk runs: the access then fails.
+// A realm.json or a sub-realm directory that is a link is listed in res.Links
+// and not followed, and since each step goes one real directory down, the walk
+// can't loop.
+func rehashRealmTree(root *os.Root, top, rel string, res *realmRehashResult) error {
+	dir := filepath.Join(top, rel)
+	manifest := filepath.Join(rel, "realm.json")
+	path := filepath.Join(top, manifest)
+	// A dangling link is listed too, not reported as missing.
+	fi, err := root.Lstat(manifest)
+	if err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		res.Links = append(res.Links, path)
 		return nil
 	}
-	path, err := checkRealmJSON(dir)
-	if err != nil {
-		return err
+	if err != nil || !fi.Mode().IsRegular() {
+		if _, cerr := checkRealmJSON(dir); cerr != nil {
+			return cerr
+		}
+		return fmt.Errorf("%s is not a regular file", path)
 	}
-	data, err := os.ReadFile(path)
+	data, err := root.ReadFile(manifest)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", path, err)
 	}
@@ -81,7 +89,11 @@ func rehashRealmTree(dir string, res *realmRehashResult) error {
 			old := rf.Hash
 			change.OldHash = &old
 		}
-		if err := replaceRealmManifest(path, rf, true); err != nil {
+		out, err := marshalRealmManifest(rf, true)
+		if err != nil {
+			return err
+		}
+		if err := replaceFileIn(root, manifest, out, "realm.json"); err != nil {
 			return err
 		}
 		change.NewHash = rf.Hash
@@ -92,8 +104,9 @@ func rehashRealmTree(dir string, res *realmRehashResult) error {
 		if !isSubRealmName(name) {
 			return fmt.Errorf("%s lists sub-realm %q, which is not the name of a directory next to it", path, name)
 		}
-		subDir := filepath.Join(dir, name)
-		fi, err := os.Lstat(subDir)
+		subRel := filepath.Join(rel, name)
+		subDir := filepath.Join(top, subRel)
+		fi, err := root.Lstat(subRel)
 		if err != nil {
 			return fmt.Errorf("reading sub-realm %s: %w", subDir, err)
 		}
@@ -104,7 +117,7 @@ func rehashRealmTree(dir string, res *realmRehashResult) error {
 		if !fi.IsDir() {
 			return fmt.Errorf("%s lists sub-realm %q, which is not a directory", path, name)
 		}
-		if err := rehashRealmTree(subDir, res); err != nil {
+		if err := rehashRealmTree(root, top, subRel, res); err != nil {
 			return err
 		}
 	}
@@ -139,8 +152,16 @@ Examples:
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			root, err := os.OpenRoot(dir)
+			if err != nil {
+				if _, cerr := checkRealmJSON(dir); cerr != nil {
+					return cerr
+				}
+				return fmt.Errorf("opening %s: %w", dir, err)
+			}
+			defer func() { _ = root.Close() }()
 			res := realmRehashResult{}
-			if err := rehashRealmTree(dir, &res); err != nil {
+			if err := rehashRealmTree(root, dir, ".", &res); err != nil {
 				return err
 			}
 

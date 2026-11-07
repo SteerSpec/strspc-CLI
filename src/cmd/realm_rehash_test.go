@@ -330,3 +330,46 @@ func TestRealmRehashRejectsSubRealmFile(t *testing.T) {
 	}
 	testutil.AssertContains(t, err.Error(), "is not a directory")
 }
+
+// TestReplaceFileInRefusesSwappedLink swaps a directory for a link leading
+// out of the root after the walk would have checked it: the write through the
+// root fails, and the file outside is left alone.
+func TestReplaceFileInRefusesSwappedLink(t *testing.T) {
+	outside := t.TempDir()
+	outsidePath := filepath.Join(outside, "realm.json")
+	if err := os.WriteFile(outsidePath, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "auth"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+
+	if err := os.Remove(filepath.Join(dir, "auth")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "auth")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := replaceFileIn(root, filepath.Join("auth", "realm.json"), []byte(`{"x":1}`), "realm.json"); err == nil {
+		t.Fatal("expected the write through a link out of the root to fail")
+	}
+	if data, err := os.ReadFile(outsidePath); err != nil || string(data) != "{}" {
+		t.Errorf("the file outside the root was written: %q (err %v)", data, err)
+	}
+}
+
+// TestRealmRehashMissingDir reports a --dir that doesn't exist as a missing
+// Realm.
+func TestRealmRehashMissingDir(t *testing.T) {
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "rehash", "--dir", filepath.Join(t.TempDir(), "nope"))
+	if err == nil {
+		t.Fatal("expected an error for a missing --dir")
+	}
+	testutil.AssertContains(t, err.Error(), "missing realm.json")
+}
