@@ -19,9 +19,9 @@ var asvs4 = entity.StandardRef{ID: "owasp.asvs", Relation: "implements", Version
 // too, so its note resolves to SUB rather than MYE.
 func setupStandardsTree(t *testing.T, dir string, subDeclares bool) {
 	t.Helper()
-	setupEntityFileWithSub(t, dir, "MYE", "SUB", makeRule("SUB-001", "D", "MUST y.", "@test"))
+	setupEntityFileWithSub(t, dir, "MYE", "SUB", makeRule("SUB-001", "D", "MUST y.", "github:test"))
 	editEntityFile(t, dir, "MYE", func(f *entity.File) {
-		f.Rules = []entity.Rule{makeRule("MYE-001", "D", "MUST x.", "@test")}
+		f.Rules = []entity.Rule{makeRule("MYE-001", "D", "MUST x.", "github:test")}
 		f.Entity.Standards = []entity.StandardRef{asvs4}
 		f.Notes = []entity.Note{standardNote("MYE-001/01", "MYE-001", entity.NoteTypeStandard, "owasp.asvs:V2.1")}
 		sub := &f.SubEntities[0]
@@ -179,11 +179,11 @@ func TestRealmStandardsUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	// AAA's note resolves to the Realm; BBB declares the id, so its note doesn't.
-	setupEntityFile(t, dir, "AAA", makeRule("AAA-001", "D", "MUST x.", "@test"))
+	setupEntityFile(t, dir, "AAA", makeRule("AAA-001", "D", "MUST x.", "github:test"))
 	editEntityFile(t, dir, "AAA", func(f *entity.File) {
 		f.Notes = []entity.Note{standardNote("AAA-001/01", "AAA-001", entity.NoteTypeStandard, "owasp.asvs:V2.1")}
 	})
-	setupEntityFile(t, dir, "BBB", makeRule("BBB-001", "D", "MUST x.", "@test"))
+	setupEntityFile(t, dir, "BBB", makeRule("BBB-001", "D", "MUST x.", "github:test"))
 	editEntityFile(t, dir, "BBB", func(f *entity.File) {
 		f.Entity.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}
 		f.Notes = []entity.Note{standardNote("BBB-001/01", "BBB-001", entity.NoteTypeStandard, "owasp.asvs:V2.1")}

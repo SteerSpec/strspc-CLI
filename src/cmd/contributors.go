@@ -93,10 +93,9 @@ var gitUserEmail = func(dir string) string {
 // STRSPC_ADDED_BY; then, when the Realm lists contributors, the entry whose
 // email is the git user.email, by its identifier. A raw email is never
 // written for the default: CTRB-003 retires that form. Whatever its source,
-// the value must then be a contributor identifier, or during the transition
-// (#248) an @handle or email, and must name one of the Realm's contributors
-// when the Realm lists any (CTRB-005). All of this runs before anything is
-// written.
+// the value must then be a contributor identifier, and must name one of the
+// Realm's contributors when the Realm lists any (CTRB-005). All of this runs
+// before anything is written.
 func resolveAddedBy(flag string, flagSet bool, t entityTarget, dir string) (value, source string, err error) {
 	list, err := realmContributorsOf(t.path, dir)
 	if err != nil {
@@ -112,7 +111,7 @@ func resolveAddedBy(flag string, flagSet bool, t entityTarget, dir string) (valu
 		value, source = strings.TrimSpace(os.Getenv(addedByEnv)), addedByFromEnv
 	case len(list) > 0:
 		if email := gitUserEmail(filepath.Dir(t.path)); email != "" {
-			if c := entity.FindContributor(list, email); c != nil {
+			if c := contributorByEmail(list, email); c != nil {
 				value, source = c.ID, addedByFromGit
 			}
 		}
@@ -127,6 +126,18 @@ func resolveAddedBy(flag string, flagSet bool, t entityTarget, dir string) (valu
 		return "", "", err
 	}
 	return value, source, nil
+}
+
+// contributorByEmail returns the entry of list whose email is email, matched
+// without regard to case, or nil. entity.FindContributor matches identifiers
+// only, so the git user.email default looks the entry up here.
+func contributorByEmail(list []entity.Contributor, email string) *entity.Contributor {
+	for i := range list {
+		if list[i].Email != "" && strings.EqualFold(list[i].Email, email) {
+			return &list[i]
+		}
+	}
+	return nil
 }
 
 // writeAddedBySource tells, in human output, where a defaulted added_by came

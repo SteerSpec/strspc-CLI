@@ -15,7 +15,7 @@ const validEntityJSON = `{
   "entity": {"id": "TST", "title": "Test Entity"},
   "rule_set": {"version": "1.0.0", "timestamp": "2026-01-01T00:00:00Z", "hash": null},
   "rules": [
-    {"id": "TST-001", "revision": 0, "state": "D", "body": "MUST be a test rule.", "added_by": "test", "added_at": "2026-01-01"}
+    {"id": "TST-001", "revision": 0, "state": "D", "body": "MUST be a test rule.", "added_by": "github:test", "added_at": "2026-01-01"}
   ],
   "notes": []
 }`
@@ -31,7 +31,7 @@ const crossRefEntityA = `{
   "entity": {"id": "ENT", "title": "Entity A"},
   "rule_set": {"version": "1.0.0", "timestamp": "2026-01-01T00:00:00Z", "hash": null},
   "rules": [
-    {"id": "ENT-001", "revision": 0, "state": "D", "body": "MUST be rule A.", "added_by": "test", "added_at": "2026-01-01"}
+    {"id": "ENT-001", "revision": 0, "state": "D", "body": "MUST be rule A.", "added_by": "github:test", "added_at": "2026-01-01"}
   ],
   "notes": []
 }`
@@ -40,7 +40,7 @@ const crossRefEntityB = `{
   "entity": {"id": "RUL", "title": "Entity B"},
   "rule_set": {"version": "1.0.0", "timestamp": "2026-01-01T00:00:00Z", "hash": null},
   "rules": [
-    {"id": "RUL-001", "revision": 0, "state": "D", "body": "Supersedes missing.", "added_by": "test", "added_at": "2026-01-01", "supersedes": "RUL-099"}
+    {"id": "RUL-001", "revision": 0, "state": "D", "body": "Supersedes missing.", "added_by": "github:test", "added_at": "2026-01-01", "supersedes": "RUL-099"}
   ],
   "notes": []
 }`

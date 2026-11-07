@@ -16,7 +16,7 @@
       "revision": 0,
       "state": "D",
       "body": "IS the parent of all child entities.",
-      "added_by": "@author",
+      "added_by": "github:author",
       "added_at": "2026-03-21",
       "supersedes": null
     }
@@ -41,7 +41,7 @@
           "revision": 0,
           "state": "D",
           "body": "MUST reference its parent.",
-          "added_by": "@author",
+          "added_by": "github:author",
           "added_at": "2026-03-21",
           "supersedes": null
         }

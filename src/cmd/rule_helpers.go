@@ -89,8 +89,19 @@ func entityIDFromRuleID(ruleID string) (string, error) {
 	return ruleID[:idx], nil
 }
 
-// loadModifySaveEntity loads an entity file, applies the mutate function, and writes it back.
+// loadModifySaveEntity loads an entity file, applies the mutate function, and
+// writes it back. The rule, note and entity commands that edit one entity go
+// through here, by way of modifyEntity; entity rehash and realm
+// rewrite-added-by call replaceEntityFile themselves. An entity file that is a
+// symbolic link is refused before it is loaded: its target may lie outside
+// --dir. The write replaces the file by rename, so a link swapped in after the
+// check is replaced, not written through.
 func loadModifySaveEntity(entityPath string, mutate func(*entity.File) error) error {
+	if link, err := isLinkPath(entityPath); err != nil {
+		return fmt.Errorf("loading entity file: %w", err)
+	} else if link {
+		return linkedEntityError(entityPath)
+	}
 	f, err := entity.Load(entityPath)
 	if err != nil {
 		return fmt.Errorf("loading entity file: %w", err)
@@ -100,24 +111,17 @@ func loadModifySaveEntity(entityPath string, mutate func(*entity.File) error) er
 		return err
 	}
 
-	return saveEntity(entityPath, f)
+	return replaceEntityFile(entityPath, f)
 }
 
-// saveEntity writes an entity file as indented JSON with a trailing newline.
-func saveEntity(entityPath string, f *entity.File) error {
-	data, err := marshalJSON(f)
-	if err != nil {
-		return fmt.Errorf("marshaling entity file: %w", err)
-	}
-	if err := os.WriteFile(entityPath, data, 0o644); err != nil {
-		return fmt.Errorf("writing entity file: %w", err)
-	}
-	return nil
+// linkedEntityError refuses to edit an entity file that is a symbolic link.
+func linkedEntityError(path string) error {
+	return fmt.Errorf("%s is a symbolic link; edit its target where it lives", path)
 }
 
 // isLinkPath reports whether path is itself a symbolic link, without following
-// it. Commands that rewrite entity files skip or refuse a link: saveEntity
-// writes through it, possibly to a file outside --dir.
+// it. Commands that rewrite entity files skip or refuse a link, whose target
+// may lie outside --dir.
 func isLinkPath(path string) (bool, error) {
 	fi, err := os.Lstat(path)
 	if err != nil {
@@ -126,8 +130,8 @@ func isLinkPath(path string) (bool, error) {
 	return fi.Mode()&os.ModeSymlink != 0, nil
 }
 
-// replaceEntityFile writes f to path by way of a temporary file in the same
-// directory and a rename. The rename replaces the directory entry and never
+// replaceEntityFile writes f to path as indented JSON with a trailing newline,
+// by way of a temporary file in the same directory and a rename. The rename replaces the directory entry and never
 // follows a link, so a link swapped in after isLinkPath looked is replaced,
 // not written through. The file keeps its permissions.
 func replaceEntityFile(path string, f *entity.File) error {
@@ -199,13 +203,34 @@ func findSubEntityChain(f *entity.File, euid string) []*entity.File {
 // A top-level file <dir>/<euid>.json wins; otherwise every entity file under
 // dir is scanned for a sub-entity with that EUID. Exactly one match is required.
 // The EUID is checked first, so an argument such as ../x can't name a file
-// outside dir.
+// outside dir. The target is about to be edited, so an entity file that is a
+// symbolic link is refused; resolveEntityTargetForRead follows links.
 func resolveEntityTarget(dir, euid string) (entityTarget, error) {
+	return resolveTarget(dir, euid, false)
+}
+
+// resolveEntityTargetForRead is resolveEntityTarget for commands that only read
+// the entity: a linked entity file is followed, as before links were refused
+// for writes.
+func resolveEntityTargetForRead(dir, euid string) (entityTarget, error) {
+	return resolveTarget(dir, euid, true)
+}
+
+func resolveTarget(dir, euid string, followLinks bool) (entityTarget, error) {
 	if err := entityops.ValidateEUID(euid); err != nil {
 		return entityTarget{}, err
 	}
 	topPath := resolveEntityPath(dir, euid)
-	if _, err := os.Stat(topPath); err == nil {
+	if followLinks {
+		if _, err := os.Stat(topPath); err == nil {
+			return entityTarget{path: topPath}, nil
+		}
+	} else if fi, err := os.Lstat(topPath); err == nil {
+		// Lstat, not Stat: a link that points nowhere is still a link,
+		// refused as one rather than reported as a missing entity.
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return entityTarget{}, linkedEntityError(topPath)
+		}
 		return entityTarget{path: topPath}, nil
 	}
 
@@ -227,6 +252,17 @@ func resolveEntityTarget(dir, euid string) (entityTarget, error) {
 	case 0:
 		return entityTarget{}, fmt.Errorf("entity %q not found in %s: no %s.json and no sub-entity with that ID", euid, dir, euid)
 	case 1:
+		// The walk reads through a link (strspc-manager's walker reads each
+		// file before calling back), so a sub-entity can be found in one;
+		// refuse it here, before anything else reads or writes it.
+		if followLinks {
+			return entityTarget{path: matches[0], subID: euid}, nil
+		}
+		if link, err := isLinkPath(matches[0]); err != nil {
+			return entityTarget{}, fmt.Errorf("loading entity file: %w", err)
+		} else if link {
+			return entityTarget{}, linkedEntityError(matches[0])
+		}
 		return entityTarget{path: matches[0], subID: euid}, nil
 	default:
 		return entityTarget{}, fmt.Errorf("sub-entity %q is defined in %d files under %s: %s", euid, len(matches), dir, strings.Join(matches, ", "))

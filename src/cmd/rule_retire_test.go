@@ -9,7 +9,7 @@ import (
 
 func TestRuleRetireImplementedToRetired(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "I", "Implemented rule", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "I", "Implemented rule", "github:alice"))
 
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "retire", "TST-001", "--dir", dir)
@@ -27,7 +27,7 @@ func TestRuleRetireImplementedToRetired(t *testing.T) {
 
 func TestRuleRetireRetiredToTerminated(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "R", "Retired rule", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "R", "Retired rule", "github:alice"))
 
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "retire", "TST-001", "--dir", dir)
@@ -45,7 +45,7 @@ func TestRuleRetireRetiredToTerminated(t *testing.T) {
 
 func TestRuleRetireJSON(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "I", "Implemented", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "I", "Implemented", "github:alice"))
 
 	root := NewRootCmd()
 	out, err := testutil.ExecuteCommand(root, "rule", "retire", "TST-001", "--dir", dir, "--json")
@@ -64,7 +64,7 @@ func TestRuleRetireJSON(t *testing.T) {
 
 func TestRuleRetireInvalidState(t *testing.T) {
 	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft", "@alice"))
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft", "github:alice"))
 
 	root := NewRootCmd()
 	_, err := testutil.ExecuteCommand(root, "rule", "retire", "TST-001", "--dir", dir)

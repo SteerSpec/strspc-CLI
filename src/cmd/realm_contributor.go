@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/mail"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -235,9 +237,9 @@ func contributorFromFlags(cmd *cobra.Command, id, email string, githubID int64) 
 		if err := rejectControlChars("email", email); err != nil {
 			return entity.Contributor{}, err
 		}
-		// A bare address is what ValidAddedBy accepts and is neither an
+		// A bare address: no display name or angle brackets, and neither an
 		// identifier nor an @handle.
-		if strings.HasPrefix(email, "@") || entity.IsContributorID(email) || !entity.ValidAddedBy(email) {
+		if strings.HasPrefix(email, "@") || entity.IsContributorID(email) || !isBareEmail(email) {
 			return entity.Contributor{}, fmt.Errorf("--email %q is not a bare email address (CTRB-007)", coverageCell(email))
 		}
 		c.Email = email
@@ -252,6 +254,24 @@ func contributorFromFlags(cmd *cobra.Command, id, email string, githubID int64) 
 		c.GitHubID = githubID
 	}
 	return c, nil
+}
+
+// emailDomainRe matches a domain of at least two labels of up to 63
+// characters, each without a leading or trailing hyphen. net/mail does not
+// check this.
+var emailDomainRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$`)
+
+// isBareEmail reports whether s is an email address alone, with no display
+// name or angle brackets, on a domain DNS allows. strspc-manager checked this
+// until v1.42.0 retired email as an added_by form; the contributor email
+// (CTRB-007) still needs it.
+func isBareEmail(s string) bool {
+	addr, err := mail.ParseAddress(s)
+	if err != nil || addr.Address != s {
+		return false
+	}
+	domain := s[strings.LastIndex(s, "@")+1:]
+	return len(domain) <= 253 && emailDomainRe.MatchString(domain)
 }
 
 // refuseSubRealmContributors refuses to edit the list of a sub-realm, which

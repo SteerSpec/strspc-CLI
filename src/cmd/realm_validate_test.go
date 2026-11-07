@@ -434,7 +434,7 @@ func TestRealmValidateRecursiveCrossRef(t *testing.T) {
       "revision": 0,
       "state": "D",
       "body": "A rule that supersedes a missing rule.",
-      "added_by": "@test",
+      "added_by": "github:test",
       "added_at": "2026-01-01",
       "supersedes": "SUB-999"
     }

@@ -124,7 +124,7 @@ func TestEntityAddThenRuleAddAndJSON(t *testing.T) {
 		t.Errorf("unexpected JSON: %v", got)
 	}
 
-	if _, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "CHILD", "--body", "Child MUST work", "--added-by", "@t", "--dir", dir); err != nil {
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "CHILD", "--body", "Child MUST work", "--added-by", "github:t", "--dir", dir); err != nil {
 		t.Fatalf("rule add on new sub-entity: %v", err)
 	}
 	f := loadEntityFile(t, dir, "PARENT")

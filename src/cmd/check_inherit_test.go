@@ -48,7 +48,7 @@ func inheritEntityJSON(euid, inherits, subEntities string, rules ...inheritRule)
 			overrides = fmt.Sprintf(`, "overrides": %q`, r.overrides)
 		}
 		entries = append(entries, fmt.Sprintf(`{"id": %q, "revision": 0, "state": %q, "body": "Rule %s.",`+
-			` "added_by": "@test", "added_at": "2026-01-01", "supersedes": null%s}`, r.id, r.state, r.id, overrides))
+			` "added_by": "github:test", "added_at": "2026-01-01", "supersedes": null%s}`, r.id, r.state, r.id, overrides))
 	}
 	if subEntities == "" {
 		subEntities = "[]"
@@ -62,7 +62,7 @@ func inheritEntityJSON(euid, inherits, subEntities string, rules ...inheritRule)
 // withNote adds a note on ruleRef to an entity written by inheritEntityJSON.
 func withNote(body, ruleRef, noteType, content string) string {
 	note := fmt.Sprintf(`"notes": [{"id": "%s/01", "rule_ref": %q, "type": %q,`+
-		` "content": %q, "added_by": "@test", "added_at": "2026-01-01", "revision": 0}]`, ruleRef, ruleRef, noteType, content)
+		` "content": %q, "added_by": "github:test", "added_at": "2026-01-01", "revision": 0}]`, ruleRef, ruleRef, noteType, content)
 	return strings.Replace(body, `"notes": []`, note, 1)
 }
 
