@@ -559,6 +559,32 @@ func TestDiffSourceTreeString(t *testing.T) {
 	}
 }
 
+// verify judges every named rule whatever evaluate_on says. An entity with
+// an inheritance chain contributes its effective rule set, which
+// inherit.Effective filters by the states it is given: the entity's own
+// SAVACCT-001 (Published) must survive evaluate_on: [I].
+func TestRuleVerifyIgnoresEvaluateOnForInheritingEntity(t *testing.T) {
+	dir, _ := setupInheritProject(t, "claude", "./rules/")
+	writeInheritEntity(t, filepath.Join(dir, "rules"), "SAVACCT", "dev.lib:ACCT", inheritRule{id: "SAVACCT-001", state: "P"})
+	writeRawCheckConfig(t, dir, "rules:\n  - source: ./rules/\n    scope: global\n"+
+		"evaluator:\n  provider: claude\ncache:\n  ttl: 24h\nevaluate_on: [I]\n")
+	writeFile(t, dir, "src/main.go", "package main\n")
+	gitRun(t, dir, "init", "-q", "-b", "main")
+	gitRun(t, dir, "add", ".")
+	gitRun(t, dir, "commit", "-q", "-m", "base")
+	stubEvalProvider(t, &batchStubProvider{stubProvider: stubProvider{verdicts: map[string]*ruleeval.EvalResponse{
+		"SAVACCT-001": {Verdict: ruleeval.Compliant},
+		"ACCT-001":    {Verdict: ruleeval.Compliant},
+	}}}, nil)
+
+	out, err := runVerifyCmd(t, "SAVACCT-001", "ACCT-001", "--project", dir, "--format", "json")
+	assertExit(t, err, exitOK)
+	vo := decodeVerify(t, out)
+	if got := verdictsOf(&vo); got["SAVACCT-001"] != verifyCompliant || got["ACCT-001"] != verifyCompliant {
+		t.Errorf("verdicts = %v, want SAVACCT-001 (own, P, outside evaluate_on) and ACCT-001 (inherited) compliant", got)
+	}
+}
+
 func TestRuleVerifyExclude(t *testing.T) {
 	dir := setupVerifyRepo(t, "claude")
 	writeFile(t, dir, "src/main_test.go", "package main\n")

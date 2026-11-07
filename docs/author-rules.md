@@ -54,6 +54,10 @@ strspc rule verify CFG-002 --path src --exclude '**/*_test.go' --effort high
 strspc rule promote CFG-002                                                # once it's compliant
 ```
 
+As with `strspc check`, files under `.strspc/` and `rules/` are never read, even when `--path` matches
+them: the configuration and the project's own rule files are covered by `lint` and `diff`. A rule
+about those files can't be verified this way.
+
 A large tree is split into parts judged separately. A forbidden construct is still found in the part
 that holds it, but a rule that needs several files in view at once ("every X has a Y elsewhere")
 can't be reported as violated. Untracked files are not read, and there is no evaluation cache.

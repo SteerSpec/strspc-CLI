@@ -44,7 +44,8 @@ func newRuleVerifyCmd() *cobra.Command {
 		Short: "(experimental) Check that the current code complies with rules",
 		Long: "Evaluate rules against the current code, not a diff: every tracked file of the working tree\n" +
 			"(or of --path, minus --exclude) is sent to the configured AI provider as if it were newly\n" +
-			"added, and each rule gets a verdict: compliant, violated, not_applicable or unknown.\n\n" +
+			"added, and each rule gets a verdict: compliant, violated, not_applicable or unknown. As with\n" +
+			"check, files under .strspc/ and rules/ are never read, even when --path matches them.\n\n" +
 			"This is the check to run before promoting a rule from Published to Implemented.\n\n" +
 			"Experimental (GH #291): there is no evaluation cache, a large tree is split into parts that\n" +
 			"are judged separately (so a rule that needs the whole codebase in view, such as \"every X has a\n" +
@@ -152,6 +153,12 @@ func runVerify(ctx context.Context, out, errOut io.Writer, ids []string, o *veri
 	if err := r.collectVerifyTree(o.paths, o.excludes); err != nil {
 		return verifyFail(r, exitConfig, err)
 	}
+	// verify judges the named rules whatever evaluate_on says, and
+	// buildInputs passes evaluate_on to inherit.Effective, which filters an
+	// inheriting entity's own rules by it. nil takes inherit's defaults (D,
+	// P, I) rather than every state: a Retired override must not keep hiding
+	// the inherited rule it replaced.
+	r.evaluateOn = nil
 	r.buildInputs()
 	selected, err := selectVerifyInputs(r.inputs, ids)
 	if err != nil {
