@@ -70,7 +70,7 @@ Examples:
 			}
 			change := entityStandardChange{Entity: args[0], Path: target.path, Standard: ref}
 			err = modifyEntity(target, func(f *entity.File) error {
-				refs, err := addStandardRef(f.Entity.Standards, ref)
+				refs, err := addStandardRef(f.Entity.Standards, &ref)
 				if err != nil {
 					return err
 				}
@@ -212,7 +212,7 @@ func writeEntityStandardChange(cmd *cobra.Command, jsonOut bool, verb string, c 
 	if jsonOut {
 		return writeJSONOutput(w, c)
 	}
-	writeln(w, brandStyle.Render(fmt.Sprintf("%s standard %s on %s", verb, describeStandard(c.Standard), coverageCell(c.Entity))))
+	writeln(w, brandStyle.Render(fmt.Sprintf("%s standard %s on %s", verb, describeStandard(&c.Standard), coverageCell(c.Entity))))
 	writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", c.OldVersion, c.Version)))
 	return nil
 }

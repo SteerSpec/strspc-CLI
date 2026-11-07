@@ -331,7 +331,8 @@ func readFiles(t *testing.T, dir string, names ...string) map[string][]byte {
 // included, in file order.
 func allAddedBy(f *entity.File) []string {
 	var out []string
-	for _, r := range f.Rules {
+	for i := range f.Rules {
+		r := &f.Rules[i]
 		out = append(out, r.ID+"="+r.AddedBy)
 	}
 	for _, n := range f.Notes {

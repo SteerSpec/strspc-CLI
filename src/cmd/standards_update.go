@@ -84,7 +84,8 @@ func (e *standardEdit) apply(cmd *cobra.Command, refs []entity.StandardRef) (out
 		after.URL = e.url
 	}
 	if after == before {
-		return nil, before, after, fmt.Errorf("standard %q already reads %s: nothing to change", e.id, describeStandard(before))
+		err := fmt.Errorf("standard %q already reads %s: nothing to change", e.id, describeStandard(&before))
+		return nil, before, after, err
 	}
 	if err := entity.ValidateStandardRef(after); err != nil {
 		return nil, before, after, err
@@ -97,7 +98,7 @@ func (e *standardEdit) apply(cmd *cobra.Command, refs []entity.StandardRef) (out
 // standardChangeNotice describes what a version change means for the notes
 // that resolve to the reference: they now map clauses of another edition
 // (STDREF-011).
-func standardChangeNotice(before, after entity.StandardRef, notes []string) string {
+func standardChangeNotice(before, after *entity.StandardRef, notes []string) string {
 	if before.Version == after.Version || len(notes) == 0 {
 		return ""
 	}
@@ -172,12 +173,12 @@ func writeStandardUpdate(cmd *cobra.Command, jsonOut bool, scope string, u *stan
 	if jsonOut {
 		return writeJSONOutput(w, u)
 	}
-	writeln(w, brandStyle.Render(fmt.Sprintf("Updated standard %s on %s", describeStandard(u.Standard), scope)))
-	writeln(w, descStyle.Render("  was "+describeStandard(u.OldStandard)))
+	writeln(w, brandStyle.Render(fmt.Sprintf("Updated standard %s on %s", describeStandard(&u.Standard), scope)))
+	writeln(w, descStyle.Render("  was "+describeStandard(&u.OldStandard)))
 	if u.Version != "" {
 		writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", u.OldVersion, u.Version)))
 	}
-	if notice := standardChangeNotice(u.OldStandard, u.Standard, u.Notes); notice != "" {
+	if notice := standardChangeNotice(&u.OldStandard, &u.Standard, u.Notes); notice != "" {
 		writeln(w, valueStyle.Render("  "+notice))
 	}
 	return nil

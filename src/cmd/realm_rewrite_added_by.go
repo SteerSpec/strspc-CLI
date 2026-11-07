@@ -112,7 +112,8 @@ func githubHandleMap(f *entity.File, m map[string]string) map[string]string {
 		}
 	}
 	walk = func(e *entity.File) {
-		for _, r := range e.Rules {
+		for i := range e.Rules {
+			r := &e.Rules[i]
 			add(r.AddedBy)
 		}
 		for _, n := range e.Notes {
