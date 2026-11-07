@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -194,6 +195,100 @@ func TestRealmAddInheritsSelfFromSubRealm(t *testing.T) {
 			t.Fatalf("--inherits %s: expected self-inheritance error", value)
 		}
 		testutil.AssertContains(t, err.Error(), "cannot inherit itself")
+	}
+}
+
+func TestRuleAddOverridesJSON(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "SAVACCT")
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "add", "SAVACCT", "--body", "Withdrawals MUST be capped.",
+		"--added-by", "github:alice", "--overrides", "core:ACCT-005", "--dir", dir, "--json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var res map[string]any
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("parsing JSON output: %v\n%s", err, out)
+	}
+	if res["rule_id"] != "SAVACCT-001" || res["overrides"] != "core:ACCT-005" {
+		t.Errorf("output = %v, want SAVACCT-001 overriding core:ACCT-005", res)
+	}
+}
+
+func TestRuleSupersedeOverridesJSON(t *testing.T) {
+	old := "core:ACCT-004"
+	overriding := makeRule("SAVACCT-001", "I", "Old cap", "github:alice")
+	overriding.Overrides = &old
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "SAVACCT", overriding)
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "supersede", "SAVACCT-001", "--body", "New cap",
+		"--added-by", "github:bob", "--overrides", "core:ACCT-005", "--dir", dir, "--json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var res map[string]any
+	if err := json.Unmarshal([]byte(out), &res); err != nil {
+		t.Fatalf("parsing JSON output: %v\n%s", err, out)
+	}
+	if res["rule_id"] != "SAVACCT-002" || res["supersedes"] != "SAVACCT-001" ||
+		res["overrides"] != "core:ACCT-005" || res["lapsed_overrides"] != old {
+		t.Errorf("output = %v, want SAVACCT-002 overriding core:ACCT-005, lapsing %s", res, old)
+	}
+}
+
+func TestRuleSupersedeErrors(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "SAVACCT", makeRule("SAVACCT-001", "I", "Old cap", "github:alice"))
+	before := readFiles(t, dir, "SAVACCT.json")
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"no body", []string{"SAVACCT-001"}, "--body is required"},
+		{"bad overrides", []string{"SAVACCT-001", "--body", "b", "--overrides", "acct-5"}, "invalid --overrides"},
+		{"bad rule ID", []string{"savacct", "--body", "b"}, "savacct"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			args := append([]string{"rule", "supersede", "--added-by", "github:bob", "--dir", dir}, tc.args...)
+			_, err := testutil.ExecuteCommand(NewRootCmd(), args...)
+			if err == nil {
+				t.Fatalf("want an error containing %q, got none", tc.want)
+			}
+			testutil.AssertContains(t, err.Error(), tc.want)
+		})
+	}
+	if !bytes.Equal(readFiles(t, dir, "SAVACCT.json")["SAVACCT.json"], before["SAVACCT.json"]) {
+		t.Error("SAVACCT.json changed although every command failed")
+	}
+}
+
+func TestSetOverridesUnknownRule(t *testing.T) {
+	f := &entity.File{Rules: []entity.Rule{makeRule("SAVACCT-001", "D", "Cap", "github:alice")}}
+	err := setOverrides(f, "SAVACCT-002", "core:ACCT-005")
+	if err == nil || err.Error() != "rule SAVACCT-002 not found after it was added" {
+		t.Errorf("error = %v, want rule SAVACCT-002 not found", err)
+	}
+	if f.Rules[0].Overrides != nil {
+		t.Error("another rule was given the override")
+	}
+}
+
+// Whether a qualified --inherits names the entity itself depends on the realm
+// IDs around --dir, so a manifest that can't be read is an error.
+func TestRealmAddInheritsUnreadableManifest(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "add", "SAVACCT", "--title", "Savings",
+		"--inherits", "dev.other:SAVACCT", "--dir", dir)
+	if err == nil {
+		t.Fatal("want an error for a realm.json that doesn't parse")
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "SAVACCT.json")); statErr == nil {
+		t.Error("SAVACCT.json was created despite the error")
 	}
 }
 

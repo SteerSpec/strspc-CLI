@@ -195,6 +195,45 @@ func TestRealmContributorSubRealm(t *testing.T) {
 	}
 }
 
+// TestRealmContributorSubRealmList checks the human list of a sub-realm, which
+// names the parent its contributors come from, and that list fails when the
+// parent's manifest can't be read.
+func TestRealmContributorSubRealmList(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealmWithSubs(t, dir)
+	setContributors(t, dir)
+	sub := filepath.Join(dir, "auth")
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "contributor", "list", "--dir", sub)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, out, "from its parent dev.steerspec.test (CTRB-006)")
+	testutil.AssertContains(t, out, "github:alice")
+
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = testutil.ExecuteCommand(NewRootCmd(), "realm", "contributor", "list", "--dir", sub)
+	if err == nil || !strings.Contains(err.Error(), "reading the contributors of the realm in") {
+		t.Fatalf("error = %v, want one about reading the contributors", err)
+	}
+}
+
+func TestRealmContributorRemoveRejectsBadID(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	setContributors(t, dir)
+	before := readFiles(t, dir, "realm.json")
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "contributor", "remove", "@alice", "--dir", dir)
+	if err == nil {
+		t.Fatal("want an error for an id that is not a contributor identifier")
+	}
+	if !bytes.Equal(readFiles(t, dir, "realm.json")["realm.json"], before["realm.json"]) {
+		t.Error("realm.json changed although the command failed")
+	}
+}
+
 // TestRealmContributorAddOldCore checks that add is refused while the core pin
 // predates the schema that accepts contributors.
 func TestRealmContributorAddOldCore(t *testing.T) {

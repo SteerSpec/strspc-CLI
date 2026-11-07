@@ -220,3 +220,10 @@ func TestRuleShowEscapesControlCharacters(t *testing.T) {
 	}
 	testutil.AssertContains(t, out, `\x1b[31m`)
 }
+
+// A JSON document that can't be written is an output error (exit 4).
+func TestRuleShowJSONWriteError(t *testing.T) {
+	dir := setupRefsProject(t)
+	err := runRuleShow(context.Background(), failingWriter{}, &bytes.Buffer{}, dir, []string{"APP-001"}, &ruleShowOptions{jsonOutput: true})
+	assertExit(t, err, exitOutput)
+}

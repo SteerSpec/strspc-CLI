@@ -172,6 +172,57 @@ func TestSyncInvalidSource(t *testing.T) {
 	testutil.AssertContains(t, err.Error(), "unsupported source scheme")
 }
 
+// writeRawSyncConfig writes cfg as .strspc/config.yaml under dir.
+func writeRawSyncConfig(t *testing.T, dir, cfg string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, ".strspc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".strspc", "config.yaml"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSyncConfigErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cfg  string
+		want string
+	}{
+		{"unknown scope", "rules:\n  - source: ./rules/\n    scope: team\n", `invalid scope "team"`},
+		{"unparsable ttl", "rules:\n  - source: ./rules/\n    scope: local\ncache:\n  ttl: soon\n", `parsing cache.ttl "soon"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeRawSyncConfig(t, dir, tc.cfg)
+			_, err := testutil.ExecuteCommand(NewRootCmd(), "sync", dir)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// A source that can't be resolved still gives a JSON document, then an error.
+func TestSyncJSONWithErrors(t *testing.T) {
+	dir := t.TempDir()
+	writeSyncConfig(t, dir, filepath.Join(dir, "missing"))
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "sync", dir, "--json")
+	if err == nil || !strings.Contains(err.Error(), "sync found") {
+		t.Fatalf("error = %v, want sync found N error(s)", err)
+	}
+	var res struct {
+		OK          bool              `json:"ok"`
+		Diagnostics []json.RawMessage `json:"diagnostics"`
+	}
+	if jerr := json.Unmarshal([]byte(out), &res); jerr != nil {
+		t.Fatalf("output is not JSON: %v\n%s", jerr, out)
+	}
+	if res.OK || len(res.Diagnostics) == 0 {
+		t.Errorf("output = %s, want ok false with diagnostics", out)
+	}
+}
+
 func TestSyncHelp(t *testing.T) {
 	output, err := testutil.ExecuteCommand(NewRootCmd(), "sync", "--help")
 	if err != nil {

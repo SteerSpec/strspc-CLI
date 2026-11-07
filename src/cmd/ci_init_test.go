@@ -221,3 +221,63 @@ func TestCIInitRejectsYAMLIndicators(t *testing.T) {
 		t.Errorf("default source rejected: %v", err)
 	}
 }
+
+// TestDetectDefaultBranch reads origin/HEAD, and falls back to main when it
+// is missing or names a branch the workflow can't carry.
+func TestDetectDefaultBranch(t *testing.T) {
+	if got := detectDefaultBranch(t.TempDir()); got != "main" {
+		t.Errorf("outside a repository: got %q, want main", got)
+	}
+	tests := []struct {
+		target string
+		want   string
+	}{
+		{"refs/remotes/origin/trunk", "trunk"},
+		{"refs/remotes/origin/a#b", "main"},
+	}
+	for _, tt := range tests {
+		dir := t.TempDir()
+		gitRun(t, dir, "init", "-q")
+		gitRun(t, dir, "symbolic-ref", "refs/remotes/origin/HEAD", tt.target)
+		if got := detectDefaultBranch(dir); got != tt.want {
+			t.Errorf("origin/HEAD -> %s: got %q, want %q", tt.target, got, tt.want)
+		}
+	}
+}
+
+// TestCIInitWriteErrors covers a target that can't hold the files.
+func TestCIInitWriteErrors(t *testing.T) {
+	t.Run("target under a regular file", func(t *testing.T) {
+		file := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", filepath.Join(file, "repo"), "--kind", "realm", "--branch", "main")
+		if err == nil || !strings.Contains(err.Error(), file) {
+			t.Fatalf("error = %v, want one naming %s", err, file)
+		}
+	})
+
+	t.Run(".github is a regular file", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, ".github"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", dir, "--kind", "realm", "--branch", "main")
+		if err == nil || !strings.Contains(err.Error(), ".github") {
+			t.Fatalf("error = %v, want one naming .github", err)
+		}
+	})
+
+	t.Run("workflow path is a directory, with --force", func(t *testing.T) {
+		dir := t.TempDir()
+		wf := filepath.Join(dir, ".github", "workflows", "strspc-lint.yml")
+		if err := os.MkdirAll(wf, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", dir, "--kind", "realm", "--branch", "main", "--force")
+		if err == nil || !strings.Contains(err.Error(), "writing "+wf) {
+			t.Fatalf("error = %v, want writing %s", err, wf)
+		}
+	})
+}

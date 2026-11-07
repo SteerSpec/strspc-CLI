@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -209,6 +210,68 @@ func TestFetchLatestReleaseTag(t *testing.T) {
 	}
 	if _, err := fetchLatestReleaseTag(context.Background(), remote.Ref{Owner: "o", Repo: "missing"}, ""); err == nil {
 		t.Error("expected error for 404")
+	}
+}
+
+func TestFetchLatestReleaseTagErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/o/broken/releases/latest":
+			_, _ = w.Write([]byte(`not json`))
+		default:
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+	orig := githubAPIBase
+	t.Cleanup(func() { githubAPIBase = orig })
+	githubAPIBase = srv.URL
+
+	_, err := fetchLatestReleaseTag(context.Background(), remote.Ref{Owner: "o", Repo: "broken"}, "")
+	if err == nil || !strings.Contains(err.Error(), "decoding latest release of o/broken") {
+		t.Errorf("invalid body: error = %v, want a decoding error", err)
+	}
+	_, err = fetchLatestReleaseTag(context.Background(), remote.Ref{Owner: "o", Repo: "down"}, "")
+	if err == nil || !strings.Contains(err.Error(), "HTTP 500") {
+		t.Errorf("server error: error = %v, want HTTP 500", err)
+	}
+
+	githubAPIBase = "http://[::1"
+	if _, err := fetchLatestReleaseTag(context.Background(), remote.Ref{Owner: "o", Repo: "r"}, ""); err == nil {
+		t.Error("invalid API base: want an error, got none")
+	}
+}
+
+func TestPlanDepUpgradeEdgeCases(t *testing.T) {
+	origTag := latestReleaseTag
+	t.Cleanup(func() { latestReleaseTag = origTag })
+	pinned := entity.RealmDep{RealmID: "dev.example.dep", Version: "1.0.0", Source: "github://acme/specs@v1.0.0"}
+
+	latest := pinned
+	latest.Source = "github://acme/specs@latest"
+	up, note, err := planDepUpgrade(context.Background(), latest, "")
+	if err != nil || up != nil || note != "skipped: source already tracks @latest" {
+		t.Errorf("@latest: got %+v, %q, %v", up, note, err)
+	}
+
+	tests := []struct {
+		name string
+		tag  string
+		err  error
+		want string
+	}{
+		{"lookup fails", "", errors.New("rate limited"), "dev.example.dep: rate limited"},
+		{"tag is not semver", "release-two", nil, `release tag "release-two" is not semver`},
+		{"latest is a prerelease", "v2.0.0-rc.1", nil, "latest release v2.0.0-rc.1 is a prerelease"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) { return tt.tag, tt.err }
+			_, _, err := planDepUpgrade(context.Background(), pinned, "")
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("error = %v, want %q", err, tt.want)
+			}
+		})
 	}
 }
 

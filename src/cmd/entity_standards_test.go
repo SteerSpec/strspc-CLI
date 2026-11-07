@@ -309,3 +309,72 @@ func TestEntityStandardsRemoveGuardSubRealm(t *testing.T) {
 		}
 	})
 }
+
+// TestEntityStandardsRemoveNestedSubEntity: for a sub-entity two levels down,
+// every entity around it counts, the nearest one included, so a note there
+// still resolves once its own declaration goes.
+func TestEntityStandardsRemoveNestedSubEntity(t *testing.T) {
+	setup := func(t *testing.T, middleDeclares bool) string {
+		dir := t.TempDir()
+		setupEntityFileWithSub(t, dir, "PARENT", "CHILD")
+		editEntityFile(t, dir, "PARENT", func(f *entity.File) {
+			child := findSubEntity(f, "CHILD")
+			if middleDeclares {
+				child.Entity.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}
+			}
+			child.SubEntities = []entity.File{{
+				Schema:  "./_schema/entity.v1.schema.json",
+				Entity:  entity.Entity{ID: "GRAND", Title: "Grandchild", Parent: "CHILD", Standards: []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}},
+				RuleSet: entity.RuleSet{Version: "0.1.0", Timestamp: "2026-01-01T00:00:00Z"},
+				Rules:   []entity.Rule{makeRule("GRAND-001", "D", "MUST x.", "github:test")},
+				Notes:   []entity.Note{standardNote("GRAND-001/01", "GRAND-001", entity.NoteTypeStandard, "owasp.asvs:V2.1")},
+			}}
+		})
+		return dir
+	}
+
+	t.Run("allowed when the middle entity declares it", func(t *testing.T) {
+		dir := setup(t, true)
+		if _, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "standards", "remove", "GRAND", "--id", "owasp.asvs", "--dir", dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		grand := findSubEntity(loadEntityFile(t, dir, "PARENT"), "GRAND")
+		if grand == nil || len(grand.Entity.Standards) != 0 {
+			t.Errorf("GRAND standards = %+v, want none", grand)
+		}
+	})
+
+	t.Run("refused when only it declares", func(t *testing.T) {
+		dir := setup(t, false)
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "standards", "remove", "GRAND", "--id", "owasp.asvs", "--dir", dir)
+		if err == nil || !strings.Contains(err.Error(), "GRAND-001/01") {
+			t.Fatalf("error = %v, want refusal naming GRAND-001/01", err)
+		}
+	})
+}
+
+func TestEntityStandardsRemoveErrors(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "MYE")
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "standards", "remove", "MYE", "--dir", dir); err == nil || err.Error() != "--id is required" {
+		t.Errorf("no --id: error = %v, want --id is required", err)
+	}
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "standards", "remove", "NOPE", "--id", "owasp.asvs", "--dir", dir); err == nil {
+		t.Error("unknown entity: want an error, got none")
+	}
+}
+
+// An entity whose version isn't SemVer can't be bumped, and is left as it was.
+func TestEntityStandardsAddUnbumpableVersion(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "MYE")
+	editEntityFile(t, dir, "MYE", func(f *entity.File) { f.RuleSet.Version = "one" })
+	before, _ := os.ReadFile(filepath.Join(dir, "MYE.json"))
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "standards", "add", "MYE", "--id", "owasp.asvs", "--relation", "implements", "--dir", dir)
+	if err == nil || !strings.Contains(err.Error(), "bumping version") {
+		t.Fatalf("error = %v, want bumping version", err)
+	}
+	if after, _ := os.ReadFile(filepath.Join(dir, "MYE.json")); !bytes.Equal(before, after) {
+		t.Error("entity file changed on error")
+	}
+}

@@ -243,3 +243,89 @@ func TestRealmDepUpgradeSchemaSyncIgnoresSymlinks(t *testing.T) {
 		}
 	})
 }
+
+func TestSyncCoreSchemasErrors(t *testing.T) {
+	t.Run("missing realm directory", func(t *testing.T) {
+		missing := filepath.Join(t.TempDir(), "missing")
+		_, err := syncCoreSchemas(context.Background(), missing, depUpgrade{realmID: coreRealmID}, nil)
+		if err == nil || !strings.Contains(err.Error(), "opening "+missing) {
+			t.Errorf("error = %v, want opening %s", err, missing)
+		}
+	})
+
+	t.Run("core schema that can't be read", func(t *testing.T) {
+		dir := setupSchemaSyncTest(t, nil, map[string]string{"entity.v1.schema.json": `{"v":1}`}, nil)
+		coreDir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(coreDir, "_schema", "entity.v1.schema.json"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		fetchUpgradeDep = func(context.Context, string, entity.RealmDep) (string, error) { return coreDir, nil }
+		synced, err := syncCoreSchemas(context.Background(), dir, depUpgrade{realmID: coreRealmID}, nil)
+		if err == nil || !strings.Contains(err.Error(), "reading core schema entity.v1.schema.json") {
+			t.Errorf("error = %v, want reading core schema", err)
+		}
+		if len(synced) != 0 {
+			t.Errorf("synced = %+v, want nothing", synced)
+		}
+	})
+
+	t.Run("another dependency needs no sync", func(t *testing.T) {
+		synced, err := syncCoreSchemas(context.Background(), t.TempDir(), depUpgrade{realmID: "dev.other"}, nil)
+		if err != nil || synced != nil {
+			t.Errorf("got %+v, %v; want nothing", synced, err)
+		}
+	})
+}
+
+// A declared sub-realm without a readable manifest isn't taken to inherit the
+// core pin, so its schemas are left alone.
+func TestLocalSchemaFilesSkipsSubRealmWithoutManifest(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, filepath.Join(dir, "_schema"), map[string]string{"entity.v1.schema.json": `{}`})
+	writeFiles(t, filepath.Join(dir, "auth", "_schema"), map[string]string{"entity.v1.schema.json": `{}`})
+	writeFiles(t, filepath.Join(dir, "bad", "_schema"), map[string]string{"entity.v1.schema.json": `{}`})
+	writeFiles(t, filepath.Join(dir, "bad"), map[string]string{"realm.json": `{`})
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = root.Close() }()
+	got := localSchemaFiles(root, []string{"auth", "bad"})
+	if len(got) != 1 || got[0] != filepath.Join("_schema", "entity.v1.schema.json") {
+		t.Errorf("files = %v, want only the realm's own schema", got)
+	}
+}
+
+func TestRestoreSchemasErrors(t *testing.T) {
+	if err := restoreSchemas(t.TempDir(), nil); err != nil {
+		t.Errorf("nothing to restore: %v", err)
+	}
+	if err := restoreSchemas(filepath.Join(t.TempDir(), "missing"), []schemaSync{{path: "x.json"}}); err == nil {
+		t.Error("missing realm directory: want an error, got none")
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "_schema", "x.json"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := restoreSchemas(dir, []schemaSync{{path: filepath.Join("_schema", "x.json"), original: []byte(`{}`)}})
+	if err == nil || !strings.Contains(err.Error(), "restoring "+filepath.Join("_schema", "x.json")) {
+		t.Errorf("error = %v, want restoring _schema/x.json", err)
+	}
+}
+
+func TestSameJSONBytes(t *testing.T) {
+	for _, tc := range []struct {
+		a, b string
+		want bool
+	}{
+		{`{"v":1}`, `{"v":1}`, true},
+		{`{"v":1}`, "{\n  \"v\": 1\n}", true},
+		{`{"v":1}`, `{"v":2}`, false},
+		{`{"v":1}`, `not json`, false},
+		{`not json`, `{"v":1}`, false},
+	} {
+		if got := sameJSONBytes([]byte(tc.a), []byte(tc.b)); got != tc.want {
+			t.Errorf("sameJSONBytes(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
+		}
+	}
+}

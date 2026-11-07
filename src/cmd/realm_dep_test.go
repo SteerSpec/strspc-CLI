@@ -11,6 +11,122 @@ import (
 	"github.com/SteerSpec/strspc-manager/src/entity"
 )
 
+// realmManifestCommands are the commands that read or rewrite the realm.json of
+// --dir, each with the arguments that get it past its own flag checks.
+var realmManifestCommands = [][]string{
+	{"realm", "dep", "list"},
+	{"realm", "dep", "add", "dev.lib@1.0.0"},
+	{"realm", "dep", "remove", "dev.lib"},
+	{"realm", "dep", "upgrade"},
+	{"realm", "add", "NEW", "--title", "New"},
+	{"realm", "contributor", "add", "github:alice"},
+	{"realm", "contributor", "remove", "github:alice"},
+	{"realm", "contributor", "list"},
+	{"realm", "standards", "add", "--id", "owasp.asvs", "--relation", "implements"},
+	{"realm", "standards", "remove", "--id", "owasp.asvs"},
+	{"realm", "standards", "list"},
+	{"realm", "standards", "update", "--id", "owasp.asvs", "--version", "5.0.0"},
+}
+
+// A realm.json that is a directory is refused before anything is read or
+// written.
+func TestRealmCommandsRejectRealmJSONDirectory(t *testing.T) {
+	for _, args := range realmManifestCommands {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.Mkdir(filepath.Join(dir, "realm.json"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			_, err := testutil.ExecuteCommand(NewRootCmd(), append(args, "--dir", dir)...)
+			if err == nil || !strings.Contains(err.Error(), "realm.json is not a regular file") {
+				t.Fatalf("error = %v, want realm.json is not a regular file", err)
+			}
+		})
+	}
+}
+
+// A realm.json that doesn't parse is reported, and left as it was.
+func TestRealmCommandsRejectMalformedRealmJSON(t *testing.T) {
+	for _, args := range realmManifestCommands {
+		if args[1] == "add" {
+			continue // realm add only checks that realm.json is a file
+		}
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "realm.json")
+			if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := testutil.ExecuteCommand(NewRootCmd(), append(args, "--dir", dir)...)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if data, _ := os.ReadFile(path); string(data) != "{not json" {
+				t.Errorf("realm.json was rewritten:\n%s", data)
+			}
+		})
+	}
+}
+
+// A --dir that is a regular file can't hold a realm.json.
+func TestRealmCommandsRejectFileAsDir(t *testing.T) {
+	for _, args := range realmManifestCommands {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			file := filepath.Join(t.TempDir(), "rules")
+			if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := testutil.ExecuteCommand(NewRootCmd(), append(args, "--dir", file)...)
+			if err == nil || !strings.Contains(err.Error(), "realm.json") {
+				t.Fatalf("error = %v, want one naming realm.json", err)
+			}
+		})
+	}
+}
+
+func TestRealmDepAddConflictingSources(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.lib@1.0.0=../a/", "--source", "../b/", "--dir", dir)
+	if err == nil || !strings.Contains(err.Error(), "conflicting sources") {
+		t.Fatalf("error = %v, want conflicting sources", err)
+	}
+	if deps := readRealmDeps(t, dir); len(deps) != 0 {
+		t.Errorf("dependencies = %+v, want none", deps)
+	}
+}
+
+func TestRealmDepRemoveKeepsOthers(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	writeRealmDeps(t, dir,
+		entity.RealmDep{RealmID: "dev.a", Version: "1.0.0", Source: "../a/"},
+		entity.RealmDep{RealmID: "dev.b", Version: "2.0.0", Source: "../b/"},
+	)
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "remove", "dev.a", "--dir", dir); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	deps := readRealmDeps(t, dir)
+	if len(deps) != 1 || deps[0].RealmID != "dev.b" || deps[0].Version != "2.0.0" {
+		t.Errorf("dependencies = %+v, want only dev.b@2.0.0", deps)
+	}
+}
+
+// A manifest with no dependencies key lists [] in JSON, not null.
+func TestRealmDepListJSONWithoutDependenciesKey(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(`{"realm": {"id": "dev.x", "title": "x", "version": "0.1.0"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "list", "--dir", dir, "--json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.TrimSpace(out) != "[]" {
+		t.Errorf("output = %q, want []", out)
+	}
+}
+
 func readRealmDeps(t *testing.T, dir string) []entity.RealmDep {
 	t.Helper()
 	rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
