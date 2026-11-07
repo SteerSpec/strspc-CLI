@@ -15,7 +15,7 @@ import (
 // testStdRealm is the realm_id of a Standard Realm a reference links to.
 const testStdRealm = "dev.steerspec.std.owasp.asvs.v5"
 
-// setupLinkRealm writes a realm at dir pinning core 1.21.0, with no source so
+// setupLinkRealm writes a realm at dir pinning core at manifestMinCore, with no source so
 // validation fetches nothing, and entity MYE with one rule.
 func setupLinkRealm(t *testing.T, dir string) {
 	t.Helper()
@@ -51,7 +51,7 @@ func TestStandardsAddRealmAndProfile(t *testing.T) {
 	}
 	assertFileHashFresh(t, dir, "MYE")
 
-	// The core 1.21.0 schemas accept the linked reference.
+	// The vendored core schemas accept the linked reference.
 	if out, err := validateWithSchemas(t, dir); err != nil {
 		t.Fatalf("realm validate rejects the manifest: %v\n%s", err, out)
 	}

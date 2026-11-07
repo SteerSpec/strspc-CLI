@@ -100,7 +100,7 @@ func TestJSONCommandsWriteError(t *testing.T) {
 		}},
 		{"realm rehash", func(t *testing.T) []string {
 			dir := t.TempDir()
-			setupRehashRealm(t, dir, "1.21.0")
+			setupRehashRealm(t, dir, manifestMinCore.String())
 			return []string{"realm", "rehash", "--dir", dir, "--json"}
 		}},
 		{"realm note add", func(t *testing.T) []string {

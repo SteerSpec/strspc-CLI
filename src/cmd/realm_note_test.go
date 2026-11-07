@@ -13,7 +13,7 @@ import (
 	"github.com/SteerSpec/strspc-manager/src/entity"
 )
 
-// setupNoteRealm writes a realm at dir pinning core 1.21.0, listing
+// setupNoteRealm writes a realm at dir pinning core at manifestMinCore, listing
 // testContributors, and declaring owasp.asvs linked to a Standard Realm and
 // ietf.rfc2119 unlinked.
 func setupNoteRealm(t *testing.T, dir string) {
@@ -54,8 +54,8 @@ func addRealmNote(t *testing.T, dir string, args ...string) string {
 var dateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 // TestRealmNoteAdd adds an exclusion and a rationale, numbered REALM/001 and
-// REALM/002, and checks the manifest passes realm validate with the core
-// 1.21.0 schemas and the Realm Note checks (RM022 to RM024).
+// REALM/002, and checks the manifest passes realm validate with the vendored
+// core schemas and the Realm Note checks (RM022 to RM024).
 func TestRealmNoteAdd(t *testing.T) {
 	dir := t.TempDir()
 	setupNoteRealm(t, dir)
