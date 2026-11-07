@@ -53,7 +53,8 @@ func newRuleVerifyCmd() *cobra.Command {
 			"reports the size of the run without calling the provider or needing an API key.\n\n" +
 			"Exit codes: 0 every rule compliant or not applicable, 1 a rule violated or left unknown,\n" +
 			"2 configuration or rule resolution error, 3 AI provider unavailable, 4 the JSON report could\n" +
-			"not be written.",
+			"not be written. A run that already failed keeps its own exit code even if the report cannot\n" +
+			"be written either (CMD-008).",
 		Example: "  strspc rule verify CMD-008 --dry-run\n" +
 			"  strspc rule verify CMD-008 CMD-009 --path src/cmd --exclude '**/*_test.go' --effort high",
 		Args:          cobra.MinimumNArgs(1),
@@ -418,7 +419,8 @@ func (r *checkRun) printVerify(vo *verifyOutput) {
 	w := r.out
 	est := vo.Estimate
 	if vo.DryRun || r.opts.verbose {
-		writeln(w, fmt.Sprintf("Scope: %s: %d file(s), %d bytes, ~%d input tokens", vo.Scope, est.Files, est.Bytes, est.EstInputTokens))
+		// The scope echoes --path and --exclude: neutralise control characters.
+		writeln(w, sanitizeLine(fmt.Sprintf("Scope: %s: %d file(s), %d bytes, ~%d input tokens", vo.Scope, est.Files, est.Bytes, est.EstInputTokens)))
 		dirs := make([]string, 0, len(est.BytesByDir))
 		for d := range est.BytesByDir {
 			dirs = append(dirs, d)

@@ -677,4 +677,11 @@ func TestRuleVerifyExclude(t *testing.T) {
 
 	_, err = runVerifyCmd(t, "TST-001", "--project", dir, "--dry-run", "--exclude", "/abs")
 	assertExit(t, err, exitConfig)
+
+	// The scope line echoes the flags: a control sequence must not reach the terminal.
+	human, err := runVerifyCmd(t, "TST-001", "--project", dir, "--dry-run", "--exclude", "docs\n::error::x\x1b[2J")
+	assertExit(t, err, exitOK)
+	if strings.Contains(human, "\n::error::") || strings.Contains(human, "\x1b") {
+		t.Errorf("scope line not sanitized:\n%q", human)
+	}
 }
