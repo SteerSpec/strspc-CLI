@@ -129,6 +129,7 @@ Examples:
 			writeln(w, cmdStyle.Render("  3.")+descStyle.Render(" Validate rules: ")+cmdStyle.Render("strspc lint rules/ --strict"))
 			writeln(w, cmdStyle.Render("  4.")+descStyle.Render(" Run structural checks: ")+cmdStyle.Render("strspc check --static-only"))
 			writeln(w)
+			writeln(w, descStyle.Render("Using an AI agent? Give it the strspc workflow: ")+cmdStyle.Render("strspc skill --install"))
 			writeln(w, descStyle.Render("Reference: "+readmeURL))
 
 			return nil
