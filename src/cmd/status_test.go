@@ -75,6 +75,8 @@ func TestStatusNoConfig(t *testing.T) {
 	assertExit(t, err, exitOK)
 	testutil.AssertContains(t, out, "Not initialized")
 	testutil.AssertContains(t, out, "strspc init")
+	testutil.AssertContains(t, out, "strspc doctor")
+	testutil.AssertContains(t, out, "strspc status ./my-project")
 
 	if report := runStatus(t, dir); report.Initialized || report.Config != nil {
 		t.Errorf("got %+v", report)
