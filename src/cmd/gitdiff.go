@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,6 +24,10 @@ const (
 	diffFromBase       diffSourceKind = "base"        // --base: merge-base of a ref vs working tree
 	diffFromGitHubBase diffSourceKind = "github-base" // $GITHUB_BASE_REF (origin/<ref>, fetched if missing)
 	diffFromHead       diffSourceKind = "head"        // working tree vs HEAD
+
+	// diffFromTree is used by `strspc rule verify` only: every tracked file
+	// of the working tree, as a diff from the empty tree (all lines added).
+	diffFromTree diffSourceKind = "tree"
 )
 
 // diffFlags are the diff-selection flags of `strspc check`.
@@ -52,6 +57,11 @@ func (s diffSource) String() string {
 		return "base " + s.Ref + " vs working tree"
 	case diffFromGitHubBase:
 		return "GITHUB_BASE_REF origin/" + s.Ref + " vs working tree"
+	case diffFromTree:
+		if s.Ref != "" {
+			return s.Ref // a full description, from treeScope
+		}
+		return "all tracked files"
 	default:
 		return "working tree vs HEAD"
 	}
@@ -174,14 +184,125 @@ func gitDiffArgs(subDir string, rangeArgs ...string) []string {
 	} else {
 		args = append(args, "--", ":(literal)"+filepath.ToSlash(subDir))
 	}
+	return append(args, diffExcludeSpecs(subDir)...)
+}
+
+// diffExcludeSpecs returns the exclude pathspecs for diffExcludes, rooted
+// at subDir ("." for the repository root).
+func diffExcludeSpecs(subDir string) []string {
+	specs := make([]string, 0, len(diffExcludes))
 	for _, ex := range diffExcludes {
 		p := ex
-		if subDir != "." {
+		if subDir != "." && subDir != "" {
 			p = path.Join(filepath.ToSlash(subDir), ex)
 		}
-		args = append(args, ":(exclude,literal)"+p)
+		specs = append(specs, ":(exclude,literal)"+p)
 	}
-	return args
+	return specs
+}
+
+// treePathspecs turns `rule verify --path` and `--exclude` values, relative
+// to the project directory subDir, into repository-relative glob pathspecs.
+// A value that is absolute or climbs out of the project is refused. No
+// --path means the whole project; excludes are subtracted from it.
+func treePathspecs(subDir string, paths, excludes []string) ([]string, error) {
+	if subDir == "" {
+		subDir = "."
+	}
+	var specs []string
+	if len(paths) == 0 {
+		if subDir == "." {
+			specs = []string{"."}
+		} else {
+			specs = []string{":(literal)" + filepath.ToSlash(subDir)}
+		}
+	} else {
+		for _, p := range paths {
+			g, ok, err := projectGlob("--path", subDir, p)
+			if err != nil {
+				return nil, err
+			}
+			if ok {
+				specs = append(specs, ":(glob)"+g)
+			}
+		}
+		if len(specs) == 0 {
+			return nil, errors.New("--path values are empty")
+		}
+	}
+	for _, p := range excludes {
+		g, ok, err := projectGlob("--exclude", subDir, p)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			specs = append(specs, ":(exclude,glob)"+g)
+		}
+	}
+	return specs, nil
+}
+
+// projectGlob cleans one --path or --exclude value and roots it at subDir.
+// The project prefix is escaped so that a directory such as `svc[1]` is
+// matched literally and a glob cannot reach a sibling such as `svc1`; only
+// the user's value is a pattern. ok is false for a blank value, which is
+// skipped.
+func projectGlob(flag, subDir, p string) (glob string, ok bool, err error) {
+	p = filepath.ToSlash(strings.TrimSpace(p))
+	if p == "" {
+		return "", false, nil
+	}
+	clean := path.Clean(p)
+	if path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
+		return "", false, fmt.Errorf("%s %q must be relative to the project and stay inside it", flag, p)
+	}
+	if subDir == "." || subDir == "" {
+		return clean, true, nil
+	}
+	return escapeGlob(filepath.ToSlash(subDir)) + "/" + clean, true, nil
+}
+
+// escapeGlob makes the characters git's glob pathspec magic treats as
+// pattern syntax literal by wrapping each in a one-character class (`[` →
+// `[[]`, `]` → `[]]`, `*` → `[*]`, `?` → `[?]`). A backslash escape would
+// do on Unix, but Git for Windows turns backslashes in a pathspec into path
+// separators. A backslash, which only Unix allows in a name, is escaped
+// inside its class.
+func escapeGlob(s string) string {
+	var b strings.Builder
+	for _, c := range s {
+		switch c {
+		case '*', '?', '[', ']':
+			b.WriteByte('[')
+			b.WriteRune(c)
+			b.WriteByte(']')
+		case '\\':
+			b.WriteString(`[\\]`)
+		default:
+			b.WriteRune(c)
+		}
+	}
+	return b.String()
+}
+
+// collectTreeDiff returns every tracked file under pathspecs (minus the
+// excludes) as a diff from the empty tree, so each line is an added line.
+// The working tree is read, so uncommitted edits to tracked files count;
+// untracked files do not. The empty tree is hashed rather than hard-coded so
+// that SHA-256 repositories work too.
+func collectTreeDiff(ctx context.Context, repoDir, subDir string, pathspecs []string) (string, error) {
+	emptyTree, err := git(ctx, repoDir, "hash-object", "-t", "tree", "--stdin")
+	if err != nil {
+		return "", fmt.Errorf("hashing the empty tree: %w", err)
+	}
+	args := []string{"diff", "--no-color", "--no-ext-diff", "-U3", "--diff-filter=ACMR", strings.TrimSpace(emptyTree), "--"}
+	args = append(args, pathspecs...)
+	args = append(args, diffExcludeSpecs(subDir)...)
+	out, err := git(ctx, repoDir, args...)
+	if err != nil {
+		return "", fmt.Errorf("collecting tracked files: %w", err)
+	}
+	return out, nil
 }
 
 // filterDiff applies to a file-backed diff the restrictions git enforces for

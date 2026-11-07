@@ -65,6 +65,7 @@ type checkOptions struct {
 	format     string
 	provider   string
 	model      string
+	effort     string // overrides evaluator.effort (rule verify only for now)
 	endpoint   string
 	staticOnly bool
 	noCache    bool
@@ -151,6 +152,7 @@ type checkRun struct {
 	providerName string
 	provider     ruleeval.Provider
 	model        string
+	effort       string
 
 	fetcher  *remote.Fetcher
 	resolved []*ruleresolve.ResolvedFile
@@ -287,6 +289,10 @@ func (r *checkRun) buildProvider() (int, error) {
 	if r.opts.model != "" {
 		r.model = r.opts.model
 	}
+	r.effort = r.cfg.Evaluator.Effort
+	if r.opts.effort != "" {
+		r.effort = strings.TrimSpace(r.opts.effort)
+	}
 
 	if r.opts.staticOnly || isStaticProviderName(r.providerName) {
 		// No provider will be built, so a custom endpoint left in the config
@@ -300,6 +306,9 @@ func (r *checkRun) buildProvider() (int, error) {
 	if err := rejectControlChars("evaluator.model", r.model); err != nil {
 		return exitConfig, err
 	}
+	if err := rejectControlChars("evaluator.effort", r.effort); err != nil {
+		return exitConfig, err
+	}
 
 	endpoint, err := resolveEndpoint(r.cfg.Evaluator.Endpoint, r.opts.endpoint, os.Getenv(envEvaluatorEndpoint))
 	if err != nil {
@@ -309,7 +318,7 @@ func (r *checkRun) buildProvider() (int, error) {
 	p, err := newEvalProvider(r.providerName, providers.Options{
 		Model:    r.model,
 		Endpoint: endpoint,
-		Effort:   r.cfg.Evaluator.Effort,
+		Effort:   r.effort,
 	})
 	switch {
 	case err == nil:
@@ -339,6 +348,15 @@ func (r *checkRun) buildProvider() (int, error) {
 // .strspc/cache/) and validates the realm dependencies of sources that ship
 // a realm.json. Any error-severity diagnostic aborts the check.
 func (r *checkRun) resolveRules() error {
+	if err := r.resolveSources(); err != nil {
+		return r.fail(exitConfig, err, r.resolutionDiags...)
+	}
+	return nil
+}
+
+// resolveSources is resolveRules without the reporting: on failure the
+// diagnostics are left in r.resolutionDiags for the caller to render.
+func (r *checkRun) resolveSources() error {
 	cacheDir := filepath.Join(r.cwd, ".strspc", "cache")
 	r.fetcher = newRemoteFetcher(cacheDir, r.ttl)
 
@@ -373,7 +391,7 @@ func (r *checkRun) resolveRules() error {
 	}
 	if fatal > 0 {
 		r.resolutionDiags = diags
-		return r.fail(exitConfig, fmt.Errorf("rule resolution failed with %d error(s)", fatal), diags...)
+		return fmt.Errorf("rule resolution failed with %d error(s)", fatal)
 	}
 	r.resolved = resolved
 	r.verbosef("sources: %d resolved, %d entity file(s)", len(r.entries), len(resolved))
@@ -629,7 +647,7 @@ func (r *checkRun) evaluate() error {
 			evaluateOn = fmt.Sprint(r.evaluateOn)
 		}
 		r.verbosef("evaluator: %s model=%s effort=%s fail_on=%v evaluate_on=%s",
-			r.providerName, r.model, orDefault(r.cfg.Evaluator.Effort, "default"), r.failOn, evaluateOn)
+			r.providerName, r.model, orDefault(r.effort, "default"), r.failOn, evaluateOn)
 	}
 
 	res := evaluator.Evaluate(ctx, r.inputs, r.diff)
