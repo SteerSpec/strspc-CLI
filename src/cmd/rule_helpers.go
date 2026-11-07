@@ -141,13 +141,20 @@ func replaceEntityFile(path string, f *entity.File) error {
 	if err != nil {
 		return fmt.Errorf("marshaling entity file: %w", err)
 	}
+	return replaceFile(path, data, "entity file")
+}
+
+// replaceFile writes data to path by way of a temporary file in the same
+// directory and a rename, as replaceEntityFile does; what names the file in an
+// error.
+func replaceFile(path string, data []byte, what string) error {
 	mode := os.FileMode(0o644)
 	if fi, err := os.Lstat(path); err == nil && fi.Mode().IsRegular() {
 		mode = fi.Mode().Perm()
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
 	if err != nil {
-		return fmt.Errorf("writing entity file: %w", err)
+		return fmt.Errorf("writing %s: %w", what, err)
 	}
 	name := tmp.Name()
 	// The mode is set through the open file, not by name: a name swapped for
@@ -164,7 +171,7 @@ func replaceEntityFile(path string, f *entity.File) error {
 	}
 	if err != nil {
 		_ = os.Remove(name)
-		return fmt.Errorf("writing entity file: %w", err)
+		return fmt.Errorf("writing %s: %w", what, err)
 	}
 	return nil
 }

@@ -98,6 +98,11 @@ func TestJSONCommandsWriteError(t *testing.T) {
 		{"render", func(t *testing.T) []string {
 			return []string{"render", setupRenderInherit(t), "--json"}
 		}},
+		{"realm rehash", func(t *testing.T) []string {
+			dir := t.TempDir()
+			setupRehashRealm(t, dir, "1.21.0")
+			return []string{"realm", "rehash", "--dir", dir, "--json"}
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
