@@ -260,6 +260,18 @@ func coreTag(version string) (string, error) {
 	return "v" + v, nil
 }
 
+// isReleaseRef reports whether a source ref is a SemVer release tag (vX.Y.Z,
+// with an optional prerelease or build metadata), as opposed to @latest, a
+// commit SHA or a branch.
+func isReleaseRef(ref string) bool {
+	v, ok := strings.CutPrefix(ref, "v")
+	if !ok {
+		return false
+	}
+	_, err := semver.StrictNewVersion(v)
+	return err == nil
+}
+
 // checkCoreSourceTag refuses a core dependency whose github:// source is pinned
 // to a release tag other than its version: init would vendor the schemas of
 // the version while the source (what validation resolves) serves another
@@ -270,7 +282,7 @@ func checkCoreSourceTag(dep entity.RealmDep) error {
 		return nil
 	}
 	ref, err := remote.ParseGitHub(dep.Source)
-	if err != nil || !releaseTag.MatchString(ref.Ref) {
+	if err != nil || !isReleaseRef(ref.Ref) {
 		return nil
 	}
 	want, err := coreTag(dep.Version)

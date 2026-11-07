@@ -152,6 +152,12 @@ func TestRealmInitCoreDependencySourceTagMustMatchVersion(t *testing.T) {
 		t.Errorf("fetched schemas despite the mismatch: %v", *tags)
 	}
 
+	// A release tag with build metadata is still a release tag, so it is compared.
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", filepath.Join(t.TempDir(), "rules"), "--id", "com.test.demo",
+		"--dependency", "dev.steerspec.core@1.20.0="+fmt.Sprintf(src, "v1.20.0+build.5")); err == nil {
+		t.Error("expected an error for a source tag with build metadata that differs from the version")
+	}
+
 	// Refs that name no release can't be compared and are accepted, and so is
 	// a mismatch on a dependency other than core.
 	for name, args := range map[string][]string{
