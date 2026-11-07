@@ -5,9 +5,9 @@
     "title": "Conventions"
   },
   "rule_set": {
-    "version": "0.3.2",
-    "timestamp": "2026-11-07T09:18:29Z",
-    "hash": "blake3:f925d53414ff6901794e8d97f21fe50bffa28da364cabc7deaed5d7d12a75e7c"
+    "version": "0.4.0",
+    "timestamp": "2026-11-07T09:42:18Z",
+    "hash": "blake3:a690dfe91c1f622b630142a705cae2e54b4ffd1fc9ed3a4b897a7caf5c17c685"
   },
   "rules": [
     {
@@ -49,7 +49,7 @@
     {
       "id": "CONV-005",
       "revision": 0,
-      "state": "D",
+      "state": "P",
       "body": "The total statement coverage of the module's Go packages, as measured by go test with -coverprofile, MUST be at least 95%",
       "added_by": "github:pleberre",
       "added_at": "2026-11-07",
