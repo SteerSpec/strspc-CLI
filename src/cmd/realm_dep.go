@@ -66,8 +66,9 @@ func loadAndWriteRealm(realmPath string, mutate func([]entity.RealmDep) ([]entit
 }
 
 // loadModifyWriteRealm loads realm.json, applies mutate to the manifest, and
-// writes it back in the layout realm init uses. Nothing is written when mutate
-// fails.
+// writes it back in the layout realm init uses. A manifest with a hash gets it
+// recomputed over what is written (RLMMNFST-014); one without keeps none.
+// Nothing is written when mutate fails.
 func loadModifyWriteRealm(realmPath string, mutate func(*entity.RealmFile) error) error {
 	rf, err := entity.LoadRealm(realmPath)
 	if err != nil {
@@ -77,7 +78,15 @@ func loadModifyWriteRealm(realmPath string, mutate func(*entity.RealmFile) error
 	if err := mutate(rf); err != nil {
 		return err
 	}
+	return replaceRealmManifest(realmPath, rf, rf.Hash != "")
+}
 
+// marshalRealmManifest returns rf as realm.json holds it, in the layout realm
+// init uses. withHash sets rf.Hash, and the hash written, to the manifest hash
+// of the result (RLMMNFST-013); otherwise the result has no hash.
+// ComputeRealmHash leaves out the hash key, so hashing the bytes without it
+// gives the hash of the bytes with it.
+func marshalRealmManifest(rf *entity.RealmFile, withHash bool) ([]byte, error) {
 	deps := rf.Dependencies
 	if deps == nil {
 		deps = []entity.RealmDep{}
@@ -90,18 +99,34 @@ func loadModifyWriteRealm(realmPath string, mutate func(*entity.RealmFile) error
 		SubRealms:            rf.SubRealms,
 		RuleIdentifierFormat: rf.RuleIdentifierFormat,
 		Notes:                rf.Notes,
-		Hash:                 rf.Hash,
 	}
 
 	data, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
-		return fmt.Errorf("marshaling realm.json: %w", err)
+		return nil, fmt.Errorf("marshaling realm.json: %w", err)
 	}
+	rf.Hash = ""
+	if withHash {
+		h, err := entity.ComputeRealmHash(data)
+		if err != nil {
+			return nil, fmt.Errorf("computing the manifest hash: %w", err)
+		}
+		out.Hash, rf.Hash = h, h
+		if data, err = json.MarshalIndent(out, "", "  "); err != nil {
+			return nil, fmt.Errorf("marshaling realm.json: %w", err)
+		}
+	}
+	return append(data, '\n'), nil
+}
 
-	if err := os.WriteFile(realmPath, append(data, '\n'), 0o644); err != nil {
-		return fmt.Errorf("writing realm.json: %w", err)
+// replaceRealmManifest writes rf to realmPath as marshalRealmManifest gives it,
+// through replaceFile, so a link at realmPath is replaced, not written through.
+func replaceRealmManifest(realmPath string, rf *entity.RealmFile, withHash bool) error {
+	data, err := marshalRealmManifest(rf, withHash)
+	if err != nil {
+		return err
 	}
-	return nil
+	return replaceFile(realmPath, data, "realm.json")
 }
 
 func newRealmDepCmd() *cobra.Command {

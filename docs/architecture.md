@@ -4,8 +4,8 @@ Back to the [README](../README.md).
 
 ## Architecture
 
-The [Rule Manager specification](https://github.com/SteerSpec/strspc-manager/blob/v1.44.0/docs/SPEC.md)
-(cited below as SPEC, at v1.44.0, the manager version this CLI imports) is a draft that this CLI
+The [Rule Manager specification](https://github.com/SteerSpec/strspc-manager/blob/v1.45.0/docs/SPEC.md)
+(cited below as SPEC, at v1.45.0, the manager version this CLI imports) is a draft that this CLI
 follows. Its principles shape how the CLI works:
 
 - **JSON is the source of truth.** Markdown is a rendered view.
@@ -61,7 +61,7 @@ that govern these tiers, and this repository owns the `dev.steerspec.cli` realm 
 | **Realm** | A namespace of entities in a directory with a `realm.json` manifest and `_schema/`. Its ID is in reverse domain notation (`com.acme.app`) |
 | **Configuration** | A project's `.strspc/config.yaml`: the rules it consumes and how they are enforced |
 
-See SPEC [§2](https://github.com/SteerSpec/strspc-manager/blob/v1.44.0/docs/SPEC.md#2-data-model) for the
+See SPEC [§2](https://github.com/SteerSpec/strspc-manager/blob/v1.45.0/docs/SPEC.md#2-data-model) for the
 full data model.
 
 ## Commands
@@ -90,6 +90,7 @@ full data model.
 | `strspc realm standards add\|update\|remove\|list` | Declare the external standards a Realm cites |
 | `strspc realm contributor add\|remove\|list` | Manage the contributors a Realm lists, which `--added-by` must name |
 | `strspc realm rewrite-added-by` | Rewrite `added_by` values to contributor identifiers such as `github:alice` |
+| `strspc realm rehash` | Add or refresh the manifest `hash` of `realm.json` and its sub-realms |
 | `strspc rule add` | Add a Draft rule to an entity or sub-entity |
 | `strspc rule update` | Edit the body of a Draft rule |
 | `strspc rule promote` | Advance a rule D→P or P→I |

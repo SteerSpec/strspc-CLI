@@ -253,7 +253,9 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 
 			var synced []schemaSync
 			rollback := func() error {
-				if rerr := os.WriteFile(realmPath, original, 0o644); rerr != nil {
+				// Through replaceFile, as the upgrade wrote it: atomic, keeping
+				// the file's mode, and never through a link.
+				if rerr := replaceFile(realmPath, original, "realm.json"); rerr != nil {
 					return rerr
 				}
 				return restoreSchemas(dir, synced)

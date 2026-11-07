@@ -140,8 +140,10 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 				return fmt.Errorf("marshaling realm.json: %w", err)
 			}
 
-			if err := os.WriteFile(targetRealmPath, data, 0o644); err != nil {
-				return fmt.Errorf("writing realm.json: %w", err)
+			// Through replaceFile, so a realm.json link left by --force is replaced,
+			// not written through.
+			if err := replaceFile(targetRealmPath, data, "realm.json"); err != nil {
+				return err
 			}
 
 			// Print success.
