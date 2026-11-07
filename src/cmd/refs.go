@@ -67,7 +67,8 @@ func newRefsCmd() *cobra.Command {
 			"up with `strspc rule show`. Committed `strspc render` output copies every body, so\n" +
 			"exclude it with --exclude.\n\n" +
 			"A line holding \"strspc-refs: ignore\" exempts itself and the next line, in any comment syntax.\n\n" +
-			"Exit codes: 0 clean, 1 findings, 2 configuration or resolution error.\n\n" +
+			"Exit codes: 0 clean, 1 findings, 2 configuration or resolution error, 4 the JSON output\n" +
+			"can't be written.\n\n" +
 			"A pattern with no slash matches a file name in any directory, and dir/** matches everything\n" +
 			"under dir.\n\n" +
 			"Examples:\n" +

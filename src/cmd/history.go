@@ -39,7 +39,7 @@ const historyLongCommon = "The history is derived from git: every commit that ch
 	"--since V keeps the changes that produced a rule set version above V. --between V1..V2 keeps\n" +
 	"those above V1 and up to V2; either side may be empty.\n\n" +
 	"Exit codes: 0 success (also when nothing matches), 1 unknown entity or malformed rule ID,\n" +
-	"2 git, version or usage error."
+	"2 git, version or usage error, 4 the JSON output can't be written."
 
 func newHistoryCmd() *cobra.Command {
 	var o historyOptions
@@ -166,10 +166,7 @@ func runHistory(ctx context.Context, out, errOut io.Writer, euid string, o *hist
 			warnings = []rulehistory.Warning{}
 		}
 		doc := historyOutput{Entity: euid, Path: rel, Events: h.Events, Warnings: warnings}
-		if err := writeJSONOutput(out, doc); err != nil {
-			return withExitCode(exitOutput, err)
-		}
-		return nil
+		return writeJSONOutput(out, doc)
 	}
 	for _, w := range h.Warnings {
 		writeln(errOut, descStyle.Render("warning: "+printableText(w.String())))

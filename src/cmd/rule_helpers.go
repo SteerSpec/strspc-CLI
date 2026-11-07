@@ -63,8 +63,10 @@ func writeJSONOutput(w io.Writer, v any) error {
 	if err != nil {
 		return fmt.Errorf("marshaling JSON output: %w", err)
 	}
-	_, err = w.Write(printableJSON(data))
-	return err
+	if _, err := w.Write(printableJSON(data)); err != nil {
+		return withExitCode(exitOutput, fmt.Errorf("writing JSON output: %w", err))
+	}
+	return nil
 }
 
 // resolveEntityPath returns the path to an entity JSON file in the given directory.
