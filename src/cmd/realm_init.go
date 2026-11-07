@@ -164,6 +164,9 @@ func newRealmInitCmd() *cobra.Command {
 				if dep.RealmID == coreRealmID && slices.ContainsFunc(realmDeps, func(d entity.RealmDep) bool { return d.RealmID == coreRealmID }) {
 					return fmt.Errorf("duplicate dependency on %s: pass it once", coreRealmID)
 				}
+				if err := checkCoreSourceTag(dep); err != nil {
+					return err
+				}
 				realmDeps = append(realmDeps, dep)
 			}
 			if realmDeps == nil {
@@ -255,6 +258,38 @@ func coreTag(version string) (string, error) {
 		return "", fmt.Errorf("invalid core version %q: must be SemVer, e.g. 1.17.1", version)
 	}
 	return "v" + v, nil
+}
+
+// isReleaseRef reports whether a source ref is a SemVer release tag (vX.Y.Z,
+// with an optional prerelease or build metadata), as opposed to @latest, a
+// commit SHA or a branch.
+func isReleaseRef(ref string) bool {
+	v, ok := strings.CutPrefix(ref, "v")
+	if !ok {
+		return false
+	}
+	_, err := semver.StrictNewVersion(v)
+	return err == nil
+}
+
+// checkCoreSourceTag refuses a core dependency whose github:// source is pinned
+// to a release tag other than its version: init would vendor the schemas of
+// the version while the source (what validation resolves) serves another
+// release, and RM015 would flag the drift. Only a release-tag ref can be
+// compared; @latest, a commit SHA or a branch can't, so they pass.
+func checkCoreSourceTag(dep entity.RealmDep) error {
+	if dep.RealmID != coreRealmID || !strings.HasPrefix(dep.Source, remote.Scheme) {
+		return nil
+	}
+	ref, err := remote.ParseGitHub(dep.Source)
+	if err != nil || !isReleaseRef(ref.Ref) {
+		return nil
+	}
+	want, err := coreTag(dep.Version)
+	if err != nil || ref.Ref == want {
+		return nil
+	}
+	return fmt.Errorf("%s version %s does not match its source tag %s: pin both to the same release", coreRealmID, dep.Version, ref.Ref)
 }
 
 // resolveSchemaTag picks the strspc-rules release tag the schemas are fetched

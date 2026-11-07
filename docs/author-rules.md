@@ -113,7 +113,8 @@ realms should depend on `dev.steerspec.core`, as in the [quick start](../README.
 The schemas are copied unchanged from the `dev.steerspec.core` release tag in `strspc-rules`: the
 `--core-version` you pass, else the core dependency's version, else the latest release. Since core
 release 1.20.0 each file carries its release as a top-level `x-steerspec-core-version`. Copies of
-older releases have no such field.
+older releases have no such field. `realm init` refuses a core dependency whose `github://` source tag
+differs from its version, and a `--core-version` that differs from the dependency.
 
 ```bash
 strspc realm dep add com.acme.shared@1.0.0=../shared
