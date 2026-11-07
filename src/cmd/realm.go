@@ -22,6 +22,7 @@ func newRealmCmd() *cobra.Command {
 	cmd.AddCommand(newRealmContributorCmd())
 	cmd.AddCommand(newRealmRewriteAddedByCmd())
 	cmd.AddCommand(newRealmRehashCmd())
+	cmd.AddCommand(newRealmNoteCmd())
 
 	return cmd
 }

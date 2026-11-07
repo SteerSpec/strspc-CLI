@@ -101,6 +101,12 @@ func resolveAddedBy(flag string, flagSet bool, t entityTarget, dir string) (valu
 	if err != nil {
 		return "", "", err
 	}
+	return resolveAddedByFrom(flag, flagSet, list, filepath.Dir(t.path))
+}
+
+// resolveAddedByFrom is resolveAddedBy given the contributors the value must
+// name (CTRB-005), and the directory whose git user.email supplies the default.
+func resolveAddedByFrom(flag string, flagSet bool, list []entity.Contributor, gitDir string) (value, source string, err error) {
 	switch {
 	case flagSet:
 		if strings.TrimSpace(flag) == "" {
@@ -110,7 +116,7 @@ func resolveAddedBy(flag string, flagSet bool, t entityTarget, dir string) (valu
 	case os.Getenv(addedByEnv) != "":
 		value, source = strings.TrimSpace(os.Getenv(addedByEnv)), addedByFromEnv
 	case len(list) > 0:
-		if email := gitUserEmail(filepath.Dir(t.path)); email != "" {
+		if email := gitUserEmail(gitDir); email != "" {
 			if c := contributorByEmail(list, email); c != nil {
 				value, source = c.ID, addedByFromGit
 			}

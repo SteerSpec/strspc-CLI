@@ -91,6 +91,7 @@ full data model.
 | `strspc realm contributor add\|remove\|list` | Manage the contributors a Realm lists, which `--added-by` must name |
 | `strspc realm rewrite-added-by` | Rewrite `added_by` values to contributor identifiers such as `github:alice` |
 | `strspc realm rehash` | Add or refresh the manifest `hash` of `realm.json` and its sub-realms |
+| `strspc realm note add\|update\|list` | Author the Realm Notes of `realm.json`, exclusions included; never removed |
 | `strspc rule add` | Add a Draft rule to an entity or sub-entity |
 | `strspc rule update` | Edit the body of a Draft rule |
 | `strspc rule promote` | Advance a rule D→P or P→I |
