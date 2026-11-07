@@ -34,6 +34,7 @@ var gettingStarted = []struct{ command, purpose string }{
 	{"strspc doctor", "Check your installation and setup"},
 	{"strspc check --static-only", "Run structural checks (no API key needed)"},
 	{"strspc status", "See your rule sources and how they stand"},
+	{"strspc skill --install", "Teach your AI agent the strspc workflow"},
 }
 
 var versionInfo VersionInfo
@@ -72,6 +73,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newHistoryCmd())
 	cmd.AddCommand(newExplainCmd())
 	cmd.AddCommand(newDoctorCmd())
+	cmd.AddCommand(newSkillCmd())
 	cmd.SetHelpFunc(customHelp)
 	return cmd
 }

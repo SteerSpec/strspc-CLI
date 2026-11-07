@@ -79,6 +79,7 @@ full data model.
 | `strspc doctor` | Diagnose the installation and the project, and suggest a fix for each problem |
 | `strspc standards coverage` | Show how the rules map to the clauses of external standards |
 | `strspc explain` | Explain a diagnostic code, or list all of them with `--list` |
+| `strspc skill` | Print the embedded agent skill for using strspc, or write it to `.claude/skills/strspc/SKILL.md` with `--install` |
 | `strspc sync` | Resolve and cache the rule sources in `.strspc/config.yaml` |
 | `strspc render` | Convert entity JSON files to Markdown or normalized JSON |
 | `strspc realm init` | Scaffold a new Realm directory |

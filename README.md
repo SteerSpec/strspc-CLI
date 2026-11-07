@@ -103,6 +103,7 @@ Add `./rules/` to `.strspc/config.yaml` to
 | Find a command | [Commands](docs/architecture.md#commands) |
 | Configure a project | [Configure a project](docs/configuration.md#configure-a-project) |
 | See how a project stands, or diagnose my setup | [Status and doctor](docs/configuration.md#see-how-a-project-stands) |
+| Give an AI agent the strspc workflow | `strspc skill --install` writes `.claude/skills/strspc/SKILL.md` |
 | Validate rules and their lifecycle | [Validate rules](docs/validate.md#validate-rules) |
 | Check that docs cite live rules | [Validate rule citations](docs/validate.md#validate-rule-citations) |
 | Understand a diagnostic code | [Understand a diagnostic](docs/validate.md#understand-a-diagnostic) |
