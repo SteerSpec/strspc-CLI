@@ -47,13 +47,10 @@ var testRealmNotes = []entity.RealmNote{
 // recomputes it yet, so every write must keep it as written.
 const testRealmHash = "blake3:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-// TestRealmWritesKeepNotesAndHash runs each command that rewrites realm.json
-// on a manifest with Realm Notes and a hash, and checks both survive.
-func TestRealmWritesKeepNotesAndHash(t *testing.T) {
-	dir := t.TempDir()
-	setupValidRealm(t, dir)
-	path := filepath.Join(dir, "realm.json")
-
+// addNotesAndHash adds testRealmNotes and testRealmHash to the realm.json at
+// path.
+func addNotesAndHash(t *testing.T, path string) {
+	t.Helper()
 	var manifest map[string]any
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -71,6 +68,33 @@ func TestRealmWritesKeepNotesAndHash(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// assertNotesAndHashKept fails unless the realm.json at path still holds
+// testRealmNotes and testRealmHash after step.
+func assertNotesAndHashKept(t *testing.T, path, step string) {
+	t.Helper()
+	rf, err := entity.LoadRealm(path)
+	if err != nil {
+		t.Fatalf("%s: loading realm.json: %v", step, err)
+	}
+	if !reflect.DeepEqual(rf.Notes, testRealmNotes) {
+		t.Errorf("%s: notes = %+v, want %+v", step, rf.Notes, testRealmNotes)
+	}
+	if rf.Hash != testRealmHash {
+		t.Errorf("%s: hash = %q, want %q", step, rf.Hash, testRealmHash)
+	}
+}
+
+// TestRealmWritesKeepNotesAndHash runs each command that rewrites realm.json
+// on a manifest with Realm Notes and a hash, and checks both survive. realm dep
+// upgrade, which needs its release lookup stubbed, is
+// TestRealmDepUpgradeKeepsNotesAndHash.
+func TestRealmWritesKeepNotesAndHash(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	path := filepath.Join(dir, "realm.json")
+	addNotesAndHash(t, path)
 
 	steps := [][]string{
 		{"realm", "dep", "add", "dev.steerspec.core@1.21.0"},
@@ -88,22 +112,29 @@ func TestRealmWritesKeepNotesAndHash(t *testing.T) {
 		if out, err := testutil.ExecuteCommand(NewRootCmd(), append(step, "--dir", dir)...); err != nil {
 			t.Fatalf("%s: %v\n%s", strings.Join(step, " "), err, out)
 		}
-		rf, err := entity.LoadRealm(path)
-		if err != nil {
-			t.Fatalf("%s: loading realm.json: %v", strings.Join(step, " "), err)
-		}
-		if !reflect.DeepEqual(rf.Notes, testRealmNotes) {
-			t.Errorf("%s: notes = %+v, want %+v", strings.Join(step, " "), rf.Notes, testRealmNotes)
-		}
-		if rf.Hash != testRealmHash {
-			t.Errorf("%s: hash = %q, want %q", strings.Join(step, " "), rf.Hash, testRealmHash)
-		}
+		assertNotesAndHashKept(t, path, strings.Join(step, " "))
 	}
 
 	// The core 1.21.0 schemas accept the manifest the writes leave.
 	if out, err := validateWithSchemas(t, dir); err != nil {
 		t.Fatalf("realm validate rejects the manifest: %v\n%s", err, out)
 	}
+}
+
+// TestRealmDepUpgradeKeepsNotesAndHash upgrades a dependency of a manifest
+// with Realm Notes and a hash, and checks both survive the rewrite.
+func TestRealmDepUpgradeKeepsNotesAndHash(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	path := filepath.Join(dir, "realm.json")
+	addNotesAndHash(t, path)
+
+	if out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v\n%s", err, out)
+	}
+	if deps := readRealmDeps(t, dir); deps[0].Version != "9.9.9" {
+		t.Fatalf("core dep not upgraded: %+v", deps[0])
+	}
+	assertNotesAndHashKept(t, path, "realm dep upgrade")
 }
 
 // TestRealmWritesLeaveNotesAndHashAbsent checks that a manifest with neither
