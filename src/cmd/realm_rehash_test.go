@@ -364,6 +364,37 @@ func TestReplaceFileInRefusesSwappedLink(t *testing.T) {
 	}
 }
 
+// TestRealmRehashVisitsEachDirOnce enters a directory reached twice only once,
+// as it would one swapped for a link back into the tree.
+func TestRealmRehashVisitsEachDirOnce(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealmWithSubs(t, dir)
+	if out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@1.21.0", "--dir", dir); err != nil {
+		t.Fatalf("dep add: %v\n%s", err, out)
+	}
+	path := filepath.Join(dir, "realm.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest map[string]any
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest["sub_realms"] = []string{"auth", "auth"}
+	if data, err = json.Marshal(manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res := runRealmRehash(t, dir)
+	if len(res.Updated) != 2 || res.Unchanged != 0 {
+		t.Errorf("result = %+v, want the realm and its sub-realm updated once each", res)
+	}
+}
+
 // TestRealmRehashMissingDir reports a --dir that doesn't exist as a missing
 // Realm.
 func TestRealmRehashMissingDir(t *testing.T) {
