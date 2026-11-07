@@ -159,6 +159,34 @@ func TestRealmNoteAddOldCore(t *testing.T) {
 	}
 }
 
+// TestRealmNoteUpdateOldCore refuses to revise a hand-written Realm Note under
+// a core pin whose realm schema rejects `notes`, and leaves realm.json alone.
+func TestRealmNoteUpdateOldCore(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	pinCoreFrom(t, dir, "1.20.0", "")
+	editRealmJSON(t, dir, func(m map[string]any) {
+		m["notes"] = []entity.RealmNote{{ID: "REALM/001", Type: "rationale", Content: "Why.", AddedBy: "github:alice", AddedAt: "2026-11-07"}}
+	})
+	path := filepath.Join(dir, "realm.json")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = testutil.ExecuteCommand(NewRootCmd(), "realm", "note", "update", "REALM/001", "--body", "Why, clarified.", "--dir", dir)
+	if err == nil || !strings.Contains(err.Error(), "reject `notes`") {
+		t.Fatalf("error = %v, want a refusal naming `notes`", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Errorf("realm.json changed on refusal:\n%s", after)
+	}
+}
+
 // TestRealmNoteUpdate revises a note, withdraws an exclusion keeping its ref
 // and content (NTE-035), and refuses every other change of type, a content
 // change with the withdrawal, and a no-op.
@@ -333,6 +361,20 @@ func TestRealmStandardsGuardExclusions(t *testing.T) {
 			t.Errorf("%s: error = %v, want a refusal naming REALM/001 and the withdrawal", args[2], err)
 		}
 	}
+	// A `standard` note mapping the same standard is reported with the
+	// exclusion, so both are withdrawn in one pass.
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "note", "add", "MYE-001", "--type", "standard", "--body", "owasp.asvs:V1.1.1",
+		"--added-by", "github:alice", "--dir", dir); err != nil {
+		t.Fatal(err)
+	}
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "standards", "remove", "--id", "owasp.asvs", "--dir", dir)
+	if err == nil || !strings.Contains(err.Error(), "NTE-016") || !strings.Contains(err.Error(), "REALM/001") {
+		t.Errorf("remove with both blockers: error = %v, want the standard note and the exclusion", err)
+	}
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "note", "update", "MYE-001/01", "--type", "reference", "--dir", dir); err != nil {
+		t.Fatal(err)
+	}
+
 	// Changing the linked realm keeps a realm, so it goes through.
 	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "standards", "update", "--id", "owasp.asvs", "--realm", "dev.steerspec.std.owasp.asvs.v6", "--dir", dir); err != nil {
 		t.Errorf("relink: %v", err)

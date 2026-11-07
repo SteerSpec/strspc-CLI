@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -125,11 +126,16 @@ Example:
 					return err
 				}
 				rf.Realm.Standards = refs
+				// Both blockers are reported at once, so one pass withdraws all.
+				var blockers []error
 				if notes := notesNaming(rulelint.UnresolvedStandardNotes(dir, rf), id); len(notes) > 0 {
-					return unresolvedNotesError(id, notes)
+					blockers = append(blockers, unresolvedNotesError(id, notes))
 				}
 				if err := checkNoExclusionNames(rf, id, "remove"); err != nil {
-					return err
+					blockers = append(blockers, err)
+				}
+				if len(blockers) > 0 {
+					return errors.Join(blockers...)
 				}
 				realmID, removed = rf.Realm.ID, r
 				return nil

@@ -204,6 +204,9 @@ Examples:
 			if err != nil {
 				return err
 			}
+			if err := checkCoreAccepts(dir, realmPath, "notes", manifestMinCore); err != nil {
+				return err
+			}
 			change := realmNoteChange{Path: realmPath, NoteID: id}
 			err = loadModifyWriteRealm(realmPath, func(rf *entity.RealmFile) error {
 				if err := entityops.UpdateRealmNote(rf, id, body, noteType); err != nil {
