@@ -13,7 +13,7 @@ strspc check --static-only                     # resolve sources, verify hashes 
 ```
 
 These implement the checks of
-[SPEC §7](https://github.com/SteerSpec/strspc-manager/blob/v1.42.0/docs/SPEC.md#7-cicd-workflows). `lint`,
+[SPEC §7](https://github.com/SteerSpec/strspc-manager/blob/v1.43.0/docs/SPEC.md#7-cicd-workflows). `lint`,
 `realm validate` and `diff` take `--strict`, which treats warnings as errors, and `--json`; `check`
 takes `--format json`. `lint --cross-ref` adds
 cross-file reference checks in directory mode. `diff` exits 0 when all checks pass and 1 on a
@@ -70,6 +70,12 @@ rendered form. An unknown prefix is reported only when it is uppercase and start
 <!-- strspc-refs: ignore -->
 `CLAMS-001` is reported and `feat-123` isn't. `SHA-256` has that shape too, so pass it to `--ignore`.
 URLs are skipped.
+
+A clause qualified with a declared standard is not a rule citation, whether an entity declares the
+standard or a Realm Manifest of a realm in scope lists it under `realm.standards`:
+<!-- strspc-refs: ignore -->
+`mitre.cwe:CWE-787` passes once the standard `mitre.cwe` is declared. A realm in scope with the same
+ID still wins.
 
 A line holding `strspc-refs: ignore` exempts itself and the next line, for a historical mention. Any
 comment syntax can carry it:

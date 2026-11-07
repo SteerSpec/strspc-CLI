@@ -61,6 +61,8 @@ func newRefsCmd() *cobra.Command {
 			"An unknown rule, an Abandoned rule, and a live rule replaced by one in state I, R or T are\n" +
 			"errors. A Retired, Terminated or Draft rule, and a live rule that a Published rule will\n" +
 			"replace, are warnings, which --strict turns into errors.\n\n" +
+			"A clause qualified with a standard that an entity or a Realm Manifest declares, such as\n" +
+			"mitre.cwe:CWE-787, is not a rule citation.\n\n" +
 			"Text that copies the body of a rule (RF007) is an error: cite the rule's ID, and look it\n" +
 			"up with `strspc rule show`. Committed `strspc render` output copies every body, so\n" +
 			"exclude it with --exclude.\n\n" +
@@ -109,11 +111,12 @@ func runRefs(ctx context.Context, out, errOut io.Writer, cwd string, paths []str
 	if err != nil {
 		return withExitCode(exitConfig, err)
 	}
-	sources, err := refsSources(ctx, errOut, cwd)
+	sources, standards, err := refsSources(ctx, errOut, cwd)
 	if err != nil {
 		return withExitCode(exitConfig, err)
 	}
 	checker, err := rulerefs.New(sources,
+		rulerefs.WithStandards(standards...),
 		rulerefs.WithStrict(o.strict),
 		rulerefs.WithAllowedStates(states...),
 		rulerefs.WithIgnore(o.ignore...),
@@ -155,14 +158,18 @@ func runRefs(ctx context.Context, out, errOut io.Writer, cwd string, paths []str
 // against. The sources come first, so a project's own rules win. Resolution
 // problems go to errOut through writeRefsNotices, which keeps the output a single
 // JSON document; check's own report of them is discarded.
-func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.Source, error) {
+//
+// It also returns the ids of the standards the loaded Realm Manifests declare
+// (RLMMNFST-007), which rulerefs can't see in a Source. Those the entities
+// declare, rulerefs finds itself.
+func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.Source, []string, error) {
 	r := &checkRun{ctx: ctx, out: io.Discard, errOut: errOut, cwd: cwd, opts: checkOptions{format: formatHuman}}
 	if err := r.loadConfig(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err := r.resolveRules(); err != nil {
 		writeRefsNotices(errOut, r.resolutionDiags)
-		return nil, err
+		return nil, nil, err
 	}
 	writeRefsNotices(errOut, r.notices)
 
@@ -181,9 +188,22 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 		sources = append(sources, s)
 	}
 
+	var standards []string
+	seenStandard := make(map[string]bool)
+	addStandards := func(refs []entity.StandardRef) {
+		for _, ref := range refs {
+			if ref.ID != "" && !seenStandard[ref.ID] {
+				seenStandard[ref.ID] = true
+				standards = append(standards, ref.ID)
+			}
+		}
+	}
+
 	seen := make(map[string]bool)
 	add := func(realm *realmresolve.ResolvedRealm, format *entity.RuleIdentifierFormat) {
-		for _, s := range resolvedRealmSources(realm, format) {
+		realmSources, realmStandards := resolvedRealmSources(realm, format)
+		addStandards(realmStandards)
+		for _, s := range realmSources {
 			if !seen[s.RealmID] {
 				seen[s.RealmID] = true
 				sources = append(sources, s)
@@ -196,6 +216,7 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 	for _, e := range r.entries {
 		if t := r.realmTrees[e.Source]; t != nil {
 			trees = append(trees, t)
+			addStandards(t.manifest.Realm.Standards)
 		}
 	}
 	for _, t := range trees {
@@ -215,7 +236,7 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 			}
 		}
 	}
-	return sources, nil
+	return sources, standards, nil
 }
 
 // writeRefsNotices writes resolution diagnostics, which stay out of the citation
@@ -239,8 +260,9 @@ func withoutSubRealms(entities []*entity.File, subs []*realmresolve.ResolvedReal
 
 // resolvedRealmSources converts a resolved Realm, in a stable order. A dependency
 // is walked recursively, so its entities include those of its sub-realms, which
-// become sources of their own under their own realm IDs.
-func resolvedRealmSources(realm *realmresolve.ResolvedRealm, format *entity.RuleIdentifierFormat) []rulerefs.Source {
+// become sources of their own under their own realm IDs. It also returns the
+// standards that the manifests of the Realm and of those sub-realms declare.
+func resolvedRealmSources(realm *realmresolve.ResolvedRealm, format *entity.RuleIdentifierFormat) ([]rulerefs.Source, []entity.StandardRef) {
 	id := realm.Realm.Realm.ID
 	subs := refsSubRealmDirs(realm)
 	euids := make([]string, 0, len(realm.Entities))
@@ -261,16 +283,19 @@ func resolvedRealmSources(realm *realmresolve.ResolvedRealm, format *entity.Rule
 	}
 
 	sources := []rulerefs.Source{{RealmID: id, Format: format, Entities: byRealm[id]}}
+	standards := slices.Clone(realm.Realm.Realm.Standards)
 	for _, sub := range subs {
 		sources = append(sources, rulerefs.Source{RealmID: sub.realmID, Format: format, Entities: byRealm[sub.realmID]})
+		standards = append(standards, sub.standards...)
 	}
-	return sources
+	return sources, standards
 }
 
 // refsSubRealmDir is a declared sub-realm of a resolved Realm.
 type refsSubRealmDir struct {
-	dir     string
-	realmID string
+	dir       string
+	realmID   string
+	standards []entity.StandardRef
 }
 
 // refsSubRealmDirs reads the sub-realms realm declares. realm-resolve doesn't
@@ -290,7 +315,7 @@ func refsSubRealmDirs(realm *realmresolve.ResolvedRealm) []refsSubRealmDir {
 		if err != nil || rf.Realm.ID != realm.Realm.Realm.ID+"."+name || len(rf.SubRealms) > 0 {
 			continue
 		}
-		subs = append(subs, refsSubRealmDir{dir: dir, realmID: rf.Realm.ID})
+		subs = append(subs, refsSubRealmDir{dir: dir, realmID: rf.Realm.ID, standards: rf.Realm.Standards})
 	}
 	return subs
 }

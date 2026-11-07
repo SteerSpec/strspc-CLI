@@ -288,6 +288,70 @@ func TestRefsSubRealmOfDependency(t *testing.T) {
 	}
 }
 
+// A clause qualified with a standard that a Realm Manifest declares
+// (RLMMNFST-007) is not a rule citation, wherever the manifest sits among the
+// realms in scope. An undeclared qualifier is still an unknown realm.
+func TestRefsManifestStandards(t *testing.T) {
+	const standards = `"standards": [{"id": "nist.sp-800-53", "relation": "derived_from"}, {"id": "mitre.cwe", "relation": "implements"}]`
+	tests := []struct {
+		name     string
+		manifest string // the manifest that declares the standards, if any
+		exit     int
+	}{
+		{"undeclared", "", exitViolations},
+		{"the project", "rules", exitOK},
+		{"a sub-realm of the project", "rules/sub", exitOK},
+		{"a dependency", "lib", exitOK},
+		{"a sub-realm of a dependency", "lib/inner", exitOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := setupRefsProject(t)
+			writeRefsSubRealm(t, dir)
+			inner := filepath.Join(dir, "lib", "inner")
+			writeRealmManifest(t, inner, "dev.lib.inner")
+			writeInheritEntity(t, inner, "INNR", "", inheritRule{id: "INNR-001", state: "I"})
+			manifests := map[string]string{
+				"rules": `"realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},
+				  "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}],
+				  "sub_realms": ["sub"]`,
+				"rules/sub": `"realm": {"id": "dev.app.sub", "title": "t", "version": "1.0.0"}`,
+				"lib":       `"realm": {"id": "dev.lib", "title": "t", "version": "1.0.0"}, "sub_realms": ["inner"]`,
+				"lib/inner": `"realm": {"id": "dev.lib.inner", "title": "t", "version": "1.0.0"}`,
+			}
+			for where, body := range manifests {
+				if where == tt.manifest {
+					body = strings.Replace(body, `"version": "1.0.0"}`, `"version": "1.0.0", `+standards+`}`, 1)
+				}
+				writeRefsFile(t, dir, where+"/realm.json", "{"+body+"}")
+			}
+			writeRefsFile(t, dir, "a.md", "nist.sp-800-53:ABC-002 and mitre.cwe:CWE-787\n")
+			out, err := runRefsCmd(t)
+			assertExit(t, err, tt.exit)
+			if tt.exit == exitOK && strings.Contains(out, "RF") {
+				t.Errorf("a declared standard's clause was judged as a citation: %s", out)
+			}
+			if tt.exit != exitOK {
+				testutil.AssertContains(t, out, "RF001")
+			}
+		})
+	}
+}
+
+// A Realm in scope wins over a standard of the same id: its rules are still
+// judged.
+func TestRefsRealmWinsOverManifestStandard(t *testing.T) {
+	dir := setupRefsProject(t)
+	writeRefsFile(t, dir, "rules/realm.json",
+		`{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0",
+		    "standards": [{"id": "dev.lib", "relation": "derived_from"}]},
+		  "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}]}`)
+	writeRefsFile(t, dir, "a.md", "dev.lib:ACCT-002\n")
+	out, err := runRefsCmd(t)
+	assertExit(t, err, exitViolations)
+	testutil.AssertContains(t, out, "RF002")
+}
+
 // A dependency's manifest isn't this project's, so a sub-realm that breaks the
 // rules realm-resolve applies can't take a realm ID: its rules stay with the
 // dependency.
@@ -314,7 +378,7 @@ func TestResolvedRealmSourcesRejectsBadSubRealms(t *testing.T) {
 				Entities: map[string]*entity.File{"ACCT": {Entity: entity.Entity{ID: "ACCT"}}},
 			}
 			realm.Realm.Realm.ID = "dev.lib"
-			sources := resolvedRealmSources(realm, nil)
+			sources, _ := resolvedRealmSources(realm, nil)
 			if len(sources) != 1 || sources[0].RealmID != "dev.lib" || len(sources[0].Entities) != 1 {
 				t.Errorf("got %+v", sources)
 			}
