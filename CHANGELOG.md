@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.37.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.36.0...v1.37.0) (2026-11-07)
+
+
+### Features
+
+* **contributors:** require contributor identifiers in added_by (strspc-manager v1.42.0) ([#252](https://github.com/SteerSpec/strspc-CLI/issues/252)) ([c40e4f3](https://github.com/SteerSpec/strspc-CLI/commit/c40e4f367e7bda3b8bfb30aa19bbfbe04234ec86))
+* **history:** add strspc history and rule history ([#197](https://github.com/SteerSpec/strspc-CLI/issues/197)) ([#257](https://github.com/SteerSpec/strspc-CLI/issues/257)) ([5a8b6d3](https://github.com/SteerSpec/strspc-CLI/commit/5a8b6d3db9db681fa81c79c6bef5e34cd517d8a9))
+* **realm:** vendor schemas from the pinned core release ([#260](https://github.com/SteerSpec/strspc-CLI/issues/260)) ([c752610](https://github.com/SteerSpec/strspc-CLI/commit/c7526105715ce0b01b5b729c3c110ea597bb643d))
+* **refs:** pass the Realm Manifest's declared standards to rulerefs ([#256](https://github.com/SteerSpec/strspc-CLI/issues/256)) ([#263](https://github.com/SteerSpec/strspc-CLI/issues/263)) ([c6593bc](https://github.com/SteerSpec/strspc-CLI/commit/c6593bcbce17a0b501cd23ef8d174a1fa3f13c07))
+* **rule:** add strspc rule show to look up rules by ID or entity ([#196](https://github.com/SteerSpec/strspc-CLI/issues/196)) ([#254](https://github.com/SteerSpec/strspc-CLI/issues/254)) ([fe07f70](https://github.com/SteerSpec/strspc-CLI/commit/fe07f700fb289075b253abe8d91f92964c5dc070))
+
+
+### Bug Fixes
+
+* **entity:** never write through a symlinked entity file ([#251](https://github.com/SteerSpec/strspc-CLI/issues/251)) ([1f5fac9](https://github.com/SteerSpec/strspc-CLI/commit/1f5fac9bed16f2c2b67bf2b7853c5d3427ea08ff))
+* **realm:** reject a core dependency whose source tag disagrees with its version ([#262](https://github.com/SteerSpec/strspc-CLI/issues/262)) ([227425b](https://github.com/SteerSpec/strspc-CLI/commit/227425be7b76cbbc1843975af50cc7a87e3db8be))
+
+
+### Documentation
+
+* **readme:** align with brand rules, fix drift and move the manual to docs/ ([#255](https://github.com/SteerSpec/strspc-CLI/issues/255)) ([4badf82](https://github.com/SteerSpec/strspc-CLI/commit/4badf82753c23f469aff6df46be4cf13e0ad5aee))
+
 ## [1.36.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.35.0...v1.36.0) (2026-11-05)
 
 
