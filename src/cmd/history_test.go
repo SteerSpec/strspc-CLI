@@ -335,3 +335,111 @@ func TestHistoryUncommittedChanges(t *testing.T) {
 		t.Errorf("got %d events, want the committed ones only", len(doc.Events))
 	}
 }
+
+func TestHistoryRejectsControlCharacters(t *testing.T) {
+	_, rules := newHistoryRepo(t)
+	for _, tt := range []struct {
+		name string
+		euid string
+		o    historyOptions
+		want string
+	}{
+		{"EUID", "EN\x01T", historyOptions{dir: rules}, "EUID contains a control character"},
+		{"--rule", "ENT", historyOptions{dir: rules, rule: "ENT-\x01001"}, "--rule contains a control character"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			err := runHistory(context.Background(), &out, &errOut, tt.euid, &tt.o)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			testutil.AssertContains(t, err.Error(), tt.want)
+			if out.Len() != 0 {
+				t.Errorf("nothing may be printed, got %q", out.String())
+			}
+		})
+	}
+}
+
+func TestHistoryJSONWriteError(t *testing.T) {
+	_, rules := newHistoryRepo(t)
+	var errOut bytes.Buffer
+	err := runHistory(context.Background(), failingWriter{}, &errOut, "ENT", &historyOptions{dir: rules, jsonOutput: true})
+	assertExit(t, err, exitOutput)
+	testutil.AssertContains(t, err.Error(), "broken pipe")
+}
+
+// newWarningHistoryRepo commits ENT after an unrelated root commit, so the
+// commit that adds it has a parent without the file, then breaks the file in
+// a later commit and repairs it.
+func newWarningHistoryRepo(t *testing.T) (rules string) {
+	t.Helper()
+	repo := t.TempDir()
+	gitRun(t, repo, "init", "-q", "-b", "main")
+	writeFile(t, repo, "README.md", "x\n")
+	histCommit(t, repo, "2026-01-01T10:00:00Z", "chore: init")
+	writeFile(t, repo, "rules/ENT.json", histEntityJSON("0.1.0", []histRule{{id: "ENT-001", state: "D", body: "a"}}, nil))
+	histCommit(t, repo, "2026-01-02T10:00:00Z", "feat: add ENT (#1)")
+	writeFile(t, repo, "rules/ENT.json", "{\n")
+	histCommit(t, repo, "2026-01-03T10:00:00Z", "chore: break ENT")
+	writeFile(t, repo, "rules/ENT.json", histEntityJSON("0.2.0", []histRule{{id: "ENT-001", state: "P", body: "a"}}, nil))
+	histCommit(t, repo, "2026-01-04T10:00:00Z", "feat: publish ENT-001 (#2)")
+	return filepath.Join(repo, "rules")
+}
+
+func TestHistoryWarningsGoToStderr(t *testing.T) {
+	rules := newWarningHistoryRepo(t)
+	out, errOut, err := runHistorySplit(t, "history", "ENT", "--dir", rules)
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, errOut, "warning: ")
+	testutil.AssertContains(t, errOut, "does not parse after the commit")
+	testutil.AssertContains(t, out, "2026-01-02  0.1.0    ENT-001  0    added")
+
+	got := historyEvents(t, "history", "ENT", "--dir", rules)
+	assertLines(t, got, []string{"0.1.0 ENT-001 added >D #1", "0.2.0 ENT-001 promoted D>P #2"})
+}
+
+func TestParseHistoryLogErrors(t *testing.T) {
+	for _, tt := range []struct {
+		name, out, want string
+	}{
+		{"too few fields", "\x1eabc\x1fdef\n", "unexpected record"},
+		{"bad date", "\x1eabc\x1f\x1fyesterday\x1fsubject\n", "commit abc"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := parseHistoryLog(tt.out, "rules/ENT.json"); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("got %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestCatFileBatch(t *testing.T) {
+	repo, _ := newHistoryRepo(t)
+	ctx := context.Background()
+
+	blobs, err := catFileBatch(ctx, repo, nil)
+	if err != nil || len(blobs) != 0 {
+		t.Errorf("no specs: %v, %v", blobs, err)
+	}
+
+	// A missing object is left out; a tree is read but isn't a blob.
+	blobs, err = catFileBatch(ctx, repo, []string{"HEAD:rules/ENT.json", "HEAD:nope.json", "HEAD:rules"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blobs) != 1 || !strings.Contains(string(blobs["HEAD:rules/ENT.json"]), `"id": "ENT"`) {
+		t.Errorf("got %d blobs: %v", len(blobs), blobs)
+	}
+
+	if _, err := catFileBatch(ctx, filepath.Join(repo, "missing"), []string{"HEAD:x"}); err == nil ||
+		!strings.Contains(err.Error(), "git cat-file") {
+		t.Errorf("missing directory: got %v", err)
+	}
+
+	// Outside a repository git fails before answering: its message is kept.
+	if _, err := catFileBatch(ctx, t.TempDir(), []string{"HEAD:x"}); err == nil ||
+		!strings.Contains(err.Error(), "git cat-file: fatal") {
+		t.Errorf("outside a repository: got %v", err)
+	}
+}

@@ -440,3 +440,81 @@ func TestEntityRehashMissingFile(t *testing.T) {
 		t.Errorf("rehash created files: %v", entries)
 	}
 }
+
+// A sub-entity whose hash is already fresh keeps its metadata when only its
+// parent is rehashed.
+func TestEntityRehashLeavesFreshSubEntity(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFileWithSub(t, dir, "TST", "SUB", makeRule("SUB-001", "D", "Rule", "github:alice"))
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "TST", "--dir", dir); err != nil {
+		t.Fatal(err)
+	}
+	f := loadEntityFile(t, dir, "TST")
+	sub := f.SubEntities[0].RuleSet
+	f.RuleSet.Hash = nil
+	if err := replaceEntityFile(resolveEntityPath(dir, "TST"), f); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "TST", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, out, "Rehashed TST")
+	got := loadEntityFile(t, dir, "TST").SubEntities[0].RuleSet
+	if got.Timestamp != sub.Timestamp || *got.Hash != *sub.Hash {
+		t.Errorf("fresh sub-entity metadata changed: %+v → %+v", sub, got)
+	}
+	assertFileHashFresh(t, dir, "TST")
+}
+
+func TestEntityRehashUnreadableFiles(t *testing.T) {
+	t.Run("malformed entity file", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "TST.json"), []byte("{"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "TST", "--dir", dir)
+		if err == nil || !strings.Contains(err.Error(), "parsing") {
+			t.Fatalf("error = %v, want a parse error", err)
+		}
+	})
+
+	t.Run("entity path is a directory", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.Mkdir(filepath.Join(dir, "TST.json"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "TST", "--dir", dir)
+		if err == nil || !strings.Contains(err.Error(), "reading entity file") {
+			t.Fatalf("error = %v, want reading entity file", err)
+		}
+	})
+
+	t.Run("malformed file under --all", func(t *testing.T) {
+		dir := t.TempDir()
+		setupEntityFileHash(t, dir, "AAA", nil)
+		if err := os.WriteFile(filepath.Join(dir, "BAD.json"), []byte("{"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "--all", "--dir", dir)
+		if err == nil || !strings.Contains(err.Error(), "BAD.json") {
+			t.Fatalf("error = %v, want one naming BAD.json", err)
+		}
+	})
+}
+
+// The human output of --all names each file it skipped.
+func TestEntityRehashAllHumanSkipped(t *testing.T) {
+	dir := t.TempDir()
+	writeFreshEntity(t, dir, "AAA")
+	if err := os.WriteFile(filepath.Join(dir, "metadata.json"), []byte(`{"name":"x"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "rehash", "--all", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, out, "metadata.json (not an entity file)")
+	testutil.AssertContains(t, out, "0 entity file(s) updated, 1 unchanged, 1 skipped")
+}

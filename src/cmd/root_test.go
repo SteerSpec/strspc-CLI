@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"bytes"
+	"os"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/spf13/cobra"
 )
 
 func TestHelpContainsAvailableCommands(t *testing.T) {
@@ -57,4 +60,44 @@ func TestSetVersionInfo(t *testing.T) {
 	if versionInfo.GitCommit != "abc1234" {
 		t.Errorf("expected commit abc1234, got %s", versionInfo.GitCommit)
 	}
+}
+
+// TestExecuteSucceeds runs the process entry point on a command that
+// succeeds. The failure path exits the process, so it isn't run here.
+func TestExecuteSucceeds(t *testing.T) {
+	out, err := os.CreateTemp(t.TempDir(), "stdout")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prevArgs, prevStdout := os.Args, os.Stdout
+	t.Cleanup(func() { os.Args, os.Stdout = prevArgs, prevStdout })
+	os.Args = []string{"strspc", "version"}
+	os.Stdout = out
+
+	Execute()
+
+	os.Stdout = prevStdout
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.AssertContains(t, string(data), "SteerSpec CLI")
+}
+
+func TestHelpFallsBackToShortAndListsGlobalFlags(t *testing.T) {
+	parent := &cobra.Command{Use: "p"}
+	parent.PersistentFlags().Bool("verbose", false, "say more")
+	child := &cobra.Command{Use: "c", Short: "the short description", Run: func(*cobra.Command, []string) {}}
+	parent.AddCommand(child)
+	var buf bytes.Buffer
+	child.SetOut(&buf)
+
+	customHelp(child, nil)
+
+	testutil.AssertContains(t, buf.String(), "the short description")
+	testutil.AssertContains(t, buf.String(), "Global Flags:")
+	testutil.AssertContains(t, buf.String(), "--verbose")
 }

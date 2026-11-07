@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/remote"
 )
 
@@ -554,6 +555,105 @@ func TestParseDependencyVersion(t *testing.T) {
 	if _, err := parseDependency("dev.steerspec.core@v1.0.0"); err == nil || !strings.Contains(err.Error(), "leading") {
 		t.Errorf("expected leading-v hint, got %v", err)
 	}
+}
+
+func TestParseDependencyEmptySource(t *testing.T) {
+	_, err := parseDependency("dev.lib@1.0.0=  ")
+	if err == nil || !strings.Contains(err.Error(), "source must not be empty") {
+		t.Errorf("error = %v, want source must not be empty", err)
+	}
+}
+
+func TestResolveSchemaTagErrors(t *testing.T) {
+	origTag := latestReleaseTag
+	t.Cleanup(func() { latestReleaseTag = origTag })
+	latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) {
+		return "", fmt.Errorf("rate limited")
+	}
+
+	_, err := resolveSchemaTag(context.Background(), "", nil)
+	if err == nil || !strings.Contains(err.Error(), "pass --core-version to pin one") || !strings.Contains(err.Error(), "rate limited") {
+		t.Errorf("latest lookup failure: error = %v", err)
+	}
+	_, err = resolveSchemaTag(context.Background(), "", []entity.RealmDep{{RealmID: coreRealmID, Version: "one"}})
+	if err == nil {
+		t.Error("a core dependency without a SemVer version: want an error, got none")
+	}
+
+	// A nil context is taken for context.Background().
+	var noCtx context.Context
+	if tag, err := resolveSchemaTag(noCtx, "1.2.3", nil); err != nil || tag != "v1.2.3" {
+		t.Errorf("explicit version with a nil context: got %q, %v", tag, err)
+	}
+}
+
+func TestFetchSchemaErrors(t *testing.T) {
+	t.Run("transport error", func(t *testing.T) {
+		original := schemaBaseURL
+		t.Cleanup(func() { schemaBaseURL = original })
+		schemaBaseURL = "http://[::1"
+		err := fetchSchema(t.TempDir(), "v1.0.0", schemaFiles[0].local)
+		if err == nil || !strings.Contains(err.Error(), "fetching schema "+schemaFiles[0].local+"@v1.0.0") {
+			t.Errorf("error = %v, want a fetch error", err)
+		}
+	})
+
+	t.Run("truncated body", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Length", "100")
+			_, _ = w.Write([]byte(`{"$id"`))
+		}))
+		t.Cleanup(server.Close)
+		original := schemaBaseURL
+		t.Cleanup(func() { schemaBaseURL = original })
+		schemaBaseURL = server.URL
+		dir := t.TempDir()
+		err := fetchSchema(dir, "v1.0.0", schemaFiles[0].local)
+		if err == nil || !strings.Contains(err.Error(), "reading schema "+schemaFiles[0].local) {
+			t.Errorf("error = %v, want a read error", err)
+		}
+		if _, statErr := os.Stat(filepath.Join(dir, schemaFiles[0].local)); statErr == nil {
+			t.Error("a truncated schema was written")
+		}
+	})
+}
+
+// TestRealmInitFilesystemErrors covers a --dir that can't hold the realm.
+func TestRealmInitFilesystemErrors(t *testing.T) {
+	setupSchemaServer(t)
+
+	t.Run("under a regular file", func(t *testing.T) {
+		file := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", filepath.Join(file, "rules"), "--id", "dev.test.spec", "--core-version", "1.0.0")
+		if err == nil || !strings.Contains(err.Error(), "creating directory") {
+			t.Fatalf("error = %v, want creating directory", err)
+		}
+	})
+
+	t.Run("_schema is a file", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "_schema"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", dir, "--id", "dev.test.spec", "--core-version", "1.0.0")
+		if err == nil || !strings.Contains(err.Error(), "creating _schema/") {
+			t.Fatalf("error = %v, want creating _schema/", err)
+		}
+	})
+
+	t.Run("realm.json is a directory, with --force", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.Mkdir(filepath.Join(dir, "realm.json"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", dir, "--id", "dev.test.spec", "--core-version", "1.0.0", "--force")
+		if err == nil || !strings.Contains(err.Error(), "writing realm.json") {
+			t.Fatalf("error = %v, want writing realm.json", err)
+		}
+	})
 }
 
 func TestRealmInitRejectsNonSemVerDependency(t *testing.T) {

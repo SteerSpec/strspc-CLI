@@ -3,6 +3,9 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -411,5 +414,144 @@ func TestRealmAddSubrealmResolvesLatestOnce(t *testing.T) {
 	}
 	if lookups != 1 {
 		t.Errorf("latest-release lookups = %d, want 1", lookups)
+	}
+}
+
+// runAddSubrealm runs add-subrealm for com.test.parent.child.
+func runAddSubrealm(t *testing.T, parentDir, childDir string, extra ...string) error {
+	t.Helper()
+	args := append([]string{"realm", "add-subrealm", "--id", "com.test.parent.child", "--dir", childDir, "--parent-dir", parentDir}, extra...)
+	_, err := testutil.ExecuteCommand(NewRootCmd(), args...)
+	return err
+}
+
+func assertErrContains(t *testing.T, err error, want string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("want an error containing %q, got none", want)
+	}
+	testutil.AssertContains(t, err.Error(), want)
+}
+
+// TestRealmAddSubrealmFilesystemErrors covers the places where the sub-realm
+// can't be laid out, each reported with what failed.
+func TestRealmAddSubrealmFilesystemErrors(t *testing.T) {
+	t.Run("malformed parent realm.json", func(t *testing.T) {
+		parentDir := makeParentRealm(t, "com.test.parent", nil)
+		if err := os.WriteFile(filepath.Join(parentDir, "realm.json"), []byte("{"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		assertErrContains(t, runAddSubrealm(t, parentDir, filepath.Join(t.TempDir(), "child")), "loading parent realm.json")
+	})
+
+	t.Run("target under a regular file", func(t *testing.T) {
+		parentDir := makeParentRealm(t, "com.test.parent", nil)
+		file := filepath.Join(t.TempDir(), "file")
+		if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		assertErrContains(t, runAddSubrealm(t, parentDir, filepath.Join(file, "child")), "creating directory")
+	})
+
+	t.Run("target _schema is a file", func(t *testing.T) {
+		parentDir := makeParentRealm(t, "com.test.parent", nil)
+		childDir := filepath.Join(t.TempDir(), "child")
+		if err := os.MkdirAll(childDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(childDir, "_schema"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		assertErrContains(t, runAddSubrealm(t, parentDir, childDir), "creating _schema/")
+	})
+
+	t.Run("parent schema is a directory", func(t *testing.T) {
+		parentDir := makeParentRealm(t, "com.test.parent", nil)
+		schema := filepath.Join(parentDir, "_schema", schemaFiles[0].local)
+		if err := os.Remove(schema); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(schema, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		assertErrContains(t, runAddSubrealm(t, parentDir, filepath.Join(t.TempDir(), "child")), "reading schema "+schemaFiles[0].local)
+	})
+
+	t.Run("target schema is a directory", func(t *testing.T) {
+		parentDir := makeParentRealm(t, "com.test.parent", nil)
+		childDir := filepath.Join(t.TempDir(), "child")
+		if err := os.MkdirAll(filepath.Join(childDir, "_schema", schemaFiles[0].local), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		assertErrContains(t, runAddSubrealm(t, parentDir, childDir), "writing schema "+schemaFiles[0].local)
+	})
+
+	t.Run("target realm.json is a directory, with --force", func(t *testing.T) {
+		parentDir := makeParentRealm(t, "com.test.parent", nil)
+		childDir := filepath.Join(t.TempDir(), "child")
+		if err := os.MkdirAll(filepath.Join(childDir, "realm.json"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		assertErrContains(t, runAddSubrealm(t, parentDir, childDir, "--force"), "writing realm.json")
+	})
+}
+
+// TestRealmAddSubrealmFetchErrors covers a schema the parent lacks that can't
+// be fetched: the core release can't be resolved, or the file isn't served.
+func TestRealmAddSubrealmFetchErrors(t *testing.T) {
+	failLatest := func(t *testing.T) {
+		t.Helper()
+		latest := latestReleaseTag
+		latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) {
+			return "", errors.New("no release")
+		}
+		t.Cleanup(func() { latestReleaseTag = latest })
+	}
+	serveNothing := func(t *testing.T) {
+		t.Helper()
+		server := httptest.NewServer(http.NotFoundHandler())
+		t.Cleanup(server.Close)
+		base := schemaBaseURL
+		schemaBaseURL = server.URL
+		t.Cleanup(func() { schemaBaseURL = base })
+		latest := latestReleaseTag
+		latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) { return testLatestCoreTag, nil }
+		t.Cleanup(func() { latestReleaseTag = latest })
+	}
+	dropOne := func(t *testing.T, parentDir string) {
+		t.Helper()
+		if err := os.Remove(filepath.Join(parentDir, "_schema", schemaFiles[1].local)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dropAll := func(t *testing.T, parentDir string) {
+		t.Helper()
+		if err := os.RemoveAll(filepath.Join(parentDir, "_schema")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	tests := []struct {
+		name   string
+		remove func(*testing.T, string)
+		fail   func(*testing.T)
+		want   string
+	}{
+		{"one schema missing, no release", dropOne, failLatest, "no release"},
+		{"one schema missing, not served", dropOne, serveNothing, schemaFiles[1].local},
+		{"no parent _schema, no release", dropAll, failLatest, "no release"},
+		{"no parent _schema, not served", dropAll, serveNothing, schemaFiles[0].local},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.fail(t)
+			parentDir := makeParentRealm(t, "com.test.parent", nil)
+			tt.remove(t, parentDir)
+			childDir := filepath.Join(t.TempDir(), "child")
+			assertErrContains(t, runAddSubrealm(t, parentDir, childDir), tt.want)
+			if _, err := os.Stat(filepath.Join(childDir, "realm.json")); err == nil {
+				t.Error("realm.json was written although the schemas failed")
+			}
+		})
 	}
 }
