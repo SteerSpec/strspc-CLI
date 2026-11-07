@@ -105,7 +105,19 @@ func TestSkillInstallOnlyFlagsWithoutInstall(t *testing.T) {
 }
 
 func TestSkillInstallWriteErrors(t *testing.T) {
-	t.Run("directory cannot be created", func(t *testing.T) {
+	t.Run("target directory cannot be created", func(t *testing.T) {
+		dir := t.TempDir()
+		blocker := filepath.Join(dir, "file")
+		if err := os.WriteFile(blocker, []byte("a file"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "skill", "--install", filepath.Join(blocker, "sub"))
+		if err == nil {
+			t.Fatal("expected an error")
+		}
+	})
+
+	t.Run("destination path blocked by a file", func(t *testing.T) {
 		dir := t.TempDir()
 		if err := os.WriteFile(filepath.Join(dir, ".claude"), []byte("a file"), 0o644); err != nil {
 			t.Fatal(err)
@@ -114,7 +126,6 @@ func TestSkillInstallWriteErrors(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected an error")
 		}
-		testutil.AssertContains(t, err.Error(), "creating")
 	})
 
 	t.Run("file cannot be written", func(t *testing.T) {
@@ -130,6 +141,47 @@ func TestSkillInstallWriteErrors(t *testing.T) {
 		}
 		testutil.AssertContains(t, err.Error(), "writing")
 	})
+}
+
+// A cloned repository may carry symlinks; --install must never write through
+// one, with or without --force, including a broken one.
+func TestSkillInstallRefusesSymlinks(t *testing.T) {
+	setup := func(t *testing.T, linkAt string) (dir, outside string) {
+		t.Helper()
+		dir, outside = t.TempDir(), t.TempDir()
+		link := filepath.Join(dir, linkAt)
+		if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(outside, "target"), link); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		return dir, outside
+	}
+
+	for name, linkAt := range map[string]string{
+		"file":      skillInstallPath,
+		"directory": filepath.Join(".claude", "skills"),
+	} {
+		for _, force := range []bool{false, true} {
+			t.Run(name, func(t *testing.T) {
+				dir, outside := setup(t, linkAt)
+				args := []string{"skill", "--install", dir}
+				if force {
+					args = append(args, "--force")
+				}
+				_, err := testutil.ExecuteCommand(NewRootCmd(), args...)
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				testutil.AssertContains(t, err.Error(), "symlink")
+				entries, _ := os.ReadDir(outside)
+				if len(entries) != 0 {
+					t.Errorf("wrote outside the target directory: %v", entries)
+				}
+			})
+		}
+	}
 }
 
 func TestSkillHelp(t *testing.T) {

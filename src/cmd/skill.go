@@ -58,15 +58,27 @@ Examples:
 			}
 			path := filepath.Join(targetDir, skillInstallPath)
 
-			if !force {
-				if _, err := os.Stat(path); err == nil {
-					return fmt.Errorf("%s already exists — use --force to overwrite", path)
-				}
+			// A cloned repository may carry symlinks that would redirect the
+			// write outside targetDir, so refuse them before touching anything.
+			if err := checkCIDest(targetDir, skillInstallPath, force); err != nil {
+				return err
 			}
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			if err := os.MkdirAll(targetDir, 0o755); err != nil {
+				return fmt.Errorf("creating %s: %w", targetDir, err)
+			}
+			root, err := os.OpenRoot(targetDir)
+			if err != nil {
+				return fmt.Errorf("opening %s: %w", targetDir, err)
+			}
+			defer func() { _ = root.Close() }()
+
+			// All writes go through root, which refuses a path that escapes
+			// targetDir, and without --force the file is created exclusively,
+			// so a concurrent creator is never truncated.
+			if err := root.MkdirAll(filepath.Dir(skillInstallPath), 0o755); err != nil {
 				return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
 			}
-			if err := os.WriteFile(path, []byte(strspcSkill), 0o644); err != nil {
+			if err := writeCIFile(root, skillInstallPath, strspcSkill, force); err != nil {
 				return fmt.Errorf("writing %s: %w", path, err)
 			}
 

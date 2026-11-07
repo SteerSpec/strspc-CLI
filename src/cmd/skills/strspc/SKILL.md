@@ -57,7 +57,7 @@ strspc lint rules/ --strict                     # entity JSON against schema and
 strspc realm validate rules/ --recursive --strict
 strspc check --static-only                      # resolve rule sources, structural checks, no API key
 strspc check                                    # evaluate the diff against rules with the AI provider
-strspc diff                                     # validate rule lifecycle transitions between git refs
+strspc diff rules/                              # validate rule lifecycle transitions against a git ref
 ```
 
 Diagnostics carry codes such as `RL032`. `strspc explain <code>` says what a code means and how to
@@ -79,8 +79,8 @@ output, and read the exit code rather than the text.
 ## More commands
 
 - `strspc sync` fetches and caches rule sources from the configuration.
-- `strspc history` and `strspc rule history` show how rules changed, from git.
+- `strspc history <EUID>` and `strspc rule history <RULE-ID>` show how an entity's or a rule's text changed, from git.
 - `strspc refs` validates rule citations in text files such as agent prompts.
-- `strspc render` renders entity JSON to Markdown.
+- `strspc render rules/` renders entity JSON to Markdown.
 - `strspc ci init` writes GitHub workflows for CI.
 - `strspc standards` reports on the external standards a project's rules map to.
