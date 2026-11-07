@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/spf13/cobra"
@@ -82,6 +83,13 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 				deps = []entity.RealmDep{}
 			}
 
+			// Schemas missing from the parent are fetched from the core release the
+			// parent pins (else the latest), even when its deps are not inherited.
+			// Resolved at most once, so every fetched file comes from one release.
+			schemaTag := sync.OnceValues(func() (string, error) {
+				return resolveSchemaTag(cmd.Context(), "", parentRealm.Dependencies)
+			})
+
 			// Create target directory.
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return fmt.Errorf("creating directory %s: %w", dir, err)
@@ -102,11 +110,15 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 				return fmt.Errorf("parent _schema/ exists but is not a directory: %s", parentSchemaDir)
 			}
 			if statErr == nil {
-				if err := copySchemas(parentSchemaDir, schemaDir); err != nil {
+				if err := copySchemas(parentSchemaDir, schemaDir, schemaTag); err != nil {
 					return err
 				}
 			} else {
-				if err := fetchSchemas(schemaDir); err != nil {
+				tag, err := schemaTag()
+				if err != nil {
+					return err
+				}
+				if err := fetchSchemas(schemaDir, tag); err != nil {
 					return err
 				}
 			}
@@ -160,8 +172,9 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 }
 
 // copySchemas copies schema files from srcDir to dstDir, falling back to a
-// network fetch for any file not present in srcDir.
-func copySchemas(srcDir, dstDir string) error {
+// network fetch for any file not present in srcDir. schemaTag resolves the
+// core release to fetch from and is only called when a fetch is needed.
+func copySchemas(srcDir, dstDir string, schemaTag func() (string, error)) error {
 	for _, sf := range schemaFiles {
 		src := filepath.Join(srcDir, sf.local)
 		dst := filepath.Join(dstDir, sf.local)
@@ -170,7 +183,11 @@ func copySchemas(srcDir, dstDir string) error {
 		if err != nil {
 			// Fall back to fetch if a file is missing from parent.
 			if os.IsNotExist(err) {
-				if fetchErr := fetchSchema(dstDir, sf.remote, sf.local); fetchErr != nil {
+				tag, tagErr := schemaTag()
+				if tagErr != nil {
+					return tagErr
+				}
+				if fetchErr := fetchSchema(dstDir, tag, sf.local); fetchErr != nil {
 					return fetchErr
 				}
 				continue
