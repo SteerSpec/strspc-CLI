@@ -122,7 +122,7 @@ func TestRealmInitRejectsDuplicateCoreDependency(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "rules")
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo",
-		"--core-version", "1.19.0", "--dependency", "dev.steerspec.core@1.19.0", "--dependency", "dev.steerspec.core@1.20.0")
+		"--core-version", "1.19.0", "--dependency", "dev.steerspec.core@1.19.0", "--dependency", "dev.steerspec.core@1.18.0")
 	if err == nil {
 		t.Fatal("expected an error for two core dependencies")
 	}
@@ -141,7 +141,7 @@ func TestRealmInitCoreDependencySourceTagMustMatchVersion(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "rules")
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo",
-		"--dependency", "dev.steerspec.core@1.20.0="+fmt.Sprintf(src, "v1.19.0"))
+		"--dependency", "dev.steerspec.core@1.18.0="+fmt.Sprintf(src, "v1.19.0"))
 	if err == nil {
 		t.Fatal("expected an error for a source tag that differs from the version")
 	}
@@ -155,17 +155,17 @@ func TestRealmInitCoreDependencySourceTagMustMatchVersion(t *testing.T) {
 
 	// A release tag with build metadata is still a release tag, so it is compared.
 	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", filepath.Join(t.TempDir(), "rules"), "--id", "com.test.demo",
-		"--dependency", "dev.steerspec.core@1.20.0="+fmt.Sprintf(src, "v1.20.0+build.5")); err == nil {
+		"--dependency", "dev.steerspec.core@1.18.0="+fmt.Sprintf(src, "v1.18.0+build.5")); err == nil {
 		t.Error("expected an error for a source tag with build metadata that differs from the version")
 	}
 
 	// Refs that name no release can't be compared and are accepted, and so is
 	// a mismatch on a dependency other than core.
 	for name, args := range map[string][]string{
-		"same tag":    {"--dependency", "dev.steerspec.core@1.20.0=" + fmt.Sprintf(src, "v1.20.0")},
-		"latest":      {"--dependency", "dev.steerspec.core@1.20.0=" + fmt.Sprintf(src, "latest")},
-		"commit SHA":  {"--dependency", "dev.steerspec.core@1.20.0=" + fmt.Sprintf(src, "0123456789abcdef0123456789abcdef01234567")},
-		"other realm": {"--core-version", "1.20.0", "--dependency", "com.acme.shared@1.0.0=github://acme/shared@v2.0.0/rules"},
+		"same tag":    {"--dependency", "dev.steerspec.core@1.18.0=" + fmt.Sprintf(src, "v1.18.0")},
+		"latest":      {"--dependency", "dev.steerspec.core@1.18.0=" + fmt.Sprintf(src, "latest")},
+		"commit SHA":  {"--dependency", "dev.steerspec.core@1.18.0=" + fmt.Sprintf(src, "0123456789abcdef0123456789abcdef01234567")},
+		"other realm": {"--core-version", "1.18.0", "--dependency", "com.acme.shared@1.0.0=github://acme/shared@v2.0.0/rules"},
 	} {
 		dir := filepath.Join(t.TempDir(), "rules")
 		full := append([]string{"realm", "init", "--dir", dir, "--id", "com.test.demo"}, args...)
@@ -180,7 +180,7 @@ func TestRealmInitCoreVersionMustMatchCoreDependency(t *testing.T) {
 	target := filepath.Join(t.TempDir(), "rules")
 
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo",
-		"--core-version", "1.20.0", "--dependency", "dev.steerspec.core@1.19.0")
+		"--core-version", "1.18.0", "--dependency", "dev.steerspec.core@1.19.0")
 	if err == nil {
 		t.Fatal("expected an error for conflicting --core-version and core dependency")
 	}
