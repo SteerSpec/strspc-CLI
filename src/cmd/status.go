@@ -340,7 +340,13 @@ func writeStatus(w io.Writer, report *statusReport, now time.Time) {
 	title("SteerSpec CLI %s", report.Version)
 	if !report.Initialized {
 		writeln(w)
-		detail("Not initialized: no .strspc/config.yaml here. Run strspc init.")
+		detail("Not initialized: no .strspc/config.yaml here.")
+		writeln(w)
+		title("To get started:")
+		detail("  strspc init       write .strspc/config.yaml, consuming the SteerSpec core rules")
+		detail("  strspc doctor     diagnose your installation and setup")
+		writeln(w)
+		detail("Run from the project root, or pass a path: strspc status ./my-project")
 		return
 	}
 

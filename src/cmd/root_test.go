@@ -128,3 +128,22 @@ func TestSubcommandHelpHasNoLicenseFooter(t *testing.T) {
 	}
 	testutil.AssertNotContains(t, output, "Licensed under")
 }
+
+func TestRootHelpHasGettingStarted(t *testing.T) {
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "--help")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, output, "Getting started:")
+	for _, s := range gettingStarted {
+		testutil.AssertContains(t, output, s.command)
+	}
+}
+
+func TestSubcommandHelpHasNoGettingStarted(t *testing.T) {
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "version", "--help")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertNotContains(t, output, "Getting started:")
+}

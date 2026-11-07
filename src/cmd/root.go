@@ -28,6 +28,14 @@ const (
 	websiteURL  = "https://steerspec.dev"
 )
 
+// gettingStarted is the short path the root help shows to someone new to strspc.
+var gettingStarted = []struct{ command, purpose string }{
+	{"strspc init", "Set up SteerSpec in this project"},
+	{"strspc doctor", "Check your installation and setup"},
+	{"strspc check --static-only", "Run structural checks (no API key needed)"},
+	{"strspc status", "See your rule sources and how they stand"},
+}
+
 var versionInfo VersionInfo
 
 func SetVersionInfo(v VersionInfo) {
@@ -111,6 +119,15 @@ func customHelp(cmd *cobra.Command, _ []string) {
 			name := cmdStyle.Render(fmt.Sprintf("  %-12s", c.Name()))
 			d := descStyle.Render(c.Short)
 			writeln(w, name+d)
+		}
+		writeln(w)
+	}
+
+	// Only the root help guides newcomers; subcommand help stays focused.
+	if !cmd.HasParent() {
+		writeln(w, brandStyle.Render("Getting started:"))
+		for _, s := range gettingStarted {
+			writeln(w, cmdStyle.Render(fmt.Sprintf("  %-28s", s.command))+descStyle.Render(s.purpose))
 		}
 		writeln(w)
 	}
