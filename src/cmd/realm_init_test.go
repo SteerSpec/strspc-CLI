@@ -100,14 +100,49 @@ func TestRealmInitSchemaTagDefaultsToLatestRelease(t *testing.T) {
 }
 
 func TestRealmInitRejectsBadCoreVersion(t *testing.T) {
-	setupSchemaServer(t)
+	// 1.2.3-01: leading zero in a numeric prerelease, which semverPattern lets through.
+	for _, v := range []string{"../evil", "1.2", "1.2.3-01", "v1.2.3/../x"} {
+		tags := setupSchemaServer(t)
+		target := filepath.Join(t.TempDir(), "rules")
+
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo", "--core-version", v)
+		if err == nil {
+			t.Fatalf("--core-version %q: expected an error for a non-SemVer version", v)
+		}
+		testutil.AssertContains(t, err.Error(), "invalid core version")
+		if len(*tags) != 0 {
+			t.Errorf("--core-version %q: fetched schemas despite the error", v)
+		}
+	}
+}
+
+func TestRealmInitCoreVersionMustMatchCoreDependency(t *testing.T) {
+	tags := setupSchemaServer(t)
 	target := filepath.Join(t.TempDir(), "rules")
 
-	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo", "--core-version", "../evil")
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo",
+		"--core-version", "1.20.0", "--dependency", "dev.steerspec.core@1.19.0")
 	if err == nil {
-		t.Fatal("expected error for a non-SemVer core version")
+		t.Fatal("expected an error for conflicting --core-version and core dependency")
 	}
-	testutil.AssertContains(t, err.Error(), "invalid core version")
+	testutil.AssertContains(t, err.Error(), "conflicts")
+	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+		t.Errorf("target directory was created despite the conflict (stat err = %v)", statErr)
+	}
+	if len(*tags) != 0 {
+		t.Errorf("fetched schemas despite the conflict: %v", *tags)
+	}
+
+	// The same release, spelled with and without the leading v, is not a conflict.
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo",
+		"--core-version", "v1.19.0", "--dependency", "dev.steerspec.core@1.19.0"); err != nil {
+		t.Fatalf("matching versions: %v", err)
+	}
+	for _, tag := range *tags {
+		if tag != "v1.19.0" {
+			t.Errorf("fetched from %q, want v1.19.0", tag)
+		}
+	}
 }
 
 func TestRealmInitCreatesRealm(t *testing.T) {
@@ -252,11 +287,13 @@ func TestRealmInitSchemaFetchError(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "rules")
 
-	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target)
+	// A pinned version keeps the test off the network (no latest-release lookup).
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--core-version", "1.0.0")
 	if err == nil {
 		t.Fatal("expected error for schema fetch failure, got nil")
 	}
 	testutil.AssertContains(t, err.Error(), "fetching schema")
+	testutil.AssertContains(t, err.Error(), "@v1.0.0")
 	// CMD-002: errors must not trigger cobra's usage dump or duplicate error print.
 	testutil.AssertNotContains(t, out, "Usage:")
 	testutil.AssertNotContains(t, out, "Error:")

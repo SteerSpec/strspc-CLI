@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/remote"
 	"github.com/spf13/cobra"
@@ -163,6 +164,13 @@ func newRealmInitCmd() *cobra.Command {
 				realmDeps = []entity.RealmDep{}
 			}
 
+			// Resolve the schema release before touching the filesystem, so a
+			// conflicting or invalid --core-version leaves nothing behind.
+			tag, err := resolveSchemaTag(cmd.Context(), core, realmDeps)
+			if err != nil {
+				return err
+			}
+
 			// Create target directory.
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				return fmt.Errorf("creating directory %s: %w", dir, err)
@@ -174,10 +182,6 @@ func newRealmInitCmd() *cobra.Command {
 				return fmt.Errorf("creating _schema/: %w", err)
 			}
 
-			tag, err := resolveSchemaTag(cmd.Context(), core, realmDeps)
-			if err != nil {
-				return err
-			}
 			if err := fetchSchemas(schemaDir, tag); err != nil {
 				return err
 			}
@@ -238,7 +242,10 @@ var schemaHTTPClient = &http.Client{Timeout: 30 * time.Second}
 // coreTag turns a core version ("1.17.1" or "v1.17.1") into its release tag.
 func coreTag(version string) (string, error) {
 	v := strings.TrimPrefix(strings.TrimSpace(version), "v")
-	if !semverPattern.MatchString(v) {
+	// The pattern mirrors the realm schema's dependency version; the strict parse
+	// also refuses forms it lets through (leading zeros in a prerelease), since
+	// the value is interpolated into a URL.
+	if _, err := semver.StrictNewVersion(v); err != nil || !semverPattern.MatchString(v) {
 		return "", fmt.Errorf("invalid core version %q: must be SemVer, e.g. 1.17.1", version)
 	}
 	return "v" + v, nil
@@ -246,18 +253,36 @@ func coreTag(version string) (string, error) {
 
 // resolveSchemaTag picks the strspc-rules release tag the schemas are fetched
 // from: the explicit version if given, else the realm's dev.steerspec.core
-// dependency, else the latest release.
+// dependency, else the latest release. An explicit version that disagrees with
+// the core dependency is an error: the realm would pin one release and vendor
+// the schemas of another, and RM015 would flag the drift at once.
 func resolveSchemaTag(ctx context.Context, explicit string, deps []entity.RealmDep) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if explicit != "" {
-		return coreTag(explicit)
-	}
+	depTag := ""
 	for _, d := range deps {
 		if d.RealmID == coreRealmID {
-			return coreTag(d.Version)
+			t, err := coreTag(d.Version)
+			if err != nil {
+				return "", err
+			}
+			depTag = t
+			break
 		}
+	}
+	if explicit != "" {
+		tag, err := coreTag(explicit)
+		if err != nil {
+			return "", err
+		}
+		if depTag != "" && depTag != tag {
+			return "", fmt.Errorf("--core-version %s conflicts with the %s dependency at %s: drop one or make them match", tag, coreRealmID, depTag)
+		}
+		return tag, nil
+	}
+	if depTag != "" {
+		return depTag, nil
 	}
 	ref := remote.Ref{Owner: "SteerSpec", Repo: "strspc-rules"}
 	tag, err := latestReleaseTag(ctx, ref, remote.TokenForOwner(ref.Owner))

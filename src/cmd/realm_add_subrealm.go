@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/spf13/cobra"
@@ -84,9 +85,10 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 
 			// Schemas missing from the parent are fetched from the core release the
 			// parent pins (else the latest), even when its deps are not inherited.
-			schemaTag := func() (string, error) {
+			// Resolved at most once, so every fetched file comes from one release.
+			schemaTag := sync.OnceValues(func() (string, error) {
 				return resolveSchemaTag(cmd.Context(), "", parentRealm.Dependencies)
-			}
+			})
 
 			// Create target directory.
 			if err := os.MkdirAll(dir, 0o755); err != nil {

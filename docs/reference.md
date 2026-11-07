@@ -47,7 +47,9 @@ The CLI adds two warnings of its own, `CHK002` and `CHK003`, described under
 ## Published files
 
 The SteerSpec rules repository publishes these at [steerspec.dev](https://steerspec.dev). The CLI
-fetches schemas from here, and rules through `github://` sources.
+fetches rules through `github://` sources. `strspc realm init` and `realm add-subrealm` don't use the
+schema URLs below: they copy `_schema/` unchanged from a `dev.steerspec.core` release tag in the
+`strspc-rules` repository (see [Realms and dependencies](author-rules.md#realms-and-dependencies)).
 
 | Resource | URL |
 | -------- | --- |

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/remote"
 )
 
 // makeParentRealm creates a minimal parent realm directory with realm.json and _schema/.
@@ -345,5 +347,69 @@ func TestRealmAddSubrealmFallsBackToFetchWhenNoParentSchema(t *testing.T) {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			t.Errorf("expected schema file %s to exist after fetch fallback", sf.local)
 		}
+	}
+}
+
+// TestRealmAddSubrealmFetchesMissingSchemasFromParentCorePin: a parent holding
+// only one schema supplies it, the other two come from the parent's core pin
+// (not the latest release), all from one release, with or without inherited deps.
+func TestRealmAddSubrealmFetchesMissingSchemasFromParentCorePin(t *testing.T) {
+	for _, extra := range [][]string{nil, {"--no-inherit-deps"}} {
+		tags := setupSchemaServer(t)
+		parentDir := makeParentRealm(t, "com.test.parent", []entity.RealmDep{{RealmID: coreRealmID, Version: "1.2.3"}})
+		kept := schemaFiles[0].local
+		for _, sf := range schemaFiles[1:] {
+			if err := os.Remove(filepath.Join(parentDir, "_schema", sf.local)); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		childDir := filepath.Join(t.TempDir(), "child")
+		args := append([]string{"realm", "add-subrealm", "--id", "com.test.parent.child", "--dir", childDir, "--parent-dir", parentDir}, extra...)
+		if _, err := testutil.ExecuteCommand(NewRootCmd(), args...); err != nil {
+			t.Fatalf("%v: %v", extra, err)
+		}
+
+		if want := len(schemaFiles) - 1; len(*tags) != want {
+			t.Errorf("%v: got %d schema requests (%v), want %d", extra, len(*tags), *tags, want)
+		}
+		for _, tag := range *tags {
+			if tag != "v1.2.3" {
+				t.Errorf("%v: fetched from %q, want the parent's pin v1.2.3", extra, tag)
+			}
+		}
+		got, err := os.ReadFile(filepath.Join(childDir, "_schema", kept))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := `{"$id": "test-` + kept + `"}`; string(got) != want {
+			t.Errorf("%v: %s = %q, want the parent's copy %q", extra, kept, got, want)
+		}
+	}
+}
+
+// TestRealmAddSubrealmResolvesLatestOnce: with no core pin, several missing
+// files still cost a single latest-release lookup.
+func TestRealmAddSubrealmResolvesLatestOnce(t *testing.T) {
+	setupSchemaServer(t)
+	lookups := 0
+	latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) {
+		lookups++
+		return testLatestCoreTag, nil
+	}
+	parentDir := makeParentRealm(t, "com.test.parent", nil)
+	if err := os.RemoveAll(filepath.Join(parentDir, "_schema")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(parentDir, "_schema"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	childDir := filepath.Join(t.TempDir(), "child")
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "add-subrealm", "--id", "com.test.parent.child", "--dir", childDir, "--parent-dir", parentDir); err != nil {
+		t.Fatal(err)
+	}
+	if lookups != 1 {
+		t.Errorf("latest-release lookups = %d, want 1", lookups)
 	}
 }
