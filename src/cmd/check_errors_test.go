@@ -120,6 +120,8 @@ func TestCheckJSONWriteFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "writing JSON output") || !strings.Contains(err.Error(), "broken pipe") {
 		t.Errorf("error %v, want the JSON write failure", err)
 	}
+	// 4, not 1: 1 means a rule was violated.
+	assertExit(t, err, exitOutput)
 }
 
 func TestCheckUnloadableRealmManifest(t *testing.T) {

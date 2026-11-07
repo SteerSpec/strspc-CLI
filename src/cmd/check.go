@@ -89,7 +89,8 @@ func newCheckCmd() *cobra.Command {
 			"--pr and --base diff from the merge base with HEAD. Files under .strspc/ and rules/ are\n" +
 			"never evaluated.\n\n" +
 			"Exit codes: 0 compliant, 1 violations in fail_on states, 2 configuration or rule\n" +
-			"resolution error, 3 AI provider unavailable (no API key, rejected credentials).\n" +
+			"resolution error, 3 AI provider unavailable (no API key, rejected credentials),\n" +
+			"4 the JSON report could not be written.\n" +
 			"--static-only (or evaluator.provider: null) skips AI evaluation and exits 0 after\n" +
 			"resolving the rule sources.",
 		Args:          cobra.MaximumNArgs(1),
@@ -666,7 +667,8 @@ func (r *checkRun) evaluate() error {
 	switch r.opts.format {
 	case formatJSON:
 		if err := r.writeJSONOutput(&out); err != nil {
-			return err
+			// Not 1: that means a rule was violated.
+			return withExitCode(exitOutput, err)
 		}
 	case formatGitHub:
 		writeGitHubAnnotations(r.out, diags)
