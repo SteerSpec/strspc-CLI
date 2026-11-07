@@ -24,6 +24,8 @@ func newVersionCmd() *cobra.Command {
 			writeln(w, labelStyle.Render("Built")+valueStyle.Render(versionInfo.BuildTime))
 			writeln(w, labelStyle.Render("Commit")+valueStyle.Render(commit))
 			writeln(w, labelStyle.Render("Branch")+valueStyle.Render(versionInfo.GitBranch))
+			writeln(w, labelStyle.Render("License")+valueStyle.Render(licenseName))
+			writeln(w, labelStyle.Render("Web")+valueStyle.Render(websiteURL))
 		},
 	}
 }

@@ -20,6 +20,14 @@ type VersionInfo struct {
 	GitBranch string
 }
 
+// Licence and project pointers shown by --version, `version` and the root
+// help. Every URL printed here must resolve (rule CFG-002).
+const (
+	licenseName = "Apache 2.0"
+	licenseLine = "Apache License 2.0 · Copyright 2026 Consulare and contributors"
+	websiteURL  = "https://steerspec.dev"
+)
+
 var versionInfo VersionInfo
 
 func SetVersionInfo(v VersionInfo) {
@@ -36,7 +44,8 @@ func NewRootCmd() *cobra.Command {
 		// Enables the --version flag; `strspc version` prints the full details.
 		Version: versionInfo.Version,
 	}
-	cmd.SetVersionTemplate("strspc {{.Version}}\n")
+	// The first line stays `strspc <version>` so scripts that parse it keep working.
+	cmd.SetVersionTemplate("strspc {{.Version}}\n" + licenseLine + "\n" + websiteURL + "\n")
 	cmd.AddCommand(newVersionCmd())
 	cmd.AddCommand(newRenderCmd())
 	cmd.AddCommand(newInitCmd())
@@ -122,6 +131,12 @@ func customHelp(cmd *cobra.Command, _ []string) {
 	}
 
 	writeln(w, descStyle.Render(fmt.Sprintf("  Use \"%s [command] --help\" for more information about a command.", cmd.CommandPath())))
+
+	// Only the root help carries the licence pointer; subcommand help stays focused.
+	if !cmd.HasParent() {
+		writeln(w)
+		writeln(w, descStyle.Render(fmt.Sprintf("  Licensed under %s · %s", licenseName, websiteURL)))
+	}
 }
 
 func writeln(w io.Writer, a ...any) {
