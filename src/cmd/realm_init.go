@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -157,6 +158,11 @@ func newRealmInitCmd() *cobra.Command {
 				dep, err := parseDependency(d)
 				if err != nil {
 					return err
+				}
+				// One core pin: the schemas are vendored from it, so a second would
+				// leave the manifest contradicting them (realm dep add refuses too).
+				if dep.RealmID == coreRealmID && slices.ContainsFunc(realmDeps, func(d entity.RealmDep) bool { return d.RealmID == coreRealmID }) {
+					return fmt.Errorf("duplicate dependency on %s: pass it once", coreRealmID)
 				}
 				realmDeps = append(realmDeps, dep)
 			}

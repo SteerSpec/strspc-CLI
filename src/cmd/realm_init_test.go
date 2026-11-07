@@ -116,6 +116,24 @@ func TestRealmInitRejectsBadCoreVersion(t *testing.T) {
 	}
 }
 
+func TestRealmInitRejectsDuplicateCoreDependency(t *testing.T) {
+	tags := setupSchemaServer(t)
+	target := filepath.Join(t.TempDir(), "rules")
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", target, "--id", "com.test.demo",
+		"--core-version", "1.19.0", "--dependency", "dev.steerspec.core@1.19.0", "--dependency", "dev.steerspec.core@1.20.0")
+	if err == nil {
+		t.Fatal("expected an error for two core dependencies")
+	}
+	testutil.AssertContains(t, err.Error(), "duplicate dependency")
+	if _, statErr := os.Stat(target); !os.IsNotExist(statErr) {
+		t.Errorf("target directory was created despite the duplicate (stat err = %v)", statErr)
+	}
+	if len(*tags) != 0 {
+		t.Errorf("fetched schemas despite the duplicate: %v", *tags)
+	}
+}
+
 func TestRealmInitCoreVersionMustMatchCoreDependency(t *testing.T) {
 	tags := setupSchemaServer(t)
 	target := filepath.Join(t.TempDir(), "rules")
