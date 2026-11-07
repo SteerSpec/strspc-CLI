@@ -58,8 +58,11 @@ Examples:
 			}
 			path := filepath.Join(targetDir, skillInstallPath)
 
-			// A cloned repository may carry symlinks that would redirect the
-			// write outside targetDir, so refuse them before touching anything.
+			// targetDir is what the user typed, so it is followed like any
+			// shell path (a symlinked dir is a legitimate destination). What it
+			// contains is not trusted: a cloned repository may carry symlinks
+			// that would redirect the write outside targetDir, so refuse them
+			// before touching anything.
 			if err := checkCIDest(targetDir, skillInstallPath, force); err != nil {
 				return err
 			}

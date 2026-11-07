@@ -184,6 +184,22 @@ func TestSkillInstallRefusesSymlinks(t *testing.T) {
 	}
 }
 
+// The target directory is the user's own argument, so a symlink on the way to
+// it is followed, as a shell would. Only symlinks inside it are refused.
+func TestSkillInstallFollowsSymlinkInTargetPath(t *testing.T) {
+	actual, links := t.TempDir(), t.TempDir()
+	link := filepath.Join(links, "link")
+	if err := os.Symlink(actual, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "skill", "--install", filepath.Join(link, "new")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(actual, "new", skillInstallPath)); err != nil {
+		t.Fatalf("skill not installed through the symlinked path: %v", err)
+	}
+}
+
 func TestSkillHelp(t *testing.T) {
 	output, err := testutil.ExecuteCommand(NewRootCmd(), "skill", "--help")
 	if err != nil {
