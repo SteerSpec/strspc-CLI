@@ -22,7 +22,9 @@ var standardsMinCore = semver.MustParse("1.15.0")
 var contributorsMinCore = semver.MustParse("1.16.0")
 
 // manifestMinCore is the first dev.steerspec.core release whose realm schema
-// accepts a manifest `hash` (RLMMNFST-013) and Realm Notes (RLMMNFST-012).
+// accepts a manifest `hash` (RLMMNFST-013) and Realm Notes (RLMMNFST-012), and
+// whose schemas accept the `realm` and `profile` of a Standard Reference
+// (STDREF-017, STDREF-019).
 var manifestMinCore = semver.MustParse("1.21.0")
 
 // coreReleasePin matches a pin that selects a core release's schemas, as the
@@ -42,6 +44,19 @@ type realmPin struct {
 // when the core pin that validates it predates standardsMinCore.
 func checkCoreAcceptsStandards(dir, path string) error {
 	return checkCoreAccepts(dir, path, "standards", standardsMinCore)
+}
+
+// checkCoreAcceptsStandardLink refuses to write a Standard Reference with a
+// realm or a profile into the file at path when the core pin that validates it
+// predates manifestMinCore.
+func checkCoreAcceptsStandardLink(dir, path string, ref *entity.StandardRef) error {
+	switch {
+	case ref.Realm != "":
+		return checkCoreAccepts(dir, path, "realm", manifestMinCore)
+	case ref.Profile != "":
+		return checkCoreAccepts(dir, path, "profile", manifestMinCore)
+	}
+	return nil
 }
 
 // checkCoreAccepts refuses to write field into the file at path when the core
