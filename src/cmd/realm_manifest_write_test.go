@@ -123,7 +123,7 @@ func TestRealmWritesKeepNotesAndRecomputeHash(t *testing.T) {
 	addNotesAndHash(t, path)
 
 	steps := [][]string{
-		{"realm", "dep", "add", "dev.steerspec.core@1.21.0"},
+		{"realm", "dep", "add", "dev.steerspec.core@" + manifestMinCore.String()},
 		{"realm", "dep", "add", "dev.lib@1.0.0"},
 		{"realm", "dep", "remove", "dev.lib"},
 		{"realm", "contributor", "add", "github:alice"},
@@ -153,7 +153,7 @@ func TestRealmWritesKeepNotesAndRecomputeHash(t *testing.T) {
 		t.Error("dep add left the hash unchanged")
 	}
 
-	// The core 1.21.0 schemas, and the manifest checks (RM023, RM025), accept
+	// The vendored core schemas, and the manifest checks (RM023, RM025), accept
 	// the manifest the writes leave.
 	if out, err := validateWithSchemas(t, dir); err != nil {
 		t.Fatalf("realm validate rejects the manifest: %v\n%s", err, out)

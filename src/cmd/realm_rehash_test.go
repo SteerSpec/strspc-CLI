@@ -40,7 +40,7 @@ func runRealmRehash(t *testing.T, dir string) realmRehashResult {
 // one, then checks a second run changes nothing, byte for byte.
 func TestRealmRehashAddsHashThenLeavesItAlone(t *testing.T) {
 	dir := t.TempDir()
-	path := setupRehashRealm(t, dir, "1.21.0")
+	path := setupRehashRealm(t, dir, manifestMinCore.String())
 
 	res := runRealmRehash(t, dir)
 	if len(res.Updated) != 1 || res.Unchanged != 0 {
@@ -76,7 +76,7 @@ func TestRealmRehashAddsHashThenLeavesItAlone(t *testing.T) {
 // the CLI: the hash check (RM025) fails, and rehash makes it pass again.
 func TestRealmRehashAfterHandEdit(t *testing.T) {
 	dir := t.TempDir()
-	path := setupRehashRealm(t, dir, "1.21.0")
+	path := setupRehashRealm(t, dir, manifestMinCore.String())
 	runRealmRehash(t, dir)
 	hashed, _ := manifestHashOf(t, path)
 
@@ -140,7 +140,7 @@ func TestRealmRehashOldCore(t *testing.T) {
 func TestRealmRehashSubRealms(t *testing.T) {
 	dir := t.TempDir()
 	setupValidRealmWithSubs(t, dir)
-	if out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@1.21.0", "--dir", dir); err != nil {
+	if out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@"+manifestMinCore.String(), "--dir", dir); err != nil {
 		t.Fatalf("dep add: %v\n%s", err, out)
 	}
 
@@ -159,7 +159,7 @@ func TestRealmRehashSubRealms(t *testing.T) {
 // isn't a directory name, so the walk never leaves --dir.
 func TestRealmRehashRejectsSubRealmOutsideDir(t *testing.T) {
 	dir := t.TempDir()
-	path := setupRehashRealm(t, dir, "1.21.0")
+	path := setupRehashRealm(t, dir, manifestMinCore.String())
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -187,7 +187,7 @@ func TestRealmRehashRejectsSubRealmOutsideDir(t *testing.T) {
 // leaves its target alone.
 func TestRealmRehashSkipsLink(t *testing.T) {
 	target := t.TempDir()
-	targetPath := setupRehashRealm(t, target, "1.21.0")
+	targetPath := setupRehashRealm(t, target, manifestMinCore.String())
 	before, err := os.ReadFile(targetPath)
 	if err != nil {
 		t.Fatal(err)
@@ -215,7 +215,7 @@ func TestRealmRehashSkipsLink(t *testing.T) {
 // TestRealmRehashHumanOutput checks the human summary of a run.
 func TestRealmRehashHumanOutput(t *testing.T) {
 	dir := t.TempDir()
-	setupRehashRealm(t, dir, "1.21.0")
+	setupRehashRealm(t, dir, manifestMinCore.String())
 
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "rehash", "--dir", dir)
 	if err != nil {
@@ -261,7 +261,7 @@ func TestRealmRehashSkipsLinkedSubRealm(t *testing.T) {
 
 	dir := t.TempDir()
 	setupValidRealm(t, dir)
-	if out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@1.21.0", "--dir", dir); err != nil {
+	if out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@"+manifestMinCore.String(), "--dir", dir); err != nil {
 		t.Fatalf("dep add: %v\n%s", err, out)
 	}
 	path := filepath.Join(dir, "realm.json")
@@ -304,7 +304,7 @@ func TestRealmRehashSkipsLinkedSubRealm(t *testing.T) {
 // TestRealmRehashRejectsSubRealmFile refuses a sub-realm entry naming a file.
 func TestRealmRehashRejectsSubRealmFile(t *testing.T) {
 	dir := t.TempDir()
-	path := setupRehashRealm(t, dir, "1.21.0")
+	path := setupRehashRealm(t, dir, manifestMinCore.String())
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -369,7 +369,7 @@ func TestReplaceFileInRefusesSwappedLink(t *testing.T) {
 func TestRealmRehashVisitsEachDirOnce(t *testing.T) {
 	dir := t.TempDir()
 	setupValidRealmWithSubs(t, dir)
-	if out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@1.21.0", "--dir", dir); err != nil {
+	if out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.core@"+manifestMinCore.String(), "--dir", dir); err != nil {
 		t.Fatalf("dep add: %v\n%s", err, out)
 	}
 	path := filepath.Join(dir, "realm.json")
