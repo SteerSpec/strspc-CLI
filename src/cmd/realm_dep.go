@@ -13,13 +13,17 @@ import (
 
 // realmFileForWrite mirrors entity.RealmFile but without omitempty on
 // dependencies and rule_identifier_format, so both fields are always
-// present in serialized output (matching realm init's output format).
+// present in serialized output (matching realm init's output format). Every
+// other field of the manifest is copied too, so a write keeps it: notes and
+// hash stay omitted when the manifest has none (RLMMNFST-012, RLMMNFST-013).
 type realmFileForWrite struct {
 	Schema               string                       `json:"$schema"`
 	Realm                entity.RealmMeta             `json:"realm"`
 	Dependencies         []entity.RealmDep            `json:"dependencies"`
 	SubRealms            []string                     `json:"sub_realms,omitempty"`
 	RuleIdentifierFormat *entity.RuleIdentifierFormat `json:"rule_identifier_format"`
+	Notes                []entity.RealmNote           `json:"notes,omitempty"`
+	Hash                 string                       `json:"hash,omitempty"`
 }
 
 // checkRealmJSON verifies realm.json exists and is a regular file.
@@ -85,6 +89,8 @@ func loadModifyWriteRealm(realmPath string, mutate func(*entity.RealmFile) error
 		Dependencies:         deps,
 		SubRealms:            rf.SubRealms,
 		RuleIdentifierFormat: rf.RuleIdentifierFormat,
+		Notes:                rf.Notes,
+		Hash:                 rf.Hash,
 	}
 
 	data, err := json.MarshalIndent(out, "", "  ")
