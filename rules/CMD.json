@@ -5,9 +5,9 @@
     "title": "Commands"
   },
   "rule_set": {
-    "version": "0.12.1",
-    "timestamp": "2026-11-05T07:49:22Z",
-    "hash": "blake3:ea0eb36de99e057433b93db354f0c7f6a06f607be4ff0df8783379099bf3d6bb"
+    "version": "0.12.2",
+    "timestamp": "2026-11-07T11:18:15Z",
+    "hash": "blake3:1589ef6203eef56056d289ec2b6a455174b457e60b0c414017df42ffe8cbdb22"
   },
   "rules": [
     {
@@ -71,6 +71,15 @@
       "body": "strspc doctor MUST exit 1 only when a check fails or, under --strict, warns, and 2 only when its flags are invalid or its path can't be read.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-02",
+      "supersedes": null
+    },
+    {
+      "id": "CMD-008",
+      "revision": 0,
+      "state": "D",
+      "body": "A command given --json MUST exit 4 when its JSON document can't be written to stdout, unless it has already failed with another exit code, and MUST NOT exit 4 for any other failure.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-07",
       "supersedes": null
     }
   ],
