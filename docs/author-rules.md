@@ -78,8 +78,8 @@ is never verified.
 rested on: the rule's revision and a hash of its text, the files read (scope, count and a hash of
 their content), the provider, model, effort and audit prompt, the threshold, and the verdict with
 its explanation, confidence and evidence. A promotion with `--skip-verify` is recorded as skipped,
-with no verdict. A project without `.strspc/` gets no record. Exit code 4 means the rule was
-promoted but its record couldn't be written.
+with no verdict. A project without `.strspc/` gets no record. If the rule is promoted but its
+record can't be written, the command fails with exit 1 and says so; the rule stays promoted.
 
 The files read stand for the whole code: `--path` and `--exclude` narrow what counts as existing.
 Excluding tests (`--exclude '**/*_test.go'`) is fine for a rule about production code, but makes a rule

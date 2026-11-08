@@ -70,9 +70,11 @@ func newRulePromoteCmd() *cobra.Command {
 			"text's hash, the files read and their hash, the provider, model and effort, and the\n" +
 			"verdict with its explanation, confidence and evidence (or that verification was\n" +
 			"skipped). Commit it with the change to rules/. A project without .strspc/ gets none.\n\n" +
-			"Exit codes: 0 promoted, 1 refused (violated or inconclusive) or the promotion failed,\n" +
-			"2 configuration or rule resolution error, 3 AI provider unavailable, 4 promoted but the\n" +
-			"verify record could not be written.",
+			"Exit codes: 0 promoted, 1 refused (violated or inconclusive), the promotion failed, or\n" +
+			"the rule was promoted but its verify record could not be written, 2 configuration or rule\n" +
+			"resolution error, 3 AI provider unavailable, 4 the JSON report could not be written. A\n" +
+			"run that already failed keeps its own exit code even if the report cannot be written\n" +
+			"either (CMD-008).",
 		Example: "  strspc rule promote MYE-001\n" +
 			"  strspc rule promote MYE-002 --path src --exclude '**/*_test.go' --effort high\n" +
 			"  strspc rule promote MYE-002 --skip-verify --json",
@@ -159,14 +161,20 @@ func runRulePromote(ctx context.Context, out, errOut io.Writer, ruleID string, o
 		if errors.Is(recordErr, errNoStrspcDir) {
 			recordErr = nil // nowhere to keep it; said below
 		} else if recordErr != nil {
-			recordErr = withExitCode(exitOutput, fmt.Errorf("promoted %s, but its verify record could not be written: %w", ruleID, recordErr))
+			// A failure, not a refusal: the rule stays promoted (exit 1; exit
+			// 4 is kept for a JSON report that can't be written, CMD-008).
+			recordErr = withExitCode(exitViolations, fmt.Errorf("promoted %s, but its verify record could not be written: %w", ruleID, recordErr))
 			res.Error = recordErr.Error()
 		}
 	}
 
 	if o.jsonOut {
-		if err := writeJSONOutput(out, res); err != nil && recordErr == nil {
-			return err
+		if err := writeJSONOutput(out, res); err != nil {
+			jsonErr := fmt.Errorf("writing JSON output: %w", err)
+			if recordErr != nil {
+				return errors.Join(recordErr, jsonErr) // already failed: keeps its exit code
+			}
+			return withExitCode(exitOutput, jsonErr)
 		}
 		return recordErr
 	}

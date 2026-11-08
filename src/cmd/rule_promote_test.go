@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -116,8 +117,10 @@ func TestRulePromoteRecordWriteFailure(t *testing.T) {
 	// A file where the records directory should be.
 	writeFile(t, dir, ".strspc/verified", "not a directory\n")
 
+	// A failure (exit 1), not exit 4, which is kept for a JSON report that
+	// can't be written (CMD-008).
 	out, err := runPromoteGated(t, dir, "--json")
-	assertExit(t, err, exitOutput)
+	assertExit(t, err, exitViolations)
 	testutil.AssertContains(t, err.Error(), "promoted TST-002, but its verify record could not be written")
 	var res promoteOutput
 	if jsonErr := json.Unmarshal([]byte(out), &res); jsonErr != nil {
@@ -134,8 +137,31 @@ func TestRulePromoteRecordWriteFailure(t *testing.T) {
 	dir = setupVerifyRepo(t, "claude")
 	writeFile(t, dir, ".strspc/verified", "not a directory\n")
 	out, err = runPromoteGated(t, dir)
-	assertExit(t, err, exitOutput)
+	assertExit(t, err, exitViolations)
 	testutil.AssertContains(t, out, "Published → Implemented")
+}
+
+func TestRulePromoteJSONWriteFailure(t *testing.T) {
+	newOpts := func(dir string) *promoteOptions {
+		return &promoteOptions{
+			dir: filepath.Join(dir, "rules"), jsonOut: true, skipVerify: true, minConfidence: defaultMinConfidence,
+			verify: verifyOptions{project: dir},
+		}
+	}
+
+	// Promoted and recorded, but the report can't be written: exit 4.
+	dir := setupVerifyRepo(t, "claude")
+	err := runRulePromote(context.Background(), failWriter{}, io.Discard, "TST-002", newOpts(dir))
+	assertExit(t, err, exitOutput)
+	testutil.AssertContains(t, err.Error(), "writing JSON output")
+
+	// The record failed first: its exit code stands, and both errors are kept.
+	dir = setupVerifyRepo(t, "claude")
+	writeFile(t, dir, ".strspc/verified", "not a directory\n")
+	err = runRulePromote(context.Background(), failWriter{}, io.Discard, "TST-002", newOpts(dir))
+	assertExit(t, err, exitViolations)
+	testutil.AssertContains(t, err.Error(), "verify record could not be written")
+	testutil.AssertContains(t, err.Error(), "writing JSON output")
 }
 
 func TestRulePromoteRecordKeepsZeroConfidence(t *testing.T) {
