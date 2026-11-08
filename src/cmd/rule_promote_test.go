@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -110,6 +111,42 @@ func TestRulePromoteRefusedByVerify(t *testing.T) {
 				t.Errorf("state = %s, want P (refused)", got)
 			}
 		})
+	}
+}
+
+// editingProvider changes the rules on disk while it judges them, as
+// another process could during a verify run.
+type editingProvider struct {
+	stubProvider
+	edit func()
+}
+
+func (p *editingProvider) Evaluate(ctx context.Context, req ruleeval.EvalRequest) (*ruleeval.EvalResponse, error) { //nolint:gocritic // ruleeval.Provider signature
+	p.edit()
+	return p.stubProvider.Evaluate(ctx, req)
+}
+
+func TestRulePromoteRuleChangedWhileVerifying(t *testing.T) {
+	dir := setupVerifyRepo(t, "claude")
+	rulesDir := filepath.Join(dir, "rules")
+	stubEvalProvider(t, &editingProvider{
+		stubProvider: stubProvider{verdicts: map[string]*ruleeval.EvalResponse{
+			"TST-002": {Verdict: ruleeval.Compliant, Confidence: 0.95},
+		}},
+		edit: func() {
+			f := loadEntityFile(t, rulesDir, "TST")
+			findRule(f, "TST-002").Body = "Errors must be wrapped, and logged."
+			if err := replaceEntityFile(resolveEntityPath(rulesDir, "TST"), f); err != nil {
+				t.Fatal(err)
+			}
+		},
+	}, nil)
+
+	_, err := runPromoteGated(t, dir)
+	assertExit(t, err, exitViolations)
+	testutil.AssertContains(t, err.Error(), "changed while it was being verified")
+	if got := stateOfTST002(t, dir); got != "P" {
+		t.Errorf("state = %s, want P (refused)", got)
 	}
 }
 
