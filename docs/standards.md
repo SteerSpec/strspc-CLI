@@ -132,28 +132,99 @@ The report covers the local sources in `.strspc/config.yaml` that have a `realm.
 sub-realms, and `--all-sources` adds the remote ones. A source with no `realm.json` can't declare a
 standard, so its `standard` notes are left out with a warning. `--json` prints the same report as one
 document, or on failure `strspc check`'s document with its `error` field. It exits 0 when the report
-is printed, and 2 when the configuration can't be read or a source or dependency doesn't resolve, as a
+is printed, 1 when a [gate](#gate-ci-on-coverage) fails, and 2 when the configuration can't be read or a source or dependency doesn't resolve, as a
 report would then understate the coverage. A `--json` report that can't be written exits 4; the
 failure document is written on a best-effort basis and keeps exit 2.
 
-## Planned: a coverage gate in CI
+## Gate CI on coverage
 
-> **Not yet implemented.** Tracked in [#239](https://github.com/SteerSpec/strspc-CLI/issues/239); the
-> flags below may change.
-
-`standards coverage` will be able to fail a build. It exits 1 when the gate fails, and 2 still wins
-when resolution fails, so a gate never passes on a report that understates the coverage:
+`standards coverage` can fail a build when coverage weakens. With no gate flag it exits 0 once the
+report is printed, as above. With one, the report ends with the gate's verdict, and the command
+exits 1 when the gate fails:
 
 ```bash
 strspc standards coverage --fail-on lapsed,mapped,unresolved   # no lapsed or unenforced claims
 strspc standards coverage --require owasp.asvs@5.0.0            # declared as implements, with a covered clause
 strspc standards coverage --require-evaluator                   # covered clauses that something checks
-strspc standards coverage --baseline coverage-base.json         # no regression against an earlier --json report
+strspc standards coverage --min-coverage 60                     # every linked Realm figure at 60 % or more
+strspc standards coverage --min-coverage owasp.asvs=80          # owasp.asvs at 80 % or more
 ```
 
-The statuses in `--fail-on` (`lapsed`, `mapped`) and `--require` apply to `implements` standards only,
-so a `cited` clause never fails. `unresolved` is a separate check, on `standard` notes that resolve to
-no declared standard: such a note has no relation, so it fails whatever the standard it meant to name.
+- `--fail-on` fails on each clause `lapsed` or only `mapped` in an entity, and with `unresolved` on
+  each `standard` note that resolves to no declared standard. Such a note has no relation, so it
+  fails whatever the standard it meant to name. Values are comma-separated, and the flag can be
+  repeated. A `cited` clause claims no coverage (STDREF-006) and never fails. `unmapped` isn't
+  accepted: a clause is unmapped in each entity that doesn't map it, though another may cover it,
+  so gate the Realm figure with `--min-coverage` instead.
+- `--require <id>[@<version>]`, repeatable, fails unless the standard, or that edition of it, is
+  declared with relation `implements` and one of its clauses is covered. The failure says why: not
+  declared, declared under another edition, declared only as `derived_from`, or no clause covered.
+- `--require-evaluator` fails when clauses are covered but the evaluator is `null`, can't be run,
+  or isn't run on Implemented rules (`evaluate_on`): a covered clause is then a claim that nothing
+  checks.
+- `--min-coverage`, repeatable, fails a Realm figure of a linked Standard Realm under the
+  percentage. A bare `<percent>` applies to every standard, and `<id>[@<version>]=<percent>` to one,
+  overriding the bare value; the edition's overrides the standard's. The percentage is 0 to 100
+  with at most one decimal, and compared exactly, so `66.6` passes 2 of 3 and `66.7` doesn't.
+  Entity figures are shown but not gated. A threshold no figure is there to check fails, so the
+  gate never passes on nothing. An undefined figure (STDREF-028) is not checked: it is a warning.
+
+The STDREF rules defining the statuses and figures are Draft in `dev.steerspec.core`.
+
+Exit 2 still wins over 1: a gate flag that can't be read, a configuration that can't be read or a
+source or dependency that doesn't resolve exits 2 before the gate runs, so a gate never passes on a
+report that understates the coverage. A `--json` report that can't be written exits 4.
+
+`--json` adds a `gate` object, absent when no gate flag is set:
+
+```json
+"gate": {
+  "passed": false,
+  "failures": [
+    {
+      "kind": "min_coverage",
+      "message": "Realm dev.acme: owasp.asvs@5.0.0 covers 12 of 69 clause(s) (17.3 %), under the minimum of 60.0 %",
+      "standard": "owasp.asvs",
+      "version": "5.0.0",
+      "tree": "dev.acme",
+      "figure": 0.17391304347826086,
+      "threshold": 60
+    }
+  ]
+}
+```
+
+`kind` is `lapsed`, `mapped`, `unresolved`, `required`, `evaluator` or `min_coverage`. The other
+fields say what failed, where they apply: `standard`, `version`, `clause`, `entity`, `tree` (the Realm
+of a figure), `rules` (the mappings behind a clause or the unresolved note), `figure` and `threshold`.
+
+In GitHub Actions:
+
+```yaml
+jobs:
+  standards:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: SteerSpec/strspc-CLI/.github/actions/setup-strspc@v1.36.0
+      - name: Gate on standards coverage    # exit 1 fails the gate, 2 a report it can't trust
+        run: >-
+          strspc standards coverage
+          --fail-on lapsed,unresolved
+          --require owasp.asvs@5.0.0
+          --min-coverage owasp.asvs=60
+```
+
+### Planned: regression against a baseline
+
+> **Not yet implemented.** Phase 2 of [#239](https://github.com/SteerSpec/strspc-CLI/issues/239);
+> the flag below may change.
+
+```bash
+strspc standards coverage --baseline coverage-base.json         # no regression against an earlier --json report
+```
 
 `--baseline` compares with the `--json` report of the base branch, kept as a CI artifact. It fails
 when:
@@ -166,8 +237,8 @@ A baseline that can't be read or parsed exits 2. The comparison comes from strsp
 ([strspc-manager#269](https://github.com/SteerSpec/strspc-manager/issues/269)), so the CLI, the pull
 request review and the planned cloud dashboard share one definition of a regression.
 
-In GitHub Actions, a push to `develop` records the baseline, and a pull request into `develop` is
-gated against the latest one. A pull request into another branch would need that branch's own
+In GitHub Actions, a push to `develop` would record the baseline, and a pull request into `develop`
+be gated against the latest one. A pull request into another branch would need that branch's own
 baseline, so the trigger names `develop` for both:
 
 ```yaml
@@ -203,7 +274,7 @@ jobs:
           run_id=$(gh run list --workflow "$WORKFLOW" --branch develop --event push \
             --status success --limit 1 --json databaseId --jq '.[0].databaseId')
           gh run download "$run_id" --name standards-coverage --dir baseline
-      - name: Gate on standards coverage    # exit 1 fails the gate, 2 a report it can't trust
+      - name: Gate on standards coverage
         if: github.event_name == 'pull_request'
         run: >-
           strspc standards coverage
@@ -214,9 +285,6 @@ jobs:
 
 Until `develop` has a successful run, there is no artifact to fetch, so leave out the fetch step and
 `--baseline` until then.
-
-A percentage threshold needs a linked Standard Realm's figures. #239 adds it as `--min-coverage`; an
-undefined figure neither passes nor fails it.
 
 ## Planned: standards published as realms
 
