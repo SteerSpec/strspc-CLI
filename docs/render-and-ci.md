@@ -58,7 +58,7 @@ strspc render rules/CFG.json --template my.md.tmpl  # custom Go template
 Rule identifiers follow the `rule_identifier_format` of the realm that owns the entity file (the
 nearest `realm.json`; for a sub-realm, its parent's format). Without one, the RLIFRMT defaults apply,
 as in `[ENT-001.0/D]`. Only the rendered form changes, never the stored ID
-([SPEC §4](https://github.com/SteerSpec/strspc-manager/blob/v1.45.0/docs/SPEC.md#4-rule-identifier-format)).
+([SPEC §4](https://github.com/SteerSpec/strspc-manager/blob/v1.47.0/docs/SPEC.md#4-rule-identifier-format)).
 
 An entity that declares `inherits` gets an "Inherited rules" section listing the rules it inherits,
 with their owner and state, and which of its own rules overrides them. `--json` adds them as an

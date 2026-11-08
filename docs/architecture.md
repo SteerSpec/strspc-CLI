@@ -4,7 +4,7 @@ Back to the [README](../README.md).
 
 ## Architecture
 
-The [Rule Manager specification](https://github.com/SteerSpec/strspc-manager/blob/v1.45.0/docs/SPEC.md)
+The [Rule Manager specification](https://github.com/SteerSpec/strspc-manager/blob/v1.47.0/docs/SPEC.md)
 (cited below as SPEC, at v1.45.0, the manager version this CLI imports) is a draft that this CLI
 follows. Its principles shape how the CLI works:
 
@@ -61,7 +61,7 @@ that govern these tiers, and this repository owns the `dev.steerspec.cli` realm 
 | **Realm** | A namespace of entities in a directory with a `realm.json` manifest and `_schema/`. Its ID is in reverse domain notation (`com.acme.app`) |
 | **Configuration** | A project's `.strspc/config.yaml`: the rules it consumes and how they are enforced |
 
-See SPEC [§2](https://github.com/SteerSpec/strspc-manager/blob/v1.45.0/docs/SPEC.md#2-data-model) for the
+See SPEC [§2](https://github.com/SteerSpec/strspc-manager/blob/v1.47.0/docs/SPEC.md#2-data-model) for the
 full data model.
 
 ## Commands
