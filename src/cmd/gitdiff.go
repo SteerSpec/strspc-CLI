@@ -25,8 +25,8 @@ const (
 	diffFromGitHubBase diffSourceKind = "github-base" // $GITHUB_BASE_REF (origin/<ref>, fetched if missing)
 	diffFromHead       diffSourceKind = "head"        // working tree vs HEAD
 
-	// diffFromTree is used by `strspc rule verify` only: every tracked file
-	// of the working tree, as a diff from the empty tree (all lines added).
+	// diffFromTree is used by `strspc rule verify` only: not a diff but the
+	// tracked files of the working tree, audited as they stand.
 	diffFromTree diffSourceKind = "tree"
 )
 
@@ -283,26 +283,6 @@ func escapeGlob(s string) string {
 		}
 	}
 	return b.String()
-}
-
-// collectTreeDiff returns every tracked file under pathspecs (minus the
-// excludes) as a diff from the empty tree, so each line is an added line.
-// The working tree is read, so uncommitted edits to tracked files count;
-// untracked files do not. The empty tree is hashed rather than hard-coded so
-// that SHA-256 repositories work too.
-func collectTreeDiff(ctx context.Context, repoDir, subDir string, pathspecs []string) (string, error) {
-	emptyTree, err := git(ctx, repoDir, "hash-object", "-t", "tree", "--stdin")
-	if err != nil {
-		return "", fmt.Errorf("hashing the empty tree: %w", err)
-	}
-	args := []string{"diff", "--no-color", "--no-ext-diff", "-U3", "--diff-filter=ACMR", strings.TrimSpace(emptyTree), "--"}
-	args = append(args, pathspecs...)
-	args = append(args, diffExcludeSpecs(subDir)...)
-	out, err := git(ctx, repoDir, args...)
-	if err != nil {
-		return "", fmt.Errorf("collecting tracked files: %w", err)
-	}
-	return out, nil
 }
 
 // filterDiff applies to a file-backed diff the restrictions git enforces for

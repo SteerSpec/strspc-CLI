@@ -16,6 +16,7 @@ import (
 	"github.com/SteerSpec/strspc-manager/src/result"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval/claude"
+	"github.com/SteerSpec/strspc-manager/src/ruleeval/prompt"
 )
 
 // Verdicts reported by `strspc rule verify`: the provider's three verdicts
@@ -42,15 +43,20 @@ func newRuleVerifyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "verify <rule_id>...",
 		Short: "(experimental) Check that the current code complies with rules",
-		Long: "Evaluate rules against the current code, not a diff: every tracked file of the working tree\n" +
-			"(or of --path, minus --exclude) is sent to the configured AI provider as if it were newly\n" +
-			"added, and each rule gets a verdict: compliant, violated, not_applicable or unknown. As with\n" +
-			"check, files under .strspc/ and rules/ are never read, even when --path matches them.\n\n" +
+		Long: "Audit the current code against rules, not a diff: every tracked file of the working tree\n" +
+			"(or of --path, minus --exclude) is sent to the configured AI provider with numbered lines, and\n" +
+			"each rule gets a verdict, compliant, violated, not_applicable or unknown, with an explanation\n" +
+			"and the lines it rests on. Something a rule requires that no file has is a violation. As with\n" +
+			"check, files under .strspc/ and rules/ are never read, even when --path matches them; nor are\n" +
+			"untracked, deleted, symlinked or binary files.\n\n" +
 			"This is the check to run before promoting a rule from Published to Implemented.\n\n" +
-			"Experimental (GH #291): there is no evaluation cache, a large tree is split into parts that\n" +
-			"are judged separately (so a rule that needs the whole codebase in view, such as \"every X has a\n" +
-			"Y\", cannot be judged as violated), and untracked files are not read. Use --dry-run first: it\n" +
-			"reports the size of the run without calling the provider or needing an API key.\n\n" +
+			"The files read stand for the whole code: --path and --exclude narrow what counts as existing,\n" +
+			"so excluding tests makes a rule such as \"every command has a test\" fail. A tree too large\n" +
+			"for one request is read in parts that collect what each file holds for each rule, then every\n" +
+			"rule is judged on all of it. What each file holds is kept in .strspc/cache.db (unless\n" +
+			"--no-cache), so a rerun reads only the files that changed.\n\n" +
+			"Experimental (GH #291). Use --dry-run first: it reports the size of the run without calling\n" +
+			"the provider or needing an API key.\n\n" +
 			"Exit codes: 0 every rule compliant or not applicable, 1 a rule violated or left unknown,\n" +
 			"2 configuration or rule resolution error, 3 AI provider unavailable, 4 the JSON report could\n" +
 			"not be written. A run that already failed keeps its own exit code even if the report cannot\n" +
@@ -75,6 +81,7 @@ func newRuleVerifyCmd() *cobra.Command {
 	f.StringVar(&o.check.effort, "effort", "", "reasoning effort (overrides evaluator.effort): low|medium|high|xhigh|max")
 	f.StringVar(&o.check.endpoint, "endpoint", "", "provider endpoint URL; opts in to a non-Anthropic host (also $"+envEvaluatorEndpoint+")")
 	f.BoolVar(&o.check.verbose, "verbose", false, "print resolution and usage details to stderr")
+	f.BoolVar(&o.check.noCache, "no-cache", false, "do not read or write the evaluation cache (.strspc/cache.db)")
 	f.BoolVar(&o.dryRun, "dry-run", false, "report the size of the run without calling the provider")
 	return cmd
 }
@@ -91,7 +98,7 @@ type verifyRule struct {
 
 // verifyEvidence is a provider-cited location. LineConfirmed reports that
 // the excerpt was found in the file as sent, at Line; otherwise Line is the
-// model's own count, which is unreliable in a whole-file hunk.
+// model's own reading of the line numbers it was shown.
 type verifyEvidence struct {
 	ruleeval.Location
 	LineConfirmed bool `json:"line_confirmed"`
@@ -99,13 +106,17 @@ type verifyEvidence struct {
 	ReportedLine int `json:"reported_line,omitempty"`
 }
 
-// verifyEstimate sizes a run before it is sent.
+// verifyEstimate sizes a run before it is sent. EstRequests is an upper
+// bound on a cold cache: a tree that fits one request costs one verdict
+// request per rule group and at most one detail request per rule; a larger
+// one, one request per part and rule group to collect findings, then one
+// per rule group to judge them.
 type verifyEstimate struct {
 	Files           int            `json:"files"`
 	Bytes           int            `json:"bytes"`
 	BytesByDir      map[string]int `json:"bytes_by_dir"`
 	EstInputTokens  int            `json:"est_input_tokens"`
-	EstChunks       int            `json:"est_chunks"`
+	EstParts        int            `json:"est_parts"`
 	RuleGroups      int            `json:"rule_groups"`
 	EstRequests     int            `json:"est_requests"`
 	PerRequestLimit int            `json:"per_request_input_tokens"`
@@ -120,6 +131,7 @@ type verifyOutput struct {
 	Model       string                `json:"model,omitempty"`
 	Effort      string                `json:"effort,omitempty"`
 	Scope       string                `json:"scope"`
+	Skipped     []skippedFile         `json:"skipped,omitempty"`
 	Estimate    verifyEstimate        `json:"estimate"`
 	Usage       *ruleeval.Usage       `json:"usage,omitempty"`
 	Rules       []verifyRule          `json:"rules"`
@@ -127,32 +139,39 @@ type verifyOutput struct {
 	Error       string                `json:"error,omitempty"`
 }
 
+// verifyRun is a check run that audits a file set instead of a diff.
+type verifyRun struct {
+	*checkRun
+	files   []ruleeval.File
+	skipped []skippedFile
+}
+
 func runVerify(ctx context.Context, out, errOut io.Writer, ids []string, o *verifyOptions) error {
-	r := &checkRun{ctx: ctx, out: out, errOut: errOut, cwd: o.project, opts: o.check}
+	r := &verifyRun{checkRun: &checkRun{ctx: ctx, out: out, errOut: errOut, cwd: o.project, opts: o.check}}
 	if o.check.format != formatHuman && o.check.format != formatJSON {
 		return withExitCode(exitConfig, fmt.Errorf("invalid --format %q: must be human or json", o.check.format))
 	}
 	// fail() renders JSON for check's report shape; verify reports its own,
 	// so phases report through verifyFail instead.
 	if err := r.loadConfig(); err != nil {
-		return verifyFail(r, exitConfig, err)
+		return verifyFail(r.checkRun, exitConfig, err)
 	}
 	if !o.dryRun {
 		code, err := r.buildProvider()
 		if err != nil {
-			return verifyFail(r, code, err)
+			return verifyFail(r.checkRun, code, err)
 		}
 		if r.static {
-			return verifyFail(r, exitConfig, errors.New("rule verify needs an AI provider: evaluator.provider is null (or --static-only); set it to claude or pass --provider claude"))
+			return verifyFail(r.checkRun, exitConfig, errors.New("rule verify needs an AI provider: evaluator.provider is null (or --static-only); set it to claude or pass --provider claude"))
 		}
 	}
 	if err := r.resolveSources(); err != nil {
-		return verifyFail(r, exitConfig, err)
+		return verifyFail(r.checkRun, exitConfig, err)
 	}
 	// The tree first: buildInputs labels sources relative to r.repoDir, the
-	// base the diff paths use, so local rules stay scoped to their directory.
+	// base the file paths use, so local rules stay scoped to their directory.
 	if err := r.collectVerifyTree(o.paths, o.excludes); err != nil {
-		return verifyFail(r, exitConfig, err)
+		return verifyFail(r.checkRun, exitConfig, err)
 	}
 	// verify judges the named rules whatever evaluate_on says, and
 	// buildInputs passes evaluate_on to inherit.Effective, which filters an
@@ -163,10 +182,10 @@ func runVerify(ctx context.Context, out, errOut io.Writer, ids []string, o *veri
 	r.buildInputs()
 	selected, err := selectVerifyInputs(r.inputs, ids)
 	if err != nil {
-		return verifyFail(r, exitConfig, err)
+		return verifyFail(r.checkRun, exitConfig, err)
 	}
 	r.inputs = oneVerifyGroup(selected)
-	est := estimateVerify(r.diff, r.inputs)
+	est := estimateVerify(r.files, r.inputs)
 
 	if o.dryRun {
 		vo := r.verifyOutput(exitOK, est, nil)
@@ -176,8 +195,8 @@ func runVerify(ctx context.Context, out, errOut io.Writer, ids []string, o *veri
 	return r.runVerifyEvaluation(est)
 }
 
-// collectVerifyTree reads the tracked files of the project into r.diff.
-func (r *checkRun) collectVerifyTree(paths, excludes []string) error {
+// collectVerifyTree reads the tracked files of the project into r.files.
+func (r *verifyRun) collectVerifyTree(paths, excludes []string) error {
 	repoDir, err := gitRoot(r.cwd)
 	if err != nil {
 		return err
@@ -192,14 +211,17 @@ func (r *checkRun) collectVerifyTree(paths, excludes []string) error {
 		return err
 	}
 	r.diffSource = diffSource{Kind: diffFromTree, Ref: treeScope(paths, excludes)}
-	r.diff, err = collectTreeDiff(r.ctx, repoDir, subDir, specs)
+	r.files, r.skipped, err = collectTreeFiles(r.ctx, repoDir, subDir, specs)
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(r.diff) == "" {
-		return fmt.Errorf("no tracked files to verify in %s", r.diffSource)
+	for _, s := range r.skipped {
+		r.verbosef("tree: skipped %s (%s)", s.Path, s.Reason)
 	}
-	r.verbosef("tree: %s (%d bytes)", r.diffSource, len(r.diff))
+	if len(r.files) == 0 {
+		return fmt.Errorf("no tracked text files to verify in %s", r.diffSource)
+	}
+	r.verbosef("tree: %s (%d file(s), %d skipped)", r.diffSource, len(r.files), len(r.skipped))
 	return nil
 }
 
@@ -265,40 +287,60 @@ func oneVerifyGroup(inputs []ruleeval.RuleInput) []ruleeval.RuleInput {
 	return out
 }
 
-// estimateVerify sizes a run the way the Claude provider splits it: the
-// tree is cut into parts that fit the per-request input budget, and each
-// entity's rules (up to the per-request rule limit) go with every part.
-func estimateVerify(diff string, inputs []ruleeval.RuleInput) verifyEstimate {
-	est := verifyEstimate{Bytes: len(diff), BytesByDir: map[string]int{}, PerRequestLimit: claude.DefaultMaxInputTokens}
-	for _, sec := range splitDiffSections(diff) {
-		p, ok := diffHeaderPath(sec)
-		if !ok {
-			continue
-		}
-		est.Files++
-		top, _, found := strings.Cut(p, "/")
+// estimateVerify sizes a run the way the Claude provider splits an audit:
+// the files, rendered with numbered lines, are cut into parts that fit the
+// per-request input budget left after the system prompt and the rules, and
+// each entity's rules (up to the per-request rule limit) form a group.
+func estimateVerify(files []ruleeval.File, inputs []ruleeval.RuleInput) verifyEstimate {
+	est := verifyEstimate{Files: len(files), BytesByDir: map[string]int{}, PerRequestLimit: claude.DefaultMaxInputTokens}
+	var rendered strings.Builder
+	for _, f := range files {
+		est.Bytes += len(f.Content)
+		top, _, found := strings.Cut(f.Path, "/")
 		if !found {
 			top = "."
 		}
-		est.BytesByDir[top] += len(sec)
+		est.BytesByDir[top] += len(f.Content)
+		lines := contentLines(f.Content)
+		rendered.WriteString(prompt.FileSlice(f.Path, 1, len(lines), lines))
 	}
-	est.EstInputTokens = (len(diff) + 2) / 3 // the provider's own estimate
-	budget := claude.DefaultMaxInputTokens - 256 - claude.DefaultMaxInputTokens/4
-	est.EstChunks = (est.EstInputTokens + budget - 1) / budget
+	est.EstInputTokens = claude.EstimateTokens(rendered.String())
 
 	perEntity := map[string]int{}
+	var rules strings.Builder
 	for i := range inputs {
 		perEntity[inputs[i].EntityID]++
+		rules.WriteString(inputs[i].Rule.Body)
+		for _, n := range inputs[i].Notes {
+			rules.WriteString(n.Content)
+		}
 	}
 	for _, n := range perEntity {
 		est.RuleGroups += (n + claude.DefaultMaxRulesPerRequest - 1) / claude.DefaultMaxRulesPerRequest
 	}
-	est.EstRequests = est.EstChunks * est.RuleGroups
+	budget := claude.DefaultMaxInputTokens - 256 - claude.EstimateTokens(prompt.AuditSystem()) - claude.EstimateTokens(rules.String())
+	budget = max(budget, claude.DefaultMaxInputTokens/4)
+	est.EstParts = max(1, (est.EstInputTokens+budget-1)/budget)
+	if est.EstParts == 1 {
+		est.EstRequests = est.RuleGroups + len(inputs)
+	} else {
+		est.EstRequests = est.EstParts*est.RuleGroups + est.RuleGroups
+	}
 	return est
 }
 
-// runVerifyEvaluation sends the tree and reports one verdict per rule.
-func (r *checkRun) runVerifyEvaluation(est verifyEstimate) error {
+// contentLines splits a file's content into its lines, as the provider
+// numbers them: a final newline ends the last line rather than opening an
+// empty one.
+func contentLines(content string) []string {
+	if content == "" {
+		return nil
+	}
+	return strings.Split(strings.TrimSuffix(content, "\n"), "\n")
+}
+
+// runVerifyEvaluation audits the files and reports one verdict per rule.
+func (r *verifyRun) runVerifyEvaluation(est verifyEstimate) error {
 	rec := newVerdictRecorder()
 	obs := &checkObserver{}
 	ctx, cancel := context.WithCancel(r.ctx)
@@ -307,29 +349,44 @@ func (r *checkRun) runVerifyEvaluation(est verifyEstimate) error {
 
 	// Every requested rule is judged whatever its state, and a violation is
 	// always reported: verify answers "does the code comply", not "may this
-	// change merge".
-	evaluator, err := ruleeval.New(wrapRecording(r.provider, rec),
+	// change merge". A compliant verdict is detailed too, since it is the
+	// evidence a promotion rests on.
+	opts := []ruleeval.Option{
 		ruleeval.WithFailOn(allStateCodes),
 		ruleeval.WithEvaluateStates(allStateCodes),
+		ruleeval.WithDetail(ruleeval.DetailCompliant),
 		ruleeval.WithConcurrency(3),
 		ruleeval.WithObserver(obs),
-	)
+	}
+	if r.opts.noCache {
+		r.verbosef("cache: disabled")
+	} else if store, closeStore := r.openEvalCache(ctx); store != nil {
+		defer closeStore()
+		opts = append(opts, ruleeval.WithCache(auditStore{blobs: store}))
+	}
+	evaluator, err := ruleeval.New(wrapRecording(r.provider, rec), opts...)
 	if err != nil {
-		return verifyFail(r, exitConfig, fmt.Errorf("initializing evaluator: %w", err))
+		return verifyFail(r.checkRun, exitConfig, fmt.Errorf("initializing evaluator: %w", err))
 	}
 	r.verbosef("evaluator: %s model=%s effort=%s, %d rule(s), ~%d input tokens in ~%d part(s)",
-		r.providerName, r.model, orDefault(r.effort, "default"), len(r.inputs), est.EstInputTokens, est.EstChunks)
+		r.providerName, r.model, orDefault(r.effort, "default"), len(r.inputs), est.EstInputTokens, est.EstParts)
 
-	res := evaluator.Evaluate(ctx, r.inputs, r.diff)
+	res, err := evaluator.Audit(ctx, r.inputs, r.files)
+	if errors.Is(err, ruleeval.ErrAuditUnsupported) {
+		return verifyFail(r.checkRun, exitConfig, fmt.Errorf("provider %q cannot audit code as it stands, which rule verify needs", r.providerName))
+	}
+	if err != nil {
+		return verifyFail(r.checkRun, exitConfig, err)
+	}
 	usage := evaluator.Usage()
 	r.verbosef("usage: %d request(s), %d input / %d output tokens, cache read %d / write %d",
 		usage.Requests, usage.InputTokens, usage.OutputTokens, usage.CacheReadTokens, usage.CacheWriteTokens)
 
 	if unavailable := obs.unavailableErr(); unavailable != nil {
-		return verifyFail(r, exitUnavailable, fmt.Errorf("provider %q unavailable: %w", r.providerName, unavailable))
+		return verifyFail(r.checkRun, exitUnavailable, fmt.Errorf("provider %q unavailable: %w", r.providerName, unavailable))
 	}
 	if calls, failed, first := obs.failures(); calls > 0 && failed == calls {
-		return verifyFail(r, exitUnavailable, fmt.Errorf("provider %q failed every request (%d of %d): %w", r.providerName, failed, calls, first))
+		return verifyFail(r.checkRun, exitUnavailable, fmt.Errorf("provider %q failed every request (%d of %d): %w", r.providerName, failed, calls, first))
 	}
 
 	// RE001 carries nothing the per-rule report lacks; keep the rest.
@@ -342,7 +399,7 @@ func (r *checkRun) runVerifyEvaluation(est verifyEstimate) error {
 	}
 
 	rules := rec.report(r.inputs)
-	relocateEvidence(rules, r.diff)
+	relocateEvidence(rules, r.files)
 	code := exitOK
 	for _, vr := range rules {
 		if vr.Verdict == verifyViolated || vr.Verdict == verifyUnknown {
@@ -357,7 +414,7 @@ func (r *checkRun) runVerifyEvaluation(est verifyEstimate) error {
 	return r.writeVerify(&vo, nil)
 }
 
-func (r *checkRun) verifyOutput(code int, est verifyEstimate, diags []result.Diagnostic) verifyOutput {
+func (r *verifyRun) verifyOutput(code int, est verifyEstimate, diags []result.Diagnostic) verifyOutput {
 	vo := verifyOutput{
 		OK:          code == exitOK,
 		ExitCode:    code,
@@ -365,6 +422,7 @@ func (r *checkRun) verifyOutput(code int, est verifyEstimate, diags []result.Dia
 		Model:       r.model,
 		Effort:      r.effort,
 		Scope:       r.diffSource.String(),
+		Skipped:     r.skipped,
 		Estimate:    est,
 		Rules:       []verifyRule{},
 		Diagnostics: explainDiagnostics(diags, false),
@@ -429,11 +487,14 @@ func (r *checkRun) printVerify(vo *verifyOutput) {
 		for _, d := range dirs {
 			writeln(w, fmt.Sprintf("  %-24s %9d bytes", sanitizeLine(path.Clean(d)), est.BytesByDir[d]))
 		}
-		writeln(w, fmt.Sprintf("Estimate: ~%d part(s) of ≤%d input tokens × %d rule group(s) = ~%d request(s), plus one detail request per violated rule",
-			est.EstChunks, est.PerRequestLimit, est.RuleGroups, est.EstRequests))
+		if len(vo.Skipped) > 0 {
+			writeln(w, fmt.Sprintf("Skipped: %d tracked file(s) not read (deleted, symlinked or binary; see --verbose or the JSON report)", len(vo.Skipped)))
+		}
+		writeln(w, fmt.Sprintf("Estimate: ~%d part(s) of ≤%d input tokens, %d rule group(s): at most ~%d request(s) on a cold cache",
+			est.EstParts, est.PerRequestLimit, est.RuleGroups, est.EstRequests))
 	}
 	if vo.DryRun {
-		writeln(w, brandStyle.Render("Dry run: nothing was sent. The diff block is prompt-cached, so the requests after the first per part mostly read cached input."))
+		writeln(w, brandStyle.Render("Dry run: nothing was sent. A rerun reads only the files that changed since the cached run."))
 		return
 	}
 	if len(vo.Diagnostics) > 0 {
@@ -483,17 +544,15 @@ func verifyFail(r *checkRun, code int, err error) error {
 	return withExitCode(code, err)
 }
 
-// relocateEvidence corrects evidence line numbers. In the empty-tree diff a
-// file is one hunk starting at line 1, and the model miscounts across it;
-// its excerpt, though, is quoted from the text. The excerpt is looked up in
-// the file's lines as sent (the "+" lines of its section, which are the
-// file's lines in order). The line is confirmed when the reported line holds
-// the excerpt, or corrected when the excerpt occurs exactly once; with
-// several other occurrences the model's line is kept, unconfirmed, since
-// picking one would be a guess. Only files present in the diff are
-// consulted, so a path the model invents reads nothing.
-func relocateEvidence(rules []verifyRule, diff string) {
-	var files map[string][]string // built on first use
+// relocateEvidence checks evidence line numbers against the files sent. The
+// lines are numbered in the prompt, so the model's line should hold its
+// excerpt; this confirms it, and catches a miscount. The line is confirmed
+// when the reported line holds the excerpt, or corrected when the excerpt
+// occurs exactly once; with several other occurrences the model's line is
+// kept, unconfirmed, since picking one would be a guess. Only files that
+// were sent are consulted, so a path the model invents reads nothing.
+func relocateEvidence(rules []verifyRule, files []ruleeval.File) {
+	var lines map[string][]string // built on first use
 	for i := range rules {
 		for j := range rules[i].Evidence {
 			ev := &rules[i].Evidence[j]
@@ -501,10 +560,13 @@ func relocateEvidence(rules []verifyRule, diff string) {
 			if needle == "" || ev.File == "" {
 				continue
 			}
-			if files == nil {
-				files = treeFileLines(diff)
+			if lines == nil {
+				lines = make(map[string][]string, len(files))
+				for _, f := range files {
+					lines[f.Path] = contentLines(f.Content)
+				}
 			}
-			line, ok := locateExcerpt(files[path.Clean(ev.File)], needle, ev.Line)
+			line, ok := locateExcerpt(lines[path.Clean(ev.File)], needle, ev.Line)
 			if !ok {
 				continue
 			}
@@ -524,11 +586,15 @@ func relocateEvidence(rules []verifyRule, diff string) {
 const minNeedle = 8
 
 // excerptNeedle reduces an excerpt to the text to search for: its first
-// non-blank line, cut at an ellipsis the model may use to shorten a quote,
-// trimmed. Too short a fragment gives "".
+// non-blank line, without the line number and tab the prompt shows it with
+// should the model have copied them, cut at an ellipsis the model may use
+// to shorten a quote, trimmed. Too short a fragment gives "".
 func excerptNeedle(excerpt string) string {
 	for _, l := range strings.Split(excerpt, "\n") {
-		l = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "+"))
+		l = strings.TrimSpace(l)
+		if num, rest, found := strings.Cut(l, "\t"); found && num != "" && strings.Trim(num, "0123456789") == "" {
+			l = strings.TrimSpace(rest)
+		}
 		if l == "" {
 			continue
 		}
@@ -540,44 +606,28 @@ func excerptNeedle(excerpt string) string {
 		if len(l) < minNeedle {
 			return ""
 		}
-		return l
+		return collapseSpace(l)
 	}
 	return ""
 }
 
-// treeFileLines maps each file of an all-added diff to its lines (index 0
-// is line 1).
-func treeFileLines(diff string) map[string][]string {
-	out := map[string][]string{}
-	for _, sec := range splitDiffSections(diff) {
-		p, ok := diffHeaderPath(sec)
-		if !ok {
-			continue
-		}
-		var lines []string
-		inHunk := false
-		for _, l := range strings.Split(sec, "\n") {
-			switch {
-			case strings.HasPrefix(l, "@@"):
-				inHunk = true
-			case inHunk && strings.HasPrefix(l, "+"):
-				lines = append(lines, l[1:])
-			}
-		}
-		out[p] = lines
-	}
-	return out
+// collapseSpace turns every run of whitespace in s into one space. Models
+// quote code with alignment padding (gofmt's) shrunk, so excerpts and lines
+// are compared collapsed.
+func collapseSpace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
-// locateExcerpt returns the 1-based line holding needle: want itself when
-// it does, else the only line that does. ok is false when no line does, or
-// when several do and want is not one of them.
+// locateExcerpt returns the 1-based line holding needle (whitespace
+// collapsed, as excerptNeedle returns it): want itself when it does, else
+// the only line that does. ok is false when no line does, or when several
+// do and want is not one of them.
 func locateExcerpt(lines []string, needle string, want int) (line int, ok bool) {
-	if want >= 1 && want <= len(lines) && strings.Contains(lines[want-1], needle) {
+	if want >= 1 && want <= len(lines) && strings.Contains(collapseSpace(lines[want-1]), needle) {
 		return want, true
 	}
 	for i, l := range lines {
-		if !strings.Contains(l, needle) {
+		if !strings.Contains(collapseSpace(l), needle) {
 			continue
 		}
 		if line != 0 {
@@ -717,6 +767,15 @@ func (p *verdictProvider) PromptVersion() string {
 	return ""
 }
 
+// AuditPromptVersion forwards ruleeval.Auditor: "" when the wrapped
+// provider cannot audit, which makes Evaluator.Audit refuse it.
+func (p *verdictProvider) AuditPromptVersion() string {
+	if a, ok := p.inner.(ruleeval.Auditor); ok {
+		return a.AuditPromptVersion()
+	}
+	return ""
+}
+
 func (p *verdictProvider) Usage() ruleeval.Usage {
 	if u, ok := p.inner.(ruleeval.UsageReporter); ok {
 		return u.Usage()
@@ -731,7 +790,7 @@ type verdictBatchProvider struct {
 	batch ruleeval.BatchProvider
 }
 
-func (p *verdictBatchProvider) EvaluateBatch(ctx context.Context, req ruleeval.BatchRequest) (*ruleeval.BatchResponse, error) {
+func (p *verdictBatchProvider) EvaluateBatch(ctx context.Context, req ruleeval.BatchRequest) (*ruleeval.BatchResponse, error) { //nolint:gocritic // ruleeval.BatchProvider signature
 	resp, err := p.batch.EvaluateBatch(ctx, req)
 	if resp != nil {
 		for id, v := range resp.Verdicts {
@@ -747,6 +806,25 @@ func (p *verdictBatchProvider) EvaluateBatch(ctx context.Context, req ruleeval.B
 	}
 	return resp, err
 }
+
+// auditStore is the evaluation cache as rule verify uses it: only what the
+// provider keeps itself (ruleeval.BlobStore), never whole verdicts. A
+// verdict served from the cache never reaches the provider, nor so the
+// recorder that tells compliant from not applicable, whereas what an audit
+// in parts keeps (each file's findings per rule, and each judgement) comes
+// back through the provider's response. An audit that fits one request is
+// therefore not cached.
+type auditStore struct{ blobs ruleeval.BlobStore }
+
+func (auditStore) Get(string) (*ruleeval.EvalResponse, bool, error) { return nil, false, nil }
+
+func (auditStore) Put(string, *ruleeval.EvalResponse) error { return nil }
+
+func (s auditStore) GetBlob(key string) (value []byte, ok bool, err error) {
+	return s.blobs.GetBlob(key)
+}
+
+func (s auditStore) PutBlobs(values map[string][]byte) error { return s.blobs.PutBlobs(values) }
 
 // wrapRecording wraps p, exposing EvaluateBatch only when p has it.
 func wrapRecording(p ruleeval.Provider, rec *verdictRecorder) ruleeval.Provider {

@@ -589,6 +589,37 @@ func (r *checkRun) sourceLabel(rf *ruleresolve.ResolvedFile, base string) string
 	return rel + "/"
 }
 
+// openEvalCache opens the evaluation cache, .strspc/cache.db, and prunes its
+// expired entries. When the cache is locked or unusable it warns and returns
+// nil: evaluation goes on without it. Call closeStore once done with a
+// non-nil store.
+func (r *checkRun) openEvalCache(ctx context.Context) (store *evalcache.Store, closeStore func()) {
+	dbPath := filepath.Join(r.cwd, ".strspc", "cache.db")
+	store, err := evalcache.Open(ctx, dbPath, evalcache.WithTTL(r.ttl))
+	switch {
+	case errors.Is(err, evalcache.ErrLocked):
+		_, _ = fmt.Fprintf(r.errOut, "warning: evaluation cache is locked by another process; continuing without cache\n")
+		return nil, nil
+	case err != nil:
+		writeWarning(r.errOut, "evaluation cache unavailable (%v); continuing without cache", err)
+		return nil, nil
+	}
+	r.notices = append(r.notices, store.Diagnostics().Diagnostics...)
+	// Get treats expired entries as misses but keeps them; prune so cache.db
+	// does not grow with every distinct diff.
+	if pruned, perr := store.Prune(); perr != nil {
+		r.verbosef("cache: prune: %v", perr)
+	} else if pruned > 0 {
+		r.verbosef("cache: pruned %d expired entry(ies)", pruned)
+	}
+	r.verbosef("cache: %s (ttl %s)", dbPath, r.ttl)
+	return store, func() {
+		if cerr := store.Close(); cerr != nil {
+			r.verbosef("cache: close: %v", cerr)
+		}
+	}
+}
+
 // evaluate runs the evaluator (static or AI) and reports the outcome.
 func (r *checkRun) evaluate() error {
 	r.buildInputs()
@@ -609,28 +640,9 @@ func (r *checkRun) evaluate() error {
 	evalOpts = append(evalOpts, ruleeval.WithObserver(obs))
 
 	if !r.static && !r.opts.noCache {
-		store, err := evalcache.Open(ctx, filepath.Join(r.cwd, ".strspc", "cache.db"), evalcache.WithTTL(r.ttl))
-		switch {
-		case err == nil:
-			defer func() {
-				if cerr := store.Close(); cerr != nil {
-					r.verbosef("cache: close: %v", cerr)
-				}
-			}()
-			r.notices = append(r.notices, store.Diagnostics().Diagnostics...)
-			// Get treats expired entries as misses but keeps them; prune so
-			// cache.db does not grow with every distinct diff.
-			if pruned, perr := store.Prune(); perr != nil {
-				r.verbosef("cache: prune: %v", perr)
-			} else if pruned > 0 {
-				r.verbosef("cache: pruned %d expired entry(ies)", pruned)
-			}
+		if store, closeStore := r.openEvalCache(ctx); store != nil {
+			defer closeStore()
 			evalOpts = append(evalOpts, ruleeval.WithCache(store))
-			r.verbosef("cache: %s (ttl %s)", filepath.Join(r.cwd, ".strspc", "cache.db"), r.ttl)
-		case errors.Is(err, evalcache.ErrLocked):
-			_, _ = fmt.Fprintf(r.errOut, "warning: evaluation cache is locked by another process; continuing without cache\n")
-		default:
-			writeWarning(r.errOut, "evaluation cache unavailable (%v); continuing without cache", err)
 		}
 	} else {
 		r.verbosef("cache: disabled")

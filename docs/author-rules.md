@@ -43,25 +43,33 @@ strspc entity rehash --all                                     # fix hashes afte
 ```
 
 **Verifying before Implemented (experimental).** A rule should reach Implemented only once the code
-complies. `rule verify` checks the current code against named rules, not a diff: it sends every
-tracked file (or those matching `--path`, minus any `--exclude`) to the configured AI provider and reports, per rule,
-`compliant`, `violated` (with a file and line), `not_applicable` or `unknown`. It exits 1 when a rule
-is violated or couldn't be judged. Run `--dry-run` first: it sizes the run without sending anything.
+complies. `rule verify` audits the current code against named rules, not a diff: it sends every
+tracked file (or those matching `--path`, minus any `--exclude`) to the configured AI provider, with
+numbered lines, and reports per rule `compliant` or `violated`, each with an explanation, a confidence
+and the lines it rests on, or `not_applicable` or `unknown`. Something a rule requires that no file
+has counts as a violation. It exits 1 when a rule is violated or couldn't be judged. Run `--dry-run`
+first: it sizes the run without sending anything.
 
 ```bash
-strspc rule verify CFG-002 --path src --exclude '**/*_test.go' --dry-run   # files, tokens, requests
-strspc rule verify CFG-002 --path src --exclude '**/*_test.go' --effort high
-strspc rule promote CFG-002                                                # once it's compliant
+strspc rule verify CFG-002 --path src --dry-run   # files, tokens, requests
+strspc rule verify CFG-002 --path src --effort high
+strspc rule promote CFG-002                       # once it's compliant
 ```
+
+The files read stand for the whole code: `--path` and `--exclude` narrow what counts as existing.
+Excluding tests (`--exclude '**/*_test.go'`) is fine for a rule about production code, but makes a rule
+such as "every command has a test" fail.
+
+A tree too large for one request is read in parts that collect what each file holds for each rule;
+every rule is then judged on all of it, so a rule spanning files is judged on the whole tree. What
+each file holds is kept in `.strspc/cache.db` (`--no-cache` skips it), so a rerun reads only the
+files that changed. An audit that fits one request isn't cached.
 
 As with `strspc check`, files under `.strspc/` and `rules/` are never read, even when `--path` matches
 them: the configuration and the project's own rule files are covered by `lint` and `diff`. A rule
-about those files can't be verified this way.
-
-A large tree is split into parts judged separately. A forbidden construct is still found in the part
-that holds it, but a rule that needs several files in view at once ("every X has a Y elsewhere")
-can't be reported as violated. Untracked files are not read, and there is no evaluation cache.
-Tracked in [#291](https://github.com/SteerSpec/strspc-CLI/issues/291).
+about those files can't be verified this way. Untracked, deleted, symlinked and binary files aren't
+read either; the report lists those it skipped. Tracked in
+[#291](https://github.com/SteerSpec/strspc-CLI/issues/291).
 
 **Sub-entities.** Rule commands accept a sub-entity EUID anywhere a top-level EUID is accepted: the
 CLI scans `sub_entities[]` of every entity file under `--dir` and refreshes the parent hash.

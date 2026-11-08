@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
@@ -99,34 +100,114 @@ func TestTreePathspecs(t *testing.T) {
 	}
 }
 
-func TestCollectTreeDiff(t *testing.T) {
+func pathsOf(files []ruleeval.File) []string {
+	out := make([]string, len(files))
+	for i, f := range files {
+		out[i] = f.Path
+	}
+	return out
+}
+
+func TestCollectTreeFiles(t *testing.T) {
 	dir := setupVerifyRepo(t, "claude")
 	ctx := context.Background()
 
-	all, err := collectTreeDiff(ctx, dir, ".", []string{"."})
+	all, skipped, err := collectTreeFiles(ctx, dir, ".", []string{"."})
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFiles(t, all, "docs/notes.md", "src/main.go")
-	if !strings.Contains(all, "+func main() {}") {
-		t.Errorf("tree diff should present every line as added:\n%s", all)
+	if got := strings.Join(pathsOf(all), ","); got != "docs/notes.md,src/main.go" || len(skipped) != 0 {
+		t.Fatalf("files = %s, skipped %v; want docs and src only (untracked, .strspc/ and rules/ are not read)", got, skipped)
+	}
+	if all[1].Content != "package main\n\nfunc main() {}\n" {
+		t.Errorf("content = %q", all[1].Content)
 	}
 
 	// Uncommitted edits to tracked files are read.
 	writeFile(t, dir, "src/main.go", "package main\n\nfunc main() { run() }\n")
-	only, err := collectTreeDiff(ctx, dir, ".", []string{":(glob)src/**"})
+	only, _, err := collectTreeFiles(ctx, dir, ".", []string{":(glob)src/**"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFiles(t, only, "src/main.go")
-	if !strings.Contains(only, "run()") {
-		t.Errorf("working tree edit missing:\n%s", only)
+	if len(only) != 1 || !strings.Contains(only[0].Content, "run()") {
+		t.Errorf("working tree edit missing: %+v", only)
+	}
+}
+
+// What git would not show as text is skipped and reported, never read.
+func TestCollectTreeFilesSkips(t *testing.T) {
+	dir := setupVerifyRepo(t, "claude")
+	writeFile(t, dir, "img.png", "\x89PNG\x00\x01")
+	writeFile(t, dir, "latin1.txt", "caf\xe9\n")
+	writeFile(t, dir, "gone.go", "package main\n")
+	writeFile(t, dir, "gonedir/x.go", "package x\n")
+	wantSkipped := []string{"gone.go=deleted", "gonedir/x.go=deleted", "img.png=binary", "latin1.txt=binary"}
+	outside := t.TempDir()
+	symlinks := runtime.GOOS != "windows"
+	if symlinks {
+		writeFile(t, outside, "secret.txt", "do not read\n")
+		writeFile(t, outside, "inner.go", "package outside\n")
+		writeFile(t, dir, "linked/inner.go", "package linked\n")
+		if err := os.Symlink(filepath.Join(outside, "secret.txt"), filepath.Join(dir, "link.txt")); err != nil {
+			t.Fatal(err)
+		}
+		wantSkipped = append(wantSkipped, "link.txt=symlink", "linked/inner.go=symlink")
+	}
+	added := []string{"add", "img.png", "latin1.txt", "gone.go", "gonedir"}
+	if symlinks {
+		added = append(added, "link.txt", "linked")
+	}
+	gitRun(t, dir, added...)
+	// The working tree then departs from the index.
+	if err := os.Remove(filepath.Join(dir, "gone.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(dir, "gonedir")); err != nil {
+		t.Fatal(err)
+	}
+	if symlinks {
+		// A tracked directory replaced by a symlink.
+		if err := os.RemoveAll(filepath.Join(dir, "linked")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(dir, "linked")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	files, skipped, err := collectTreeFiles(context.Background(), dir, ".", []string{"."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(pathsOf(files), ","); got != "docs/notes.md,src/main.go" {
+		t.Errorf("files = %s", got)
+	}
+	got := make([]string, len(skipped))
+	for i, s := range skipped {
+		got[i] = s.Path + "=" + s.Reason
+	}
+	sort.Strings(got)
+	sort.Strings(wantSkipped)
+	if strings.Join(got, " ") != strings.Join(wantSkipped, " ") {
+		t.Errorf("skipped = %v, want %v", got, wantSkipped)
+	}
+}
+
+func TestTreeFileSkipUnreadable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("NUL in a path is refused differently on Windows")
+	}
+	if reason := treeFileSkip(t.TempDir(), "a\x00b", map[string]bool{}); reason == "" {
+		t.Error("an unreadable path must be skipped")
+	}
+	if !underSymlink(t.TempDir(), "d\x00", map[string]bool{}) {
+		t.Error("a directory that cannot be inspected counts as a symlink")
 	}
 }
 
 // A glob in --path must not reach a sibling of a project whose directory
 // name holds glob characters.
-func TestCollectTreeDiffEscapesProjectDir(t *testing.T) {
+func TestCollectTreeFilesEscapesProjectDir(t *testing.T) {
 	dir := t.TempDir()
 	gitRun(t, dir, "init", "-q", "-b", "main")
 	writeFile(t, dir, "svc[1]/cmd/a.go", "package cmd\n")
@@ -139,15 +220,17 @@ func TestCollectTreeDiffEscapesProjectDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	diff, err := collectTreeDiff(context.Background(), dir, "svc[1]", specs)
+	files, _, err := collectTreeFiles(context.Background(), dir, "svc[1]", specs)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertFiles(t, diff, "svc[1]/cmd/a.go")
+	if got := strings.Join(pathsOf(files), ","); got != "svc[1]/cmd/a.go" {
+		t.Errorf("files = %s, want svc[1]/cmd/a.go", got)
+	}
 }
 
-func TestCollectTreeDiffNotARepo(t *testing.T) {
-	if _, err := collectTreeDiff(context.Background(), t.TempDir(), ".", []string{"."}); err == nil {
+func TestCollectTreeFilesNotARepo(t *testing.T) {
+	if _, _, err := collectTreeFiles(context.Background(), t.TempDir(), ".", []string{"."}); err == nil {
 		t.Fatal("expected an error outside a repository")
 	}
 }
@@ -187,34 +270,39 @@ func TestOneVerifyGroup(t *testing.T) {
 	if in[0].EntityID != "CFG" || in[0].Owner != "" {
 		t.Error("the inputs must not be modified")
 	}
-	if est := estimateVerify("", got); est.RuleGroups != 1 {
+	if est := estimateVerify(nil, got); est.RuleGroups != 1 {
 		t.Errorf("rule groups = %d, want 1", est.RuleGroups)
 	}
 }
 
 func TestEstimateVerify(t *testing.T) {
-	diff := "diff --git a/src/a.go b/src/a.go\n--- /dev/null\n+++ b/src/a.go\n@@ -0,0 +1 @@\n+package a\n" +
-		"diff --git a/README.md b/README.md\n--- /dev/null\n+++ b/README.md\n@@ -0,0 +1 @@\n+# R\n"
+	files := []ruleeval.File{{Path: "src/a.go", Content: "package a\n"}, {Path: "README.md", Content: "# R\n"}, {Path: "empty"}}
 	inputs := make([]ruleeval.RuleInput, 0, 45)
 	for i := 0; i < 41; i++ {
 		inputs = append(inputs, ruleeval.RuleInput{EntityID: "BIG"})
 	}
-	inputs = append(inputs, ruleeval.RuleInput{EntityID: "SMALL"})
+	inputs = append(inputs, ruleeval.RuleInput{EntityID: "SMALL", Notes: []entity.Note{{Content: "a note"}}})
 
-	est := estimateVerify(diff, inputs)
-	if est.Files != 2 || est.Bytes != len(diff) {
+	est := estimateVerify(files, inputs)
+	if est.Files != 3 || est.Bytes != len("package a\n# R\n") {
 		t.Errorf("files/bytes = %d/%d", est.Files, est.Bytes)
 	}
-	if est.BytesByDir["src"] == 0 || est.BytesByDir["."] == 0 {
+	if est.BytesByDir["src"] != 10 || est.BytesByDir["."] != 4 {
 		t.Errorf("bytes by dir = %v", est.BytesByDir)
 	}
-	if est.EstChunks != 1 || est.RuleGroups != 3 || est.EstRequests != 3 {
-		t.Errorf("chunks/groups/requests = %d/%d/%d, want 1/3/3", est.EstChunks, est.RuleGroups, est.EstRequests)
+	// One part: a verdict request per rule group, and a detail per rule at most.
+	if est.EstParts != 1 || est.RuleGroups != 3 || est.EstRequests != 3+42 {
+		t.Errorf("parts/groups/requests = %d/%d/%d, want 1/3/45", est.EstParts, est.RuleGroups, est.EstRequests)
+	}
+	if est.EstInputTokens <= len("package a\n# R\n")/2 {
+		t.Errorf("tokens = %d: line numbers and file tags count too", est.EstInputTokens)
 	}
 
-	big := strings.Repeat("x", 3*200000) // ~200k tokens: several parts
-	if got := estimateVerify(big, nil); got.EstChunks < 4 {
-		t.Errorf("chunks for ~200k tokens = %d", got.EstChunks)
+	// ~500k tokens: several parts, each read per rule group, then one judgement per group.
+	big := []ruleeval.File{{Path: "big.txt", Content: strings.Repeat("x\n", 500000)}}
+	got := estimateVerify(big, []ruleeval.RuleInput{{EntityID: "E"}})
+	if got.EstParts < 5 || got.EstRequests != got.EstParts+1 {
+		t.Errorf("parts/requests for a large tree = %d/%d", got.EstParts, got.EstRequests)
 	}
 }
 
@@ -247,8 +335,8 @@ func TestRuleVerifyReportsEachVerdict(t *testing.T) {
 			t.Errorf("RE001 duplicates the per-rule report: %+v", d)
 		}
 	}
-	if seen := stub.seenDiff(); strings.Contains(seen, "untracked.go") || !strings.Contains(seen, "+func main() {}") {
-		t.Errorf("provider saw:\n%s", seen)
+	if seen := strings.Join(stub.seenFiles(), ","); seen != "docs/notes.md,src/main.go" || stub.seenDiff() != "" {
+		t.Errorf("provider audited %q (diff %q), want the tracked files and no diff", seen, stub.seenDiff())
 	}
 }
 
@@ -271,8 +359,8 @@ func TestRuleVerifySubdirSourceLabel(t *testing.T) {
 	if len(sources) != 1 || sources[0] != "svc/rules/" {
 		t.Errorf("sources = %q, want [svc/rules/]", sources)
 	}
-	if seen := stub.seenDiff(); !strings.Contains(seen, "b/svc/main.go") {
-		t.Errorf("diff paths should be repository-relative:\n%s", seen)
+	if seen := stub.seenFiles(); len(seen) != 1 || seen[0] != "svc/main.go" {
+		t.Errorf("file paths should be repository-relative: %q", seen)
 	}
 }
 
@@ -282,7 +370,7 @@ type sourceSpy struct {
 	sources *[]string
 }
 
-func (s *sourceSpy) EvaluateBatch(ctx context.Context, req ruleeval.BatchRequest) (*ruleeval.BatchResponse, error) {
+func (s *sourceSpy) EvaluateBatch(ctx context.Context, req ruleeval.BatchRequest) (*ruleeval.BatchResponse, error) { //nolint:gocritic // ruleeval.BatchProvider signature
 	for i := range req.Inputs {
 		*s.sources = append(*s.sources, req.Inputs[i].Source)
 	}
@@ -346,7 +434,7 @@ func TestRuleVerifyDryRunSendsNothing(t *testing.T) {
 	out, err := runVerifyCmd(t, "TST-001", "--project", dir, "--dry-run", "--format", "json")
 	assertExit(t, err, exitOK)
 	vo := decodeVerify(t, out)
-	if !vo.DryRun || !vo.OK || vo.Provider != "" || vo.Estimate.Files != 2 || vo.Estimate.EstRequests != 1 || len(vo.Rules) != 0 {
+	if !vo.DryRun || !vo.OK || vo.Provider != "" || vo.Estimate.Files != 2 || vo.Estimate.EstRequests != 2 || len(vo.Rules) != 0 {
 		t.Errorf("dry run report = %+v", vo)
 	}
 
@@ -370,7 +458,7 @@ func TestRuleVerifyConfigErrors(t *testing.T) {
 		{"unknown rule", []string{"NOPE-1"}, "not found"},
 		{"github format", []string{"TST-001", "--format", "github"}, "invalid --format"},
 		{"path escapes", []string{"TST-001", "--path", "../x"}, "stay inside"},
-		{"no files", []string{"TST-001", "--path", "nothing/**"}, "no tracked files"},
+		{"no files", []string{"TST-001", "--path", "nothing/**"}, "no tracked text files"},
 		{"static provider", []string{"TST-001", "--provider", "null"}, "needs an AI provider"},
 		{"control char effort", []string{"TST-001", "--effort", "hi\x1bgh"}, "control character"},
 	}
@@ -459,6 +547,9 @@ func TestVerdictProviderForwards(t *testing.T) {
 	if d := plain.(ruleeval.Describer); d.Model() != "stub-model" || d.PromptVersion() != "test/v1" {
 		t.Errorf("describer not forwarded: %q %q", d.Model(), d.PromptVersion())
 	}
+	if a := plain.(ruleeval.Auditor); a.AuditPromptVersion() != "test/audit" {
+		t.Errorf("auditor not forwarded: %q", a.AuditPromptVersion())
+	}
 	if u := plain.(ruleeval.UsageReporter).Usage(); u.Requests != 0 {
 		t.Errorf("usage = %+v", u)
 	}
@@ -466,6 +557,9 @@ func TestVerdictProviderForwards(t *testing.T) {
 	bare := wrapRecording(bareProvider{}, rec)
 	if d := bare.(ruleeval.Describer); d.Model() != "" || d.PromptVersion() != "" {
 		t.Error("a provider without Describer reports empty model and prompt version")
+	}
+	if a := bare.(ruleeval.Auditor); a.AuditPromptVersion() != "" {
+		t.Error("a provider that cannot audit reports an empty audit prompt version")
 	}
 	if _, err := bare.Evaluate(context.Background(), ruleeval.EvalRequest{Rule: entity.Rule{ID: "X-1"}}); err != nil {
 		t.Fatal(err)
@@ -503,7 +597,7 @@ func TestVerdictRecorderMerges(t *testing.T) {
 // tree: its response carries Errors next to the verdicts.
 type partialBatchProvider struct{ batchStubProvider }
 
-func (p *partialBatchProvider) EvaluateBatch(ctx context.Context, req ruleeval.BatchRequest) (*ruleeval.BatchResponse, error) {
+func (p *partialBatchProvider) EvaluateBatch(ctx context.Context, req ruleeval.BatchRequest) (*ruleeval.BatchResponse, error) { //nolint:gocritic // ruleeval.BatchProvider signature
 	resp, err := p.batchStubProvider.EvaluateBatch(ctx, req)
 	if resp != nil {
 		resp.Errors = []error{errors.New("hunk in big.go exceeds the input budget and was not evaluated")}
@@ -541,7 +635,10 @@ func (bareProvider) Evaluate(context.Context, ruleeval.EvalRequest) (*ruleeval.E
 func TestExcerptNeedle(t *testing.T) {
 	tests := map[string]string{
 		`if resp, err := http.Get("x"); err == nil {`: `if resp, err := http.Get("x"); err == nil {`,
-		"  \n\t+resp, err := http.Get(url)\n}":        "resp, err := http.Get(url)",
+		"  \n\tresp, err := http.Get(url)\n}":         "resp, err := http.Get(url)",
+		" 42\tresp, err := http.Get(url)":             "resp, err := http.Get(url)",
+		"x\ty := strings.Repeat(s, n)":                "x y := strings.Repeat(s, n)",
+		"httpClient:   offlineHTTPClient(),":          "httpClient: offlineHTTPClient(),",
 		"if resp, err := http.Get(...); err != nil":   "if resp, err := http.Get(",
 		"client.Do(req)… // later":                    "client.Do(req)",
 		"}":                                           "",
@@ -557,18 +654,21 @@ func TestExcerptNeedle(t *testing.T) {
 	}
 }
 
-// relocateDiff is an all-added diff where the needle line appears twice.
-const relocateDiff = "diff --git a/a.go b/a.go\nnew file mode 100644\n--- /dev/null\n+++ b/a.go\n@@ -0,0 +1,6 @@\n" +
-	"+package a\n+\n+func f() { http.Get(u) }\n+\n+++counter\n+func g() { http.Get(u) }\n" +
-	"diff --git a/b.go b/b.go\n--- /dev/null\n+++ b/b.go\n@@ -0,0 +1 @@\n+package b\n"
+// relocateFiles is a file set where the needle line appears twice.
+var relocateFiles = []ruleeval.File{
+	{Path: "a.go", Content: "package a\n\nfunc f() { http.Get(u) }\n\n++counter\nfunc g() { http.Get(u) }\n"},
+	{Path: "b.go", Content: "package b\n\nvar client = x{\n\thttpClient:   offline(),\n}\n"},
+}
 
-func TestTreeFileLines(t *testing.T) {
-	files := treeFileLines(relocateDiff)
-	if got := files["a.go"]; len(got) != 6 || got[2] != "func f() { http.Get(u) }" || got[4] != "++counter" {
+func TestContentLines(t *testing.T) {
+	if got := contentLines(relocateFiles[0].Content); len(got) != 6 || got[2] != "func f() { http.Get(u) }" {
 		t.Errorf("a.go lines = %q", got)
 	}
-	if got := files["b.go"]; len(got) != 1 {
-		t.Errorf("b.go lines = %q", got)
+	if got := contentLines("x"); len(got) != 1 {
+		t.Errorf("a file without a final newline still has its line: %q", got)
+	}
+	if got := contentLines(""); got != nil {
+		t.Errorf("an empty file has no lines: %q", got)
 	}
 }
 
@@ -581,17 +681,18 @@ func TestRelocateEvidence(t *testing.T) {
 		ev("./a.go", 2, "http.Get(u)"),             // two matches, neither at 2: kept, unconfirmed
 		ev("a.go", 6, "http.Get(u)"),               // the reported line matches: confirmed
 		ev("a.go", 4, "os.WriteFile(p)"),           // not in the file
-		ev("../../etc/passwd", 1, "root:x:0:0"),    // not a file of the diff
+		ev("../../etc/passwd", 1, "root:x:0:0"),    // not a file that was sent
 		ev("a.go", 1, "}"),                         // too short to match
 		ev("", 1, "package a hello"),               // no file
+		ev("b.go", 4, "httpClient: offline(),"),    // alignment padding shrunk: confirmed
 	}}}
-	relocateEvidence(rules, relocateDiff)
+	relocateEvidence(rules, relocateFiles)
 	got := rules[0].Evidence
 	type want struct {
 		line, reported int
 		confirmed      bool
 	}
-	wants := []want{{6, 99, true}, {2, 0, false}, {6, 0, true}, {4, 0, false}, {1, 0, false}, {1, 0, false}, {1, 0, false}}
+	wants := []want{{6, 99, true}, {2, 0, false}, {6, 0, true}, {4, 0, false}, {1, 0, false}, {1, 0, false}, {1, 0, false}, {4, 0, true}}
 	for i, w := range wants {
 		if got[i].Line != w.line || got[i].ReportedLine != w.reported || got[i].LineConfirmed != w.confirmed {
 			t.Errorf("evidence %d = line %d reported %d confirmed %v, want %+v", i, got[i].Line, got[i].ReportedLine, got[i].LineConfirmed, w)
@@ -690,5 +791,97 @@ func TestRuleVerifyExclude(t *testing.T) {
 	assertExit(t, err, exitOK)
 	if strings.Contains(human, "\n::error::") || strings.Contains(human, "\x1b") {
 		t.Errorf("scope line not sanitized:\n%q", human)
+	}
+}
+
+// storeSpy is a batch provider that uses the store an audit gets for what
+// it keeps per file: it records the request's detail level and whether a
+// store came with it, and keeps a value in it.
+type storeSpy struct {
+	batchStubProvider
+	detail ruleeval.Detail
+	store  bool
+	hit    bool
+}
+
+func (s *storeSpy) EvaluateBatch(ctx context.Context, req ruleeval.BatchRequest) (*ruleeval.BatchResponse, error) { //nolint:gocritic // ruleeval.BatchProvider signature
+	s.detail, s.store, s.hit = req.Detail, req.Store != nil, false
+	if req.Store != nil {
+		_, s.hit, _ = req.Store.GetBlob("spy")
+		if err := req.Store.PutBlobs(map[string][]byte{"spy": []byte("findings")}); err != nil {
+			return nil, err
+		}
+	}
+	return s.batchStubProvider.EvaluateBatch(ctx, req)
+}
+
+// The audit asks for compliant verdicts to be detailed, and keeps what the
+// provider learns per file in .strspc/cache.db, but never serves a whole
+// verdict from it: that would bypass the recorder.
+func TestRuleVerifyCachesPerFileFindings(t *testing.T) {
+	dir := setupVerifyRepo(t, "claude")
+	spy := &storeSpy{batchStubProvider: batchStubProvider{stubProvider: stubProvider{verdicts: map[string]*ruleeval.EvalResponse{
+		"TST-002": {Verdict: ruleeval.Compliant, Explanation: "errors are wrapped", Confidence: 0.9},
+	}}}}
+	stubEvalProvider(t, spy, nil)
+
+	out, err := runVerifyCmd(t, "TST-002", "--project", dir, "--format", "json")
+	assertExit(t, err, exitOK)
+	if spy.detail != ruleeval.DetailCompliant || !spy.store || spy.hit {
+		t.Errorf("first run: detail %v, store %v, hit %v; want compliant detail and an empty store", spy.detail, spy.store, spy.hit)
+	}
+	if vo := decodeVerify(t, out); vo.Rules[0].Explanation != "errors are wrapped" || vo.Rules[0].Confidence != 0.9 {
+		t.Errorf("compliant rule = %+v, want its explanation and confidence", vo.Rules[0])
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".strspc", "cache.db")); err != nil {
+		t.Errorf("cache.db: %v", err)
+	}
+
+	_, err = runVerifyCmd(t, "TST-002", "--project", dir)
+	assertExit(t, err, exitOK)
+	if !spy.hit || spy.callCount() != 2 {
+		t.Errorf("second run: hit %v, calls %d; want the kept value and the verdict asked again", spy.hit, spy.callCount())
+	}
+
+	_, err = runVerifyCmd(t, "TST-002", "--project", dir, "--no-cache", "--verbose")
+	assertExit(t, err, exitOK)
+	if spy.store {
+		t.Error("--no-cache must not hand the provider a store")
+	}
+}
+
+func TestRuleVerifyProviderCannotAudit(t *testing.T) {
+	dir := setupVerifyRepo(t, "claude")
+	stubEvalProvider(t, bareProvider{}, nil)
+
+	_, err := runVerifyCmd(t, "TST-001", "--project", dir, "--no-cache")
+	assertExit(t, err, exitConfig)
+	if !strings.Contains(err.Error(), "cannot audit") {
+		t.Errorf("err = %v", err)
+	}
+	// With the cache, the evaluator refuses a provider that cannot name its model.
+	_, err = runVerifyCmd(t, "TST-001", "--project", dir)
+	assertExit(t, err, exitConfig)
+	if !strings.Contains(err.Error(), "initializing evaluator") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestRuleVerifyReportsSkippedFiles(t *testing.T) {
+	dir := setupVerifyRepo(t, "claude")
+	writeFile(t, dir, "logo.png", "\x89PNG\x00")
+	gitRun(t, dir, "add", "logo.png")
+	stubEvalProvider(t, nil, errors.New("dry run"))
+
+	out, err := runVerifyCmd(t, "TST-001", "--project", dir, "--dry-run", "--format", "json")
+	assertExit(t, err, exitOK)
+	vo := decodeVerify(t, out)
+	if len(vo.Skipped) != 1 || vo.Skipped[0] != (skippedFile{Path: "logo.png", Reason: skipBinary}) || vo.Estimate.Files != 2 {
+		t.Errorf("skipped = %+v, files = %d", vo.Skipped, vo.Estimate.Files)
+	}
+	human, err := runVerifyCmd(t, "TST-001", "--project", dir, "--dry-run")
+	assertExit(t, err, exitOK)
+	if !strings.Contains(human, "Skipped: 1 tracked file(s) not read") {
+		t.Errorf("human output missing the skipped count:\n%s", human)
 	}
 }
