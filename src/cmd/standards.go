@@ -90,6 +90,8 @@ type coverageOutput struct {
 	Figures    []coverageFigure     `json:"figures"`
 	Unresolved []coverageMapping    `json:"unresolved"`
 	Warnings   []string             `json:"warnings"`
+	// Gate is the verdict of the gate flags, absent when none is set.
+	Gate *coverageGate `json:"gate,omitempty"`
 }
 
 func newStandardsCmd() *cobra.Command {
@@ -106,6 +108,7 @@ func newStandardsCoverageCmd() *cobra.Command {
 	var (
 		allSources bool
 		jsonOutput bool
+		gate       coverageGateFlags
 	)
 
 	cmd := &cobra.Command{
@@ -126,27 +129,48 @@ func newStandardsCoverageCmd() *cobra.Command {
 			"isn't shown: SteerSpec holds no clause lists.\n\n" +
 			"The report covers the local sources in .strspc/config.yaml that have a realm.json, with their\n" +
 			"sub-realms. --all-sources adds the remote ones.\n\n" +
-			"Exit codes: 0 when the report is printed; 2 when the configuration can't be read or a source\n" +
-			"or dependency doesn't resolve, as a report would then understate the coverage; 4 when the\n" +
-			"JSON report can't be written.",
+			"The gate flags make the command fail a build when coverage weakens. --fail-on fails on each\n" +
+			"clause lapsed or only mapped, and on each `standard` note resolving to no declared standard\n" +
+			"(unresolved); a cited clause never fails. --require fails unless the standard, or that edition\n" +
+			"of it, is declared as implements with a covered clause. --require-evaluator fails when clauses\n" +
+			"are covered but nothing evaluates Implemented rules. --min-coverage fails a Realm figure under\n" +
+			"the percentage, given for every standard or as <id>[@<version>]=<percent> for one, and a\n" +
+			"threshold with no figure to check; an undefined figure is only a warning. The report then ends\n" +
+			"with the gate's verdict, the `gate` object of --json. The STDREF rules defining the statuses\n" +
+			"and figures are Draft in dev.steerspec.core.\n\n" +
+			"Exit codes: 0 when the report is printed and any gate passes; 1 when the gate fails; 2 when the\n" +
+			"configuration or a gate flag can't be read or a source or dependency doesn't resolve, as a\n" +
+			"report would then understate the coverage; 4 when the JSON report can't be written.\n\n" +
+			"Examples:\n" +
+			"  strspc standards coverage --fail-on lapsed,mapped,unresolved\n" +
+			"  strspc standards coverage --require owasp.asvs@5.0.0 --require-evaluator\n" +
+			"  strspc standards coverage --min-coverage 60 --min-coverage owasp.asvs=80 --json",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runStandardsCoverage(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), ".", allSources, jsonOutput)
+			return runStandardsCoverage(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), ".", allSources, jsonOutput, &gate)
 		},
 	}
 	cmd.Flags().BoolVar(&allSources, "all-sources", false, "include the remote sources in .strspc/config.yaml")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output as JSON")
+	cmd.Flags().StringSliceVar(&gate.failOn, "fail-on", nil, "fail on clauses or notes in these states: lapsed, mapped, unresolved")
+	cmd.Flags().StringArrayVar(&gate.require, "require", nil, "fail unless this standard, <id>[@<version>], is implemented with a covered clause (repeatable)")
+	cmd.Flags().BoolVar(&gate.requireEvaluator, "require-evaluator", false, "fail when clauses are covered but nothing evaluates Implemented rules")
+	cmd.Flags().StringArrayVar(&gate.minCoverage, "min-coverage", nil, "fail a Realm figure under this percentage: <percent>, or <id>[@<version>]=<percent> for one standard (repeatable)")
 	return cmd
 }
 
-func runStandardsCoverage(ctx context.Context, out, errOut io.Writer, cwd string, allSources, jsonOutput bool) error {
+func runStandardsCoverage(ctx context.Context, out, errOut io.Writer, cwd string, allSources, jsonOutput bool, gateFlags *coverageGateFlags) error {
 	format := formatHuman
 	if jsonOutput {
 		format = formatJSON
 	}
 	r := &checkRun{ctx: ctx, out: out, errOut: errOut, cwd: cwd, opts: checkOptions{format: format}}
+	gate, err := parseCoverageGate(gateFlags)
+	if err != nil {
+		return r.fail(exitConfig, err)
+	}
 	if err := r.loadConfig(); err != nil {
 		return r.fail(exitConfig, err)
 	}
@@ -160,14 +184,32 @@ func runStandardsCoverage(ctx context.Context, out, errOut io.Writer, cwd string
 	}
 
 	report := r.coverageReport(evaluator)
+	if gate.enabled() {
+		report.Gate = evaluateCoverageGate(report, gate)
+		report.Warnings = append(report.Warnings, report.Gate.warnings...)
+	}
 	if jsonOutput {
-		return writeJSONOutput(out, report)
+		if err := writeJSONOutput(out, report); err != nil {
+			return err
+		}
+		return coverageGateError(report.Gate)
 	}
 	for _, w := range report.Warnings {
 		writeWarning(errOut, "%s", w)
 	}
 	writeCoverage(out, report)
-	return nil
+	if report.Gate != nil {
+		writeCoverageGate(out, report.Gate)
+	}
+	return coverageGateError(report.Gate)
+}
+
+// coverageGateError is the error of a failed gate, exit 1, or nil.
+func coverageGateError(g *coverageGate) error {
+	if g == nil || g.Passed {
+		return nil
+	}
+	return withExitCode(exitViolations, fmt.Errorf("standards coverage: the gate failed with %d failure(s)", len(g.Failures)))
 }
 
 // coverageEntries selects the sources to report on: the local ones, so a
