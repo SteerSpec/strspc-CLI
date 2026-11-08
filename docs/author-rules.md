@@ -62,7 +62,10 @@ Published to Implemented, with the same `--path`, `--exclude`, `--effort`, `--mo
 at least `--min-confidence` (default 0.8). A violation refuses it, and so does a verdict that isn't
 conclusive: `unknown`, `not_applicable` (no code the rule applies to was found), or one below the
 threshold, such as a violation reported at 0.55. Models can be wrong about facts outside the code,
-like whether a URL resolves, and a low confidence is the sign. When verification can't run (no
+like whether a URL resolves, and a low confidence is the sign. A verdict that comes without an
+explanation, a confidence or evidence is no judgement and is refused as such; an audit in parts
+caches it, so rerun with `--no-cache`. The refusal lists the verify run's diagnostics, such as RE002
+for a request that failed. When verification can't run (no
 `.strspc/config.yaml`, no AI provider, provider unavailable, or the rule isn't in the configured
 sources) the promotion is refused with verify's exit code. So is a rule whose copy under `--dir`
 differs from the one in the configured sources, since the verdict wouldn't be about it. `--skip-verify` promotes without
