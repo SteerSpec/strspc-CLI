@@ -15,6 +15,7 @@ import (
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval"
+	"github.com/SteerSpec/strspc-manager/src/ruleeval/prompt"
 )
 
 // setupVerifyRepo is setupCheckProject inside a git repository with two
@@ -303,6 +304,89 @@ func TestEstimateVerify(t *testing.T) {
 	got := estimateVerify(big, []ruleeval.RuleInput{{EntityID: "E"}})
 	if got.EstParts < 5 || got.EstRequests != got.EstParts+1 {
 		t.Errorf("parts/requests for a large tree = %d/%d", got.EstParts, got.EstRequests)
+	}
+
+	// Rules large enough to need a group each: every part is read once per group.
+	heavy := make([]ruleeval.RuleInput, 3)
+	for i := range heavy {
+		heavy[i] = ruleeval.RuleInput{EntityID: "E", Rule: entity.Rule{ID: fmt.Sprintf("E-%03d", i+1), Body: strings.Repeat("y", 60000)}}
+	}
+	got = estimateVerify(big, heavy)
+	if got.RuleGroups != 3 || got.EstRequests != got.EstParts*3+3 {
+		t.Errorf("groups/parts/requests for heavy rules = %d/%d/%d", got.RuleGroups, got.EstParts, got.EstRequests)
+	}
+}
+
+// planVerifyRules sizes groups by the rendered rules and their schema, as
+// the provider does, not by rule count alone.
+func TestPlanVerifyRules(t *testing.T) {
+	rule := func(id string, bodyBytes int) ruleeval.RuleInput {
+		return ruleeval.RuleInput{EntityID: "E", Rule: entity.Rule{ID: id, Body: strings.Repeat("y", bodyBytes)}}
+	}
+	small := []ruleeval.RuleInput{rule("E-1", 10), rule("E-2", 10)}
+	groups, budget := planVerifyRules(prompt.AuditSystem(), nil, [][]ruleeval.RuleInput{small})
+	if groups != 1 || budget <= 0 || budget >= 100000 {
+		t.Errorf("small rules: groups %d, budget %d", groups, budget)
+	}
+	withSchema, schemaBudget := planVerifyRules(prompt.AuditExtractSystem(), prompt.ExtractSchema, [][]ruleeval.RuleInput{small})
+	if withSchema != 1 || schemaBudget >= budget {
+		t.Errorf("the extract schema must cost budget: %d vs %d", schemaBudget, budget)
+	}
+
+	// Two rules of ~30k tokens share no group of ~48k; one of ~60k fits none.
+	mixed := []ruleeval.RuleInput{rule("E-1", 60000), rule("E-2", 60000), rule("E-3", 120000)}
+	if groups, _ := planVerifyRules(prompt.AuditSystem(), nil, [][]ruleeval.RuleInput{mixed}); groups != 2 {
+		t.Errorf("heavy rules: groups %d, want 2 (the oversize rule is sent in none)", groups)
+	}
+
+	// The per-request rule limit splits a group too, and entities never share one.
+	many := make([]ruleeval.RuleInput, 41)
+	for i := range many {
+		many[i] = rule(fmt.Sprintf("E-%d", i), 10)
+	}
+	if groups, _ := planVerifyRules(prompt.AuditSystem(), nil, [][]ruleeval.RuleInput{many, small}); groups != 3 {
+		t.Errorf("41 + 2 rules in two entities: groups %d, want 3", groups)
+	}
+}
+
+func TestPackVerifyParts(t *testing.T) {
+	tests := []struct {
+		sizes  []int
+		budget int
+		want   int
+	}{
+		{nil, 5, 0},
+		{[]int{3, 3, 3}, 5, 3},
+		{[]int{2, 2, 1}, 5, 1},
+		{[]int{12}, 5, 3},
+		{[]int{2, 12, 2}, 5, 5},
+		{[]int{4}, 0, 4}, // a budget below 1 counts as 1
+	}
+	for _, tt := range tests {
+		if got := packVerifyParts(tt.sizes, tt.budget); got != tt.want {
+			t.Errorf("packVerifyParts(%v, %d) = %d, want %d", tt.sizes, tt.budget, got, tt.want)
+		}
+	}
+}
+
+// When every file the scope matches is skipped, the failure still lists
+// them.
+func TestRuleVerifyAllSkipped(t *testing.T) {
+	dir := setupVerifyRepo(t, "claude")
+	writeFile(t, dir, "assets/logo.png", "\x89PNG\x00")
+	gitRun(t, dir, "add", "assets/logo.png")
+	stubEvalProvider(t, &stubProvider{}, nil)
+
+	out, err := runVerifyCmd(t, "TST-001", "--project", dir, "--path", "assets", "--format", "json")
+	assertExit(t, err, exitConfig)
+	vo := decodeVerify(t, out)
+	if len(vo.Skipped) != 1 || vo.Skipped[0].Path != "assets/logo.png" || !strings.Contains(vo.Error, "1 tracked file(s) skipped") {
+		t.Errorf("report = %+v", vo)
+	}
+	_, err = runVerifyCmd(t, "TST-001", "--project", dir, "--path", "assets")
+	assertExit(t, err, exitConfig)
+	if !strings.Contains(err.Error(), "skipped (deleted, symlinked, binary or not a regular file") {
+		t.Errorf("err = %v", err)
 	}
 }
 

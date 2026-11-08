@@ -29,6 +29,9 @@ const (
 	skipBinary  = "binary"
 )
 
+// skipReasons lists the kinds of skipped file, for messages.
+const skipReasons = "deleted, symlinked, binary or not a regular file"
+
 // collectTreeFiles reads every tracked file under pathspecs (minus the
 // excludes and the generated directories) from the working tree, so that
 // uncommitted edits count; untracked files do not. Paths are

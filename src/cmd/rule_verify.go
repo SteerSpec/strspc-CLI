@@ -152,26 +152,26 @@ func runVerify(ctx context.Context, out, errOut io.Writer, ids []string, o *veri
 		return withExitCode(exitConfig, fmt.Errorf("invalid --format %q: must be human or json", o.check.format))
 	}
 	// fail() renders JSON for check's report shape; verify reports its own,
-	// so phases report through verifyFail instead.
+	// so phases report through r.verifyFail instead.
 	if err := r.loadConfig(); err != nil {
-		return verifyFail(r.checkRun, exitConfig, err)
+		return r.verifyFail(exitConfig, err)
 	}
 	if !o.dryRun {
 		code, err := r.buildProvider()
 		if err != nil {
-			return verifyFail(r.checkRun, code, err)
+			return r.verifyFail(code, err)
 		}
 		if r.static {
-			return verifyFail(r.checkRun, exitConfig, errors.New("rule verify needs an AI provider: evaluator.provider is null (or --static-only); set it to claude or pass --provider claude"))
+			return r.verifyFail(exitConfig, errors.New("rule verify needs an AI provider: evaluator.provider is null (or --static-only); set it to claude or pass --provider claude"))
 		}
 	}
 	if err := r.resolveSources(); err != nil {
-		return verifyFail(r.checkRun, exitConfig, err)
+		return r.verifyFail(exitConfig, err)
 	}
 	// The tree first: buildInputs labels sources relative to r.repoDir, the
 	// base the file paths use, so local rules stay scoped to their directory.
 	if err := r.collectVerifyTree(o.paths, o.excludes); err != nil {
-		return verifyFail(r.checkRun, exitConfig, err)
+		return r.verifyFail(exitConfig, err)
 	}
 	// verify judges the named rules whatever evaluate_on says, and
 	// buildInputs passes evaluate_on to inherit.Effective, which filters an
@@ -182,7 +182,7 @@ func runVerify(ctx context.Context, out, errOut io.Writer, ids []string, o *veri
 	r.buildInputs()
 	selected, err := selectVerifyInputs(r.inputs, ids)
 	if err != nil {
-		return verifyFail(r.checkRun, exitConfig, err)
+		return r.verifyFail(exitConfig, err)
 	}
 	r.inputs = oneVerifyGroup(selected)
 	est := estimateVerify(r.files, r.inputs)
@@ -219,6 +219,10 @@ func (r *verifyRun) collectVerifyTree(paths, excludes []string) error {
 		r.verbosef("tree: skipped %s (%s)", s.Path, s.Reason)
 	}
 	if len(r.files) == 0 {
+		if len(r.skipped) > 0 {
+			return fmt.Errorf("no tracked text files to verify in %s: %d tracked file(s) skipped (%s; see --verbose or the JSON report)",
+				r.diffSource, len(r.skipped), skipReasons)
+		}
 		return fmt.Errorf("no tracked text files to verify in %s", r.diffSource)
 	}
 	r.verbosef("tree: %s (%d file(s), %d skipped)", r.diffSource, len(r.files), len(r.skipped))
@@ -287,14 +291,17 @@ func oneVerifyGroup(inputs []ruleeval.RuleInput) []ruleeval.RuleInput {
 	return out
 }
 
-// estimateVerify sizes a run the way the Claude provider splits an audit:
-// the files, rendered with numbered lines, are cut into parts that fit the
-// per-request input budget left after the system prompt and the rules, and
-// each entity's rules (up to the per-request rule limit) form a group.
+// estimateVerify sizes a run the way the Claude provider plans an audit.
+// The rules of each entity are packed into groups by the size of their
+// rendered rules block and response schema (planVerifyRules), and the
+// files, rendered with numbered lines, into parts of the input budget the
+// largest group leaves (packVerifyParts). A set that fits one request is
+// judged as a diff would be; a larger one is planned again with the
+// prompt and schema of an audit in parts.
 func estimateVerify(files []ruleeval.File, inputs []ruleeval.RuleInput) verifyEstimate {
 	est := verifyEstimate{Files: len(files), BytesByDir: map[string]int{}, PerRequestLimit: claude.DefaultMaxInputTokens}
-	var rendered strings.Builder
-	for _, f := range files {
+	sizes := make([]int, len(files))
+	for i, f := range files {
 		est.Bytes += len(f.Content)
 		top, _, found := strings.Cut(f.Path, "/")
 		if !found {
@@ -302,31 +309,122 @@ func estimateVerify(files []ruleeval.File, inputs []ruleeval.RuleInput) verifyEs
 		}
 		est.BytesByDir[top] += len(f.Content)
 		lines := contentLines(f.Content)
-		rendered.WriteString(prompt.FileSlice(f.Path, 1, len(lines), lines))
+		sizes[i] = claude.EstimateTokens(prompt.FileSlice(f.Path, 1, len(lines), lines))
+		est.EstInputTokens += sizes[i]
 	}
-	est.EstInputTokens = claude.EstimateTokens(rendered.String())
 
-	perEntity := map[string]int{}
-	var rules strings.Builder
+	byEntity := map[string][]ruleeval.RuleInput{}
+	var order []string
 	for i := range inputs {
-		perEntity[inputs[i].EntityID]++
-		rules.WriteString(inputs[i].Rule.Body)
-		for _, n := range inputs[i].Notes {
-			rules.WriteString(n.Content)
+		id := inputs[i].EntityID
+		if _, ok := byEntity[id]; !ok {
+			order = append(order, id)
 		}
+		byEntity[id] = append(byEntity[id], inputs[i])
 	}
-	for _, n := range perEntity {
-		est.RuleGroups += (n + claude.DefaultMaxRulesPerRequest - 1) / claude.DefaultMaxRulesPerRequest
+	entities := make([][]ruleeval.RuleInput, len(order))
+	for i, id := range order {
+		entities[i] = byEntity[id]
 	}
-	budget := claude.DefaultMaxInputTokens - 256 - claude.EstimateTokens(prompt.AuditSystem()) - claude.EstimateTokens(rules.String())
-	budget = max(budget, claude.DefaultMaxInputTokens/4)
-	est.EstParts = max(1, (est.EstInputTokens+budget-1)/budget)
-	if est.EstParts == 1 {
-		est.EstRequests = est.RuleGroups + len(inputs)
-	} else {
-		est.EstRequests = est.EstParts*est.RuleGroups + est.RuleGroups
+
+	groups, budget := planVerifyRules(prompt.AuditSystem(), nil, entities)
+	est.RuleGroups, est.EstParts = groups, packVerifyParts(sizes, budget)
+	if est.EstParts <= 1 {
+		est.EstParts = 1
+		est.EstRequests = groups + len(inputs) // a verdict request per group, a detail per rule at most
+		return est
 	}
+	// Each part is read once per group to collect findings, then each group
+	// is judged on them.
+	groups, budget = planVerifyRules(prompt.AuditExtractSystem(), prompt.ExtractSchema, entities)
+	est.RuleGroups, est.EstParts = groups, packVerifyParts(sizes, budget)
+	est.EstRequests = est.EstParts*groups + groups
 	return est
+}
+
+// verifyOverheadTokens mirrors the Claude provider's reserve for message
+// framing.
+const verifyOverheadTokens = 256
+
+// planVerifyRules mirrors the Claude provider's rule planning for one
+// request kind: each entity's rules are packed, in order, into groups of at
+// most DefaultMaxRulesPerRequest whose rendered rules and schema fit half
+// the input left after the system prompt. It returns the number of groups
+// and the input budget left for files beside the largest. A rule too large
+// for any group is sent in none, as the provider reports it unevaluated.
+func planVerifyRules(system string, schema func([]string) map[string]any, entities [][]ruleeval.RuleInput) (groups, budget int) {
+	available := claude.DefaultMaxInputTokens - claude.EstimateTokens(system) - verifyOverheadTokens
+	rulesBudget := available / 2
+	schemaCost := func(rules []ruleeval.RuleInput) int {
+		if schema == nil {
+			return 0
+		}
+		ids := make([]string, len(rules))
+		for i := range rules {
+			ids[i] = rules[i].Rule.ID
+		}
+		data, err := json.Marshal(schema(ids))
+		if err != nil {
+			return 0
+		}
+		return claude.EstimateTokens(string(data))
+	}
+	cost := func(rules []ruleeval.RuleInput) int {
+		return claude.EstimateTokens(prompt.RulesBlock(rules)) + schemaCost(rules)
+	}
+	largest := 0
+	for _, rules := range entities {
+		var cur []ruleeval.RuleInput
+		curTokens := 0
+		flush := func() {
+			if len(cur) > 0 {
+				groups++
+				largest = max(largest, cost(cur))
+				cur, curTokens = nil, 0
+			}
+		}
+		for i := range rules {
+			n := cost(rules[i : i+1])
+			if n > rulesBudget {
+				continue
+			}
+			if len(cur) >= claude.DefaultMaxRulesPerRequest || curTokens+n > rulesBudget {
+				flush()
+			}
+			cur = append(cur, rules[i])
+			curTokens += n
+		}
+		flush()
+	}
+	return groups, available - largest
+}
+
+// packVerifyParts counts the parts files of the given rendered sizes fill
+// at budget tokens each: a file is kept whole when it fits the part being
+// filled, else starts a new one; a file larger than a part is split over
+// as many as it needs.
+func packVerifyParts(sizes []int, budget int) int {
+	budget = max(budget, 1)
+	parts, cur := 0, 0
+	for _, n := range sizes {
+		if n > budget {
+			if cur > 0 {
+				parts++
+			}
+			parts += (n + budget - 1) / budget
+			cur = 0
+			continue
+		}
+		if cur > 0 && cur+n > budget {
+			parts++
+			cur = 0
+		}
+		cur += n
+	}
+	if cur > 0 {
+		parts++
+	}
+	return parts
 }
 
 // contentLines splits a file's content into its lines, as the provider
@@ -366,27 +464,27 @@ func (r *verifyRun) runVerifyEvaluation(est verifyEstimate) error {
 	}
 	evaluator, err := ruleeval.New(wrapRecording(r.provider, rec), opts...)
 	if err != nil {
-		return verifyFail(r.checkRun, exitConfig, fmt.Errorf("initializing evaluator: %w", err))
+		return r.verifyFail(exitConfig, fmt.Errorf("initializing evaluator: %w", err))
 	}
 	r.verbosef("evaluator: %s model=%s effort=%s, %d rule(s), ~%d input tokens in ~%d part(s)",
 		r.providerName, r.model, orDefault(r.effort, "default"), len(r.inputs), est.EstInputTokens, est.EstParts)
 
 	res, err := evaluator.Audit(ctx, r.inputs, r.files)
 	if errors.Is(err, ruleeval.ErrAuditUnsupported) {
-		return verifyFail(r.checkRun, exitConfig, fmt.Errorf("provider %q cannot audit code as it stands, which rule verify needs", r.providerName))
+		return r.verifyFail(exitConfig, fmt.Errorf("provider %q cannot audit code as it stands, which rule verify needs", r.providerName))
 	}
 	if err != nil {
-		return verifyFail(r.checkRun, exitConfig, err)
+		return r.verifyFail(exitConfig, err)
 	}
 	usage := evaluator.Usage()
 	r.verbosef("usage: %d request(s), %d input / %d output tokens, cache read %d / write %d",
 		usage.Requests, usage.InputTokens, usage.OutputTokens, usage.CacheReadTokens, usage.CacheWriteTokens)
 
 	if unavailable := obs.unavailableErr(); unavailable != nil {
-		return verifyFail(r.checkRun, exitUnavailable, fmt.Errorf("provider %q unavailable: %w", r.providerName, unavailable))
+		return r.verifyFail(exitUnavailable, fmt.Errorf("provider %q unavailable: %w", r.providerName, unavailable))
 	}
 	if calls, failed, first := obs.failures(); calls > 0 && failed == calls {
-		return verifyFail(r.checkRun, exitUnavailable, fmt.Errorf("provider %q failed every request (%d of %d): %w", r.providerName, failed, calls, first))
+		return r.verifyFail(exitUnavailable, fmt.Errorf("provider %q failed every request (%d of %d): %w", r.providerName, failed, calls, first))
 	}
 
 	// RE001 carries nothing the per-rule report lacks; keep the rest.
@@ -488,7 +586,7 @@ func (r *checkRun) printVerify(vo *verifyOutput) {
 			writeln(w, fmt.Sprintf("  %-24s %9d bytes", sanitizeLine(path.Clean(d)), est.BytesByDir[d]))
 		}
 		if len(vo.Skipped) > 0 {
-			writeln(w, fmt.Sprintf("Skipped: %d tracked file(s) not read (deleted, symlinked or binary; see --verbose or the JSON report)", len(vo.Skipped)))
+			writeln(w, fmt.Sprintf("Skipped: %d tracked file(s) not read (%s; see --verbose or the JSON report)", len(vo.Skipped), skipReasons))
 		}
 		writeln(w, fmt.Sprintf("Estimate: ~%d part(s) of ≤%d input tokens, %d rule group(s): at most ~%d request(s) on a cold cache",
 			est.EstParts, est.PerRequestLimit, est.RuleGroups, est.EstRequests))
@@ -522,15 +620,17 @@ func (r *checkRun) printVerify(vo *verifyOutput) {
 	writeln(w, brandStyle.Render(sanitizeLine(summary)))
 }
 
-// verifyFail reports a fatal error in the selected format.
-func verifyFail(r *checkRun, code int, err error) error {
+// verifyFail reports a fatal error in the selected format, with the files
+// skipped so far: a tree whose every file was skipped fails, and the report
+// must still say why.
+func (r *verifyRun) verifyFail(code int, err error) error {
 	var already *exitError
 	if errors.As(err, &already) {
 		return err
 	}
 	if r.opts.format == formatJSON {
 		vo := verifyOutput{
-			ExitCode: code, Rules: []verifyRule{}, Error: err.Error(),
+			ExitCode: code, Rules: []verifyRule{}, Error: err.Error(), Skipped: r.skipped,
 			Diagnostics: explainDiagnostics(r.resolutionDiags, false),
 		}
 		if r.diffSource.Kind != "" {
