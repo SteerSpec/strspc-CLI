@@ -196,6 +196,78 @@ func TestRealmDepRemoveTree(t *testing.T) {
 		testutil.AssertContains(t, err.Error(), "standard owasp.asvs on MYE")
 	})
 
+	// withSibling adds the sub-realm billing next to auth.
+	withSibling := func(t *testing.T, dir string) string {
+		t.Helper()
+		setupSubRealm(t, dir, "billing", "dev.steerspec.test")
+		if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+			rf.SubRealms = append(rf.SubRealms, "billing")
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return filepath.Join(dir, "billing")
+	}
+	linkManifest := func(t *testing.T, dir string) {
+		t.Helper()
+		if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+			rf.Realm.Standards = append(rf.Realm.Standards, entity.StandardRef{
+				ID: "owasp.asvs", Relation: entity.RelationImplements, Version: "5.0.0", Realm: testStdRealm,
+			})
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Validated from the parent, a sibling's manifest finds the realm in
+	// auth's declaration, so auth must keep it.
+	t.Run("linked from a sibling's manifest", func(t *testing.T) {
+		dir, sub := setup(t)
+		billing := withSibling(t, dir)
+		addDep(t, sub, testStdRealm, "5.0.0")
+		linkManifest(t, billing)
+		_, err := runStrspc(t, "realm", "dep", "remove", testStdRealm, "--dir", sub)
+		if err == nil {
+			t.Fatal("removed a dependency a sibling's manifest links to")
+		}
+		testutil.AssertContains(t, err.Error(), "../billing/realm.json (standard owasp.asvs)")
+	})
+
+	// A sibling that declares the realm itself doesn't need auth's.
+	t.Run("sibling declares it too", func(t *testing.T) {
+		dir, sub := setup(t)
+		billing := withSibling(t, dir)
+		addDep(t, sub, testStdRealm, "5.0.0")
+		addDep(t, billing, testStdRealm, "5.0.0")
+		setupEntityFile(t, billing, "BIL", makeRule("BIL-001", "D", "The system MUST bill.", "github:alice"))
+		if _, err := runStrspc(t, "entity", "standards", "add", "BIL", "--id", "owasp.asvs", "--relation", "implements",
+			"--version", "5.0.0", "--realm", testStdRealm, "--dir", billing); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := runStrspc(t, "realm", "dep", "remove", testStdRealm, "--dir", sub); err != nil {
+			t.Errorf("remove while billing declares it too: %v", err)
+		}
+	})
+
+	// "." isn't a sub-realm (RM008): the manifest's own references count once.
+	t.Run("dot in sub_realms", func(t *testing.T) {
+		dir := t.TempDir()
+		setupLinkRealm(t, dir)
+		linkManifest(t, dir)
+		if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+			rf.SubRealms = []string{"."}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := runStrspc(t, "realm", "dep", "remove", testStdRealm, "--dir", dir)
+		if err == nil {
+			t.Fatal("removed a linked dependency")
+		}
+		testutil.AssertContains(t, err.Error(), "still linked by 1 ")
+	})
+
 	t.Run("many links", func(t *testing.T) {
 		dir, _ := setup(t)
 		addDep(t, dir, testStdRealm, "5.0.0")

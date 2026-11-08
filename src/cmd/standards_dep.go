@@ -16,6 +16,36 @@ type treeRealm struct {
 	rf  *entity.RealmFile
 }
 
+// subRealmsOf returns the sub-realms rf, the Realm at dir, declares and that
+// can be read, skipping a name realm validate rejects (RM008) or a manifest
+// it can't load (RM009), as validate does.
+func subRealmsOf(dir string, rf *entity.RealmFile) []treeRealm {
+	var subs []treeRealm
+	for _, name := range rf.SubRealms {
+		if !isSubRealmName(name) {
+			continue // RM008
+		}
+		subDir := filepath.Join(dir, name)
+		if sub, err := entity.LoadRealm(filepath.Join(subDir, "realm.json")); err == nil {
+			subs = append(subs, treeRealm{subDir, sub})
+		}
+	}
+	return subs
+}
+
+// parentOf returns the Realm whose sub-realm the Realm rf at dir is, or nil.
+func parentOf(dir string, rf *entity.RealmFile) *treeRealm {
+	parent := entity.ParentRealm(dir, rf.Realm.ID)
+	if parent == nil {
+		return nil
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil
+	}
+	return &treeRealm{filepath.Dir(abs), parent}
+}
+
 // standardScope returns the Realms whose dependencies the `realm` of a
 // Standard Reference written under dir may name, as realm validate run on dir
 // judges it (RM026, STDREF-017): the Realm at dir, its parent when dir is a
@@ -27,21 +57,10 @@ func standardScope(dir string) []treeRealm {
 		return nil
 	}
 	tree := []treeRealm{{dir, rf}}
-	if parent := entity.ParentRealm(dir, rf.Realm.ID); parent != nil {
-		if abs, err := filepath.Abs(dir); err == nil {
-			tree = append(tree, treeRealm{filepath.Dir(abs), parent})
-		}
+	if parent := parentOf(dir, rf); parent != nil {
+		tree = append(tree, *parent)
 	}
-	for _, name := range rf.SubRealms {
-		if !filepath.IsLocal(name) || strings.ContainsAny(name, `/\`) {
-			continue // RM008
-		}
-		subDir := filepath.Join(dir, name)
-		if sub, err := entity.LoadRealm(filepath.Join(subDir, "realm.json")); err == nil {
-			tree = append(tree, treeRealm{subDir, sub})
-		}
-	}
-	return tree
+	return append(tree, subRealmsOf(dir, rf)...)
 }
 
 // declaresDep reports whether rf declares a dependency on realmID.
@@ -73,46 +92,85 @@ func checkStandardRealmDeclared(dir, realmID string) error {
 }
 
 // checkDepUnlinked refuses to remove the dependency realmID from the Realm at
-// dir while a Standard Reference of the tree links to it and no other Realm
-// of the tree declares it: the references would be left naming no
-// dependency (RM026, STDREF-017). It names those references.
+// dir while a Standard Reference would be left naming no dependency (RM026,
+// STDREF-017), and names those references. It judges them as realm validate
+// does, from both Realms it can be run on:
+//
+//   - from dir: the references of dir and its sub-realms, which find their
+//     realm in dir, its parent or its sub-realms;
+//   - from dir's parent, when dir is a sub-realm: every reference of the
+//     parent's tree, which find their realm anywhere in that tree.
+//
+// A scope where another Realm declares realmID too loses nothing.
 func checkDepUnlinked(dir, realmID string) error {
-	tree := standardScope(dir)
-	if tree == nil {
+	rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
+	if err != nil {
 		return nil
 	}
-	for _, r := range tree[1:] {
-		if declaresDep(r.rf, realmID) {
-			return nil // the references still find it there
+	self := treeRealm{dir, rf}
+	parent := parentOf(dir, rf)
+	selfAbs, _ := filepath.Abs(dir)
+	// declaredElsewhere reports whether a Realm of scope other than dir
+	// declares realmID.
+	declaredElsewhere := func(scope []treeRealm) bool {
+		return slices.ContainsFunc(scope, func(r treeRealm) bool {
+			abs, _ := filepath.Abs(r.dir)
+			return abs != selfAbs && declaresDep(r.rf, realmID)
+		})
+	}
+
+	var linked []string
+	seen := map[string]bool{}
+	note := func(s string) {
+		if !seen[s] {
+			seen[s] = true
+			linked = append(linked, s)
 		}
 	}
-	var linked []string
+	// name gives path relative to dir, so a reference found from dir and
+	// from its parent reads the same.
 	name := func(path string) string {
-		if rel, err := filepath.Rel(dir, path); err == nil && filepath.IsLocal(rel) {
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return path
+		}
+		if rel, err := filepath.Rel(selfAbs, abs); err == nil {
 			return filepath.ToSlash(rel)
 		}
-		return path
+		return abs
 	}
-	for _, r := range tree {
-		for _, ref := range r.rf.Realm.Standards {
-			if ref.Realm == realmID {
-				linked = append(linked, fmt.Sprintf("%s (standard %s)", name(filepath.Join(r.dir, "realm.json")), ref.ID))
+	// collect notes the references of root and the Realms below it.
+	collect := func(root treeRealm, realms []treeRealm) {
+		for _, r := range realms {
+			for _, ref := range r.rf.Realm.Standards {
+				if ref.Realm == realmID {
+					note(fmt.Sprintf("%s (standard %s)", name(filepath.Join(r.dir, "realm.json")), ref.ID))
+				}
 			}
 		}
-	}
-	// The entities of the whole tree: from the parent when dir is a
-	// sub-realm, which walks dir and its siblings too.
-	walkDir, walkRF := tree[0].dir, tree[0].rf
-	if len(tree) > 1 && entity.ParentRealm(dir, tree[0].rf.Realm.ID) != nil {
-		walkDir, walkRF = tree[1].dir, tree[1].rf
-	}
-	rulelint.WalkRealmStandards(walkDir, walkRF, func(path string, ef *entity.File, _ [][]entity.StandardRef) {
-		for _, ref := range ef.Entity.Standards {
-			if ref.Realm == realmID {
-				linked = append(linked, fmt.Sprintf("%s (standard %s on %s)", name(path), ref.ID, ef.Entity.ID))
+		rulelint.WalkRealmStandards(root.dir, root.rf, func(path string, ef *entity.File, _ [][]entity.StandardRef) {
+			for _, ref := range ef.Entity.Standards {
+				if ref.Realm == realmID {
+					note(fmt.Sprintf("%s (standard %s on %s)", name(path), ref.ID, ef.Entity.ID))
+				}
 			}
+		})
+	}
+
+	own := append([]treeRealm{self}, subRealmsOf(dir, rf)...)
+	scope := own
+	if parent != nil {
+		scope = append(slices.Clone(own), *parent)
+	}
+	if !declaredElsewhere(scope) {
+		collect(self, own)
+	}
+	if parent != nil {
+		tree := append([]treeRealm{*parent}, subRealmsOf(parent.dir, parent.rf)...)
+		if !declaredElsewhere(tree) {
+			collect(*parent, tree)
 		}
-	})
+	}
 	if len(linked) == 0 {
 		return nil
 	}
