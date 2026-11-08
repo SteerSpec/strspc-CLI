@@ -200,10 +200,15 @@ func TestRulePromoteGateCannotRun(t *testing.T) {
 }
 
 func TestRulePromoteInvalidMinConfidence(t *testing.T) {
-	dir := t.TempDir()
-	setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft", "github:alice"))
-	_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "promote", "TST-001", "--dir", dir, "--min-confidence", "1.5")
-	assertExit(t, err, exitConfig)
+	for _, v := range []string{"1.5", "-0.1", "NaN", "Inf"} {
+		t.Run(v, func(t *testing.T) {
+			dir := t.TempDir()
+			setupEntityFile(t, dir, "TST", makeRule("TST-001", "D", "Draft", "github:alice"))
+			_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "promote", "TST-001", "--dir", dir, "--min-confidence", v)
+			assertExit(t, err, exitConfig)
+			testutil.AssertContains(t, err.Error(), "invalid --min-confidence")
+		})
+	}
 }
 
 func TestRefusalReason(t *testing.T) {

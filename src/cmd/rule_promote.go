@@ -80,7 +80,9 @@ func newRulePromoteCmd() *cobra.Command {
 }
 
 func runRulePromote(ctx context.Context, out, errOut io.Writer, ruleID string, o *promoteOptions) error {
-	if o.minConfidence < 0 || o.minConfidence > 1 {
+	// Written so NaN, which pflag accepts and every comparison is false for,
+	// fails it too: a NaN threshold would let any compliant verdict through.
+	if !(o.minConfidence >= 0 && o.minConfidence <= 1) {
 		return withExitCode(exitConfig, fmt.Errorf("invalid --min-confidence %v: must be from 0 to 1", o.minConfidence))
 	}
 	entityID, err := entityIDFromRuleID(ruleID)
