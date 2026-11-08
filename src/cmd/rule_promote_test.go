@@ -142,11 +142,35 @@ func TestRulePromoteRuleChangedWhileVerifying(t *testing.T) {
 		},
 	}, nil)
 
-	_, err := runPromoteGated(t, dir)
+	out, err := runPromoteGated(t, dir, "--json")
 	assertExit(t, err, exitViolations)
 	testutil.AssertContains(t, err.Error(), "changed while it was being verified")
 	if got := stateOfTST002(t, dir); got != "P" {
 		t.Errorf("state = %s, want P (refused)", got)
+	}
+	// The JSON report says so, with the verdict it no longer applies to.
+	var res promoteOutput
+	if jsonErr := json.Unmarshal([]byte(out), &res); jsonErr != nil {
+		t.Fatalf("decoding JSON: %v\n%s", jsonErr, out)
+	}
+	if res.NewState != "" || res.Version != "" || !strings.Contains(res.Error, "changed while it was being verified") || res.Verify == nil {
+		t.Errorf("report = %+v", res)
+	}
+}
+
+func TestRulePromoteInvalidStateJSON(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "I", "Implemented", "github:alice"))
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "promote", "TST-001", "--dir", dir, "--json")
+	if err == nil {
+		t.Fatal("expected error promoting Implemented rule")
+	}
+	var res promoteOutput
+	if jsonErr := json.Unmarshal([]byte(out), &res); jsonErr != nil {
+		t.Fatalf("decoding JSON: %v\n%s", jsonErr, out)
+	}
+	if res.OldState != "I" || res.NewState != "" || res.Error == "" {
+		t.Errorf("report = %+v", res)
 	}
 }
 

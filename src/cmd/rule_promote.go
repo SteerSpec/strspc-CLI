@@ -129,7 +129,9 @@ func runRulePromote(ctx context.Context, out, errOut io.Writer, ruleID string, o
 		return nil
 	})
 	if err != nil {
-		return err
+		// Nothing was promoted, whatever the change got to before failing.
+		res.NewState, res.Version = "", ""
+		return reportRefusal(out, &res, o.jsonOut, err)
 	}
 
 	if o.jsonOut {
@@ -239,8 +241,9 @@ func refusalReason(vr *verifyRule, minConfidence float64) string {
 	return "it could not be judged"
 }
 
-// reportRefusal reports a refused promotion and returns cause, whose exit
-// code stands even when the report cannot be written (CMD-008).
+// reportRefusal reports a promotion refused by the gate, or that failed
+// once the entity file was read to be changed, and returns cause, whose
+// exit code stands even when the report cannot be written (CMD-008).
 func reportRefusal(out io.Writer, res *promoteOutput, jsonOut bool, cause error) error {
 	if jsonOut {
 		res.Error = cause.Error()
