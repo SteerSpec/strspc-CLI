@@ -43,7 +43,7 @@ Rule lifecycle is forward-only and no state may be skipped:
 | State | Meaning | Move on with |
 | ----- | ------- | ------------ |
 | D Draft | text may still change (`rule update`) | `rule promote` to P, or `rule abandon` |
-| P Published | text is final, code may still violate it | `rule promote` to I |
+| P Published | text is final, code may still violate it | `rule promote` to I, which verifies the code first |
 | I Implemented | enforced in CI when listed in `fail_on` | `rule retire` to R |
 | R Retired | no longer applies | `rule retire` to T |
 

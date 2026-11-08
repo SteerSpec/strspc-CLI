@@ -14,7 +14,7 @@ flowchart LR
     T["<b>T</b>erminated"]
 
     D -->|rule promote| P
-    P -->|rule promote| I
+    P -->|rule promote, once verified| I
     I -->|rule retire| R
     R -->|rule retire| T
     D -->|rule abandon| A
@@ -53,8 +53,20 @@ first: it sizes the run without sending anything.
 ```bash
 strspc rule verify CFG-002 --path src --dry-run   # files, tokens, requests
 strspc rule verify CFG-002 --path src --effort high
-strspc rule promote CFG-002                       # once it's compliant
+strspc rule promote CFG-002 --path src            # verifies again, then P → I
 ```
+
+**The promotion gate.** `rule promote` runs the same verification before it takes a rule from
+Published to Implemented, with the same `--path`, `--exclude`, `--effort`, `--model` and
+`--no-cache` flags, and refuses (exit 1) unless the code is judged `compliant` with a confidence of
+at least `--min-confidence` (default 0.8). A violation refuses it, and so does a verdict that isn't
+conclusive: `unknown`, `not_applicable` (no code the rule applies to was found), or one below the
+threshold, such as a violation reported at 0.55. Models can be wrong about facts outside the code,
+like whether a URL resolves, and a low confidence is the sign. When verification can't run (no
+`.strspc/config.yaml`, no AI provider, provider unavailable, or the rule isn't in the configured
+sources) the promotion is refused with verify's exit code. `--skip-verify` promotes without
+verifying, for a rule a person has checked or a project without an AI provider. Draft → Published
+is never verified.
 
 The files read stand for the whole code: `--path` and `--exclude` narrow what counts as existing.
 Excluding tests (`--exclude '**/*_test.go'`) is fine for a rule about production code, but makes a rule
