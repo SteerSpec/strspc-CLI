@@ -350,12 +350,33 @@ func TestStandardsCoverageLinkedNotStandardRealm(t *testing.T) {
 }
 
 // TestStandardsCoverageUnlinkedHasNoFigures keeps the report of references
-// with no realm as it was, with an empty figures array.
+// with no realm as it was, with an empty figures array and the legend of
+// before.
 func TestStandardsCoverageUnlinkedHasNoFigures(t *testing.T) {
 	dir := setupCoverageProject(t, "null", "./rules")
 	out, err := runCoverage(t, dir, "--json")
 	assertExit(t, err, exitOK)
 	testutil.AssertContains(t, out, `"figures": []`)
+
+	out, err = runCoverage(t, dir)
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, out, "SteerSpec holds no clause lists, so a clause no rule maps isn't shown.")
+	for _, linked := range []string{"unmapped", "excluded", "Standard Realm", "covered ("} {
+		testutil.AssertNotContains(t, out, linked)
+	}
+}
+
+// TestStandardsCoverageSameEUIDInTwoSources fails, rather than drop one of
+// them, when two sources provide the same EUID: resolution refuses it
+// (RSV005), so coverage never measures one entity in place of the other.
+func TestStandardsCoverageSameEUIDInTwoSources(t *testing.T) {
+	dir := setupCoverageProject(t, "null", "./rules/", "./lib/")
+	writeInheritFile(t, filepath.Join(dir, "lib"), "AUTH", withStandardNotes(inheritEntityJSON("AUTH", "", "",
+		inheritRule{id: "AUTH-001", state: "I"}),
+		[2]string{"AUTH-001", "iso.iec27001:A.7"}))
+	out, err := runCoverage(t, dir)
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, out, "RSV005")
 }
 
 func TestCoveragePercent(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -181,7 +182,9 @@ func coverageEntries(entries []ruleresolve.SourceEntry, all bool) []ruleresolve.
 }
 
 // coverageReport builds the report from what resolveRules left. Every entity
-// counts once, also when a source is listed twice.
+// counts once, also when a source is listed twice, and so does each Realm tree
+// added to the links. Two sources can't share an EUID: resolution refuses it
+// (RSV005).
 func (r *checkRun) coverageReport(evaluator coverageEvaluator) *coverageOutput {
 	var entities []*realmresolve.Inheritance
 	seen := make(map[string]bool)
@@ -193,8 +196,12 @@ func (r *checkRun) coverageReport(evaluator coverageEvaluator) *coverageOutput {
 		if tree == nil {
 			continue
 		}
-		if !added[tree.dir] {
-			added[tree.dir] = true
+		treeKey := tree.dir
+		if abs, err := filepath.Abs(tree.dir); err == nil {
+			treeKey = abs
+		}
+		if !added[treeKey] {
+			added[treeKey] = true
 			if err := links.AddTree(tree.dir, tree.manifest, tree.resolved); err != nil {
 				warnings = append(warnings, fmt.Sprintf("%s: no coverage figure: %v", e.Source, err))
 			}
@@ -420,8 +427,13 @@ func writeCoverage(w io.Writer, report *coverageOutput) {
 			writeln(w, fmt.Sprintf("  %s (note %s)", coverageCell(m.Rule), coverageCell(m.Note)))
 		}
 	}
-	writeln(w, "\ncovered: an Implemented rule maps the clause. mapped: only a rule in another state does.\n"+
-		"lapsed: the rule mapping it was retired or replaced. cited: the standard is a source, with no claim.\n"+
+	legend := "\ncovered: an Implemented rule maps the clause. mapped: only a rule in another state does.\n" +
+		"lapsed: the rule mapping it was retired or replaced. cited: the standard is a source, with no claim.\n"
+	if len(report.Figures) == 0 {
+		writeln(w, legend+"SteerSpec holds no clause lists, so a clause no rule maps isn't shown.")
+		return
+	}
+	writeln(w, legend+
 		"excluded: a Realm Note excludes the clause. unmapped: no rule maps a clause of the linked list.\n"+
 		"A figure is covered of the linked list less the excluded clauses, undefined when every clause is\n"+
 		"excluded. Without a linked Standard Realm, a clause no rule maps isn't shown.")

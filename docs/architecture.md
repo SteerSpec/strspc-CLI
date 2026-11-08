@@ -5,7 +5,7 @@ Back to the [README](../README.md).
 ## Architecture
 
 The [Rule Manager specification](https://github.com/SteerSpec/strspc-manager/blob/v1.47.0/docs/SPEC.md)
-(cited below as SPEC, at v1.45.0, the manager version this CLI imports) is a draft that this CLI
+(cited below as SPEC, at v1.47.0, the manager version this CLI imports) is a draft that this CLI
 follows. Its principles shape how the CLI works:
 
 - **JSON is the source of truth.** Markdown is a rendered view.
