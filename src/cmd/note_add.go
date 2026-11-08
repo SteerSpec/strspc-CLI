@@ -56,6 +56,9 @@ Examples:
 			if err != nil {
 				return err
 			}
+			if err := checkCoreAcceptsNoteType(dir, target.path, noteType); err != nil {
+				return err
+			}
 			addedBy, addedBySource, err := resolveAddedBy(addedBy, cmd.Flags().Changed("added-by"), target, dir)
 			if err != nil {
 				return err

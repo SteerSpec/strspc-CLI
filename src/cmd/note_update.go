@@ -68,6 +68,9 @@ Examples:
 			if err != nil {
 				return err
 			}
+			if err := checkCoreAcceptsNoteType(dir, target.path, noteType); err != nil {
+				return err
+			}
 
 			var (
 				oldVersion, version string
