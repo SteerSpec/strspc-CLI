@@ -306,6 +306,49 @@ func TestRealmDepRemoveTree(t *testing.T) {
 		testutil.AssertContains(t, err.Error(), "still linked by 1 ")
 	})
 
+	// A Realm that doesn't declare the dependency has nothing to remove: the
+	// command's own error, not a link scan.
+	t.Run("not declared here", func(t *testing.T) {
+		dir := t.TempDir()
+		setupLinkRealm(t, dir)
+		if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+			rf.Realm.Standards = append(rf.Realm.Standards, entity.StandardRef{
+				ID: "iso.27001", Relation: entity.RelationImplements, Version: "1.0.0", Realm: undeclaredStdRealm,
+			})
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		_, err := runStrspc(t, "realm", "dep", "remove", undeclaredStdRealm, "--dir", dir)
+		if err == nil || !strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "still linked") {
+			t.Errorf("err = %v, want the dependency not found", err)
+		}
+	})
+
+	// From a nested sub-realm, the parent's references also find the realm in
+	// the parent's own parent, as validate on the parent reads them.
+	t.Run("nested sub-realm", func(t *testing.T) {
+		top, mid := setup(t)
+		setupSubRealm(t, mid, "leaf", "dev.steerspec.test.auth")
+		leaf := filepath.Join(mid, "leaf")
+		if err := loadModifyWriteRealm(filepath.Join(mid, "realm.json"), func(rf *entity.RealmFile) error {
+			rf.SubRealms = []string{"leaf"}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		addDep(t, top, testStdRealm, "5.0.0")
+		addDep(t, leaf, testStdRealm, "5.0.0")
+		setupEntityFile(t, mid, "MID", makeRule("MID-001", "D", "The system MUST log.", "github:alice"))
+		if _, err := runStrspc(t, "entity", "standards", "add", "MID", "--id", "owasp.asvs", "--relation", "implements",
+			"--version", "5.0.0", "--realm", testStdRealm, "--dir", mid); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := runStrspc(t, "realm", "dep", "remove", testStdRealm, "--dir", leaf); err != nil {
+			t.Errorf("remove from the leaf while the top Realm still declares it: %v", err)
+		}
+	})
+
 	t.Run("many links", func(t *testing.T) {
 		dir, _ := setup(t)
 		addDep(t, dir, testStdRealm, "5.0.0")

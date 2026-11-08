@@ -99,12 +99,15 @@ func checkStandardRealmDeclared(dir, realmID string) error {
 //   - from dir: the references of dir and its sub-realms, which find their
 //     realm in dir, its parent or its sub-realms;
 //   - from dir's parent, when dir is a sub-realm: every reference of the
-//     parent's tree, which find their realm anywhere in that tree.
+//     parent's tree, which find their realm in the parent, its own parent or
+//     its sub-realms.
 //
-// A scope where another Realm declares realmID too loses nothing.
+// A scope where another Realm declares realmID too loses nothing. A Realm
+// that doesn't declare realmID has nothing to remove, which the command
+// reports itself.
 func checkDepUnlinked(dir, realmID string) error {
 	rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
-	if err != nil {
+	if err != nil || !declaresDep(rf, realmID) {
 		return nil
 	}
 	self := treeRealm{dir, rf}
@@ -166,9 +169,10 @@ func checkDepUnlinked(dir, realmID string) error {
 		collect(self, own)
 	}
 	if parent != nil {
-		tree := append([]treeRealm{*parent}, subRealmsOf(parent.dir, parent.rf)...)
-		if !declaredElsewhere(tree) {
-			collect(*parent, tree)
+		// Validated from the parent: its references and its sub-realms' find
+		// their realm in the parent's scope, its own parent included.
+		if !declaredElsewhere(standardScope(parent.dir)) {
+			collect(*parent, append([]treeRealm{*parent}, subRealmsOf(parent.dir, parent.rf)...))
 		}
 	}
 	if len(linked) == 0 {
