@@ -379,6 +379,24 @@ func TestStandardsCoverageSameEUIDInTwoSources(t *testing.T) {
 	testutil.AssertContains(t, out, "RSV005")
 }
 
+// TestFigureText says why a figure is undefined: every clause excluded, or a
+// profile that lists none.
+func TestFigureText(t *testing.T) {
+	for _, tc := range []struct {
+		total, excluded, covered int
+		want                     string
+	}{
+		{4, 1, 2, "2 of 3 covered (66.6 %)"},
+		{4, 4, 0, "undefined, every clause is excluded"},
+		{0, 0, 0, "undefined, the clause list is empty"},
+	} {
+		f := &coverageFigure{Total: tc.total, Excluded: tc.excluded, Covered: tc.covered}
+		if got := figureText(f); got != tc.want {
+			t.Errorf("figureText(%+v) = %q, want %q", tc, got, tc.want)
+		}
+	}
+}
+
 func TestCoveragePercent(t *testing.T) {
 	for _, tc := range []struct {
 		covered, total int

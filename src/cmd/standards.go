@@ -121,7 +121,7 @@ func newStandardsCoverageCmd() *cobra.Command {
 			"narrowed to its `profile` (STDREF-020). A clause of the list no rule maps is unmapped, and one an\n" +
 			"exclusion Realm Note names is excluded (STDREF-022, STDREF-023). Each entity, and the Realm as a\n" +
 			"whole, gets a figure: the clauses covered over those of the list less the excluded (STDREF-024,\n" +
-			"STDREF-025), undefined when every clause is excluded (STDREF-028). An implements reference only:\n" +
+			"STDREF-025), undefined when none is left (STDREF-028). An implements reference only:\n" +
 			"derived_from gets none (STDREF-026). Without a linked Standard Realm, a clause no rule maps\n" +
 			"isn't shown: SteerSpec holds no clause lists.\n\n" +
 			"The report covers the local sources in .strspc/config.yaml that have a realm.json, with their\n" +
@@ -435,8 +435,8 @@ func writeCoverage(w io.Writer, report *coverageOutput) {
 	}
 	writeln(w, legend+
 		"excluded: a Realm Note excludes the clause. unmapped: no rule maps a clause of the linked list.\n"+
-		"A figure is covered of the linked list less the excluded clauses, undefined when every clause is\n"+
-		"excluded. Without a linked Standard Realm, a clause no rule maps isn't shown.")
+		"A figure is covered of the linked list less the excluded clauses, undefined when none is left.\n"+
+		"Without a linked Standard Realm, a clause no rule maps isn't shown.")
 }
 
 // writeCoverageFigures prints the figures of one standard: for each linked
@@ -490,10 +490,15 @@ func writeCoverageExclusions(w io.Writer, g *coverageGroup) {
 }
 
 // figureText renders a figure: covered of the clauses counted, or undefined
-// when every clause is excluded (STDREF-028), never 0 % or 100 %.
+// when none is counted (STDREF-028), never 0 % or 100 %: every clause is
+// excluded, or the profile lists none.
 func figureText(f *coverageFigure) string {
 	counted := f.Total - f.Excluded
-	if counted <= 0 {
+	switch {
+	case counted > 0:
+	case f.Total == 0:
+		return "undefined, the clause list is empty"
+	default:
 		return "undefined, every clause is excluded"
 	}
 	return fmt.Sprintf("%d of %d covered (%s)", f.Covered, counted, coveragePercent(f.Covered, counted))

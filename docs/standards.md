@@ -94,8 +94,9 @@ A reference linked with `--realm` is measured against that realm's clause list, 
 `excluded`, with the justification (STDREF-022, STDREF-023). Each entity, and the Realm as a whole,
 gets a figure: the clauses covered over those of the list less the excluded (STDREF-024,
 STDREF-025). A clause that several rules of the Standard Realm transcribe counts once. The Realm figure
-counts a clause covered when any entity of the tree covers it. The figure is `undefined` when every
-clause is excluded (STDREF-028), never 0 % or 100 %, and the percentage is truncated, so 100 % means
+counts a clause covered when any entity of the tree covers it. The figure is `undefined` when no
+clause is left to count, because every clause is excluded or the profile lists none (STDREF-028),
+never 0 % or 100 %, and the percentage is truncated, so 100 % means
 every clause. Only an `implements` reference gets one (STDREF-026).
 
 ```text
