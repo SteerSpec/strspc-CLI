@@ -64,7 +64,8 @@ conclusive: `unknown`, `not_applicable` (no code the rule applies to was found),
 threshold, such as a violation reported at 0.55. Models can be wrong about facts outside the code,
 like whether a URL resolves, and a low confidence is the sign. When verification can't run (no
 `.strspc/config.yaml`, no AI provider, provider unavailable, or the rule isn't in the configured
-sources) the promotion is refused with verify's exit code. `--skip-verify` promotes without
+sources) the promotion is refused with verify's exit code. So is a rule whose copy under `--dir`
+differs from the one in the configured sources, since the verdict wouldn't be about it. `--skip-verify` promotes without
 verifying, for a rule a person has checked or a project without an AI provider. Draft → Published
 is never verified.
 

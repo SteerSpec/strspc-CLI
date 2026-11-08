@@ -52,7 +52,8 @@ func newRulePromoteCmd() *cobra.Command {
 			"rule is promoted only when the code complies with a confidence of at least\n" +
 			"--min-confidence. A violation refuses the promotion, and so does any verdict that is not\n" +
 			"conclusive: unknown, not applicable (no code it applies to was found), or below the\n" +
-			"threshold. --path and --exclude choose the files read, as for rule verify, and narrow what\n" +
+			"threshold. The rule is read from the configured sources, so its copy under --dir must be\n" +
+			"the same. --path and --exclude choose the files read, as for rule verify, and narrow what\n" +
 			"counts as existing. --skip-verify promotes without verifying, for a rule a person has\n" +
 			"checked or a project without an AI provider.\n\n" +
 			"Exit codes: 0 promoted, 1 refused (violated or inconclusive) or the promotion failed,\n" +
@@ -95,13 +96,18 @@ func runRulePromote(ctx context.Context, out, errOut io.Writer, ruleID string, o
 	}
 
 	res := promoteOutput{RuleID: ruleID}
-	if res.OldState, res.OldVersion, err = ruleStateOf(target, ruleID); err != nil {
+	rule, version, err := ruleOf(target, ruleID)
+	if err != nil {
 		return err
+	}
+	res.OldVersion = version
+	if rule != nil {
+		res.OldState = rule.State
 	}
 	if res.OldState == stateCodePublished {
 		if o.skipVerify {
 			res.VerifySkipped = true
-		} else if gateErr := gatePromotion(ctx, errOut, &res, o); gateErr != nil {
+		} else if gateErr := gatePromotion(ctx, errOut, &res, rule, o); gateErr != nil {
 			return reportRefusal(out, &res, o.jsonOut, gateErr)
 		}
 	}
@@ -138,32 +144,39 @@ func runRulePromote(ctx context.Context, out, errOut io.Writer, ruleID string, o
 // whose promotion is gated.
 const stateCodePublished = "P"
 
-// ruleStateOf reads the state of ruleID and the version of its entity,
-// without changing the file.
-func ruleStateOf(t entityTarget, ruleID string) (state, version string, err error) {
+// ruleOf reads ruleID, nil when the entity has no such rule, and the version
+// of its entity, without changing the file.
+func ruleOf(t entityTarget, ruleID string) (rule *entity.Rule, version string, err error) {
 	f, err := entity.Load(t.path)
 	if err != nil {
-		return "", "", fmt.Errorf("loading entity file: %w", err)
+		return nil, "", fmt.Errorf("loading entity file: %w", err)
 	}
 	if t.subID != "" {
 		if f = findSubEntity(f, t.subID); f == nil {
-			return "", "", fmt.Errorf("sub-entity %q not found in %s", t.subID, t.path)
+			return nil, "", fmt.Errorf("sub-entity %q not found in %s", t.subID, t.path)
 		}
 	}
-	if r := findRule(f, ruleID); r != nil {
-		state = r.State
-	}
 	// A missing rule is left to entityops.PromoteRule to report.
-	return state, f.RuleSet.Version, nil
+	return findRule(f, ruleID), f.RuleSet.Version, nil
 }
 
-// gatePromotion verifies the rule against the code before Published →
-// Implemented and records the verdict in res. It returns why the promotion
-// is refused, with the exit code it carries, or nil to promote.
-func gatePromotion(ctx context.Context, errOut io.Writer, res *promoteOutput, o *promoteOptions) error {
+// gatePromotion verifies rule, as --dir holds it, against the code before
+// Published → Implemented and records the verdict in res. It returns why
+// the promotion is refused, with the exit code it carries, or nil to
+// promote.
+func gatePromotion(ctx context.Context, errOut io.Writer, res *promoteOutput, rule *entity.Rule, o *promoteOptions) error {
 	report, err := verifyRules(ctx, errOut, []string{res.RuleID}, &o.verify)
 	if report != nil && len(report.Rules) == 1 {
 		res.Verify = &report.Rules[0]
+	}
+	if res.Verify != nil && !sameRule(res.Verify, rule) {
+		// verify reads the rule from the configured sources, promote writes
+		// it under --dir: a verdict on another copy says nothing about this one.
+		res.Verify = nil
+		return withExitCode(exitConfig, fmt.Errorf("cannot verify %s before promoting it to Implemented: "+
+			"the configured sources of .strspc/config.yaml in --project hold a different %s than --dir; "+
+			"point --dir and --project at the same rules, or pass --skip-verify to promote it unverified",
+			res.RuleID, res.RuleID))
 	}
 	if res.Verify == nil {
 		// The run failed before judging the rule: configuration, sources,
@@ -185,18 +198,31 @@ func gatePromotion(ctx context.Context, errOut io.Writer, res *promoteOutput, o 
 	return nil
 }
 
+// sameRule reports whether the rule verify judged is the rule promote is
+// about to change: same text, revision and state.
+func sameRule(judged *verifyRule, promoted *entity.Rule) bool {
+	return promoted != nil && judged.ID == promoted.ID && judged.body == promoted.Body &&
+		judged.revision == promoted.Revision && judged.State == promoted.State
+}
+
+// confident reports whether c is a confidence from minConfidence to 1. It
+// is written so a NaN confidence, which fails every comparison, is not.
+func confident(c, minConfidence float64) bool {
+	return c >= minConfidence && c <= 1
+}
+
 // refusalReason says why a verdict does not let a rule be promoted to
 // Implemented, or "" when it does: only a compliant verdict at minConfidence
 // or above does.
 func refusalReason(vr *verifyRule, minConfidence float64) string {
 	switch vr.Verdict {
 	case verifyCompliant:
-		if vr.Confidence < minConfidence {
+		if !confident(vr.Confidence, minConfidence) {
 			return fmt.Sprintf("the code was judged compliant with confidence %.2f, below --min-confidence %.2f", vr.Confidence, minConfidence)
 		}
 		return ""
 	case verifyViolated:
-		if vr.Confidence < minConfidence {
+		if !confident(vr.Confidence, minConfidence) {
 			return fmt.Sprintf("the code was judged in breach with confidence %.2f, below --min-confidence %.2f: "+
 				"check the evidence, the verdict may be wrong", vr.Confidence, minConfidence)
 		}

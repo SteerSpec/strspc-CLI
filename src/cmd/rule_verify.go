@@ -101,6 +101,10 @@ type verifyRule struct {
 	Explanation string           `json:"explanation,omitempty"`
 	Confidence  float64          `json:"confidence,omitempty"`
 	Evidence    []verifyEvidence `json:"evidence,omitempty"`
+	// body and revision are the rule's as judged, as the configured
+	// sources hold it.
+	body     string
+	revision int
 }
 
 // verifyEvidence is a provider-cited location. LineConfirmed reports that
@@ -847,7 +851,7 @@ func (v *verdictRecorder) report(inputs []ruleeval.RuleInput) []verifyRule {
 	out := make([]verifyRule, 0, len(inputs))
 	for i := range inputs {
 		rule := inputs[i].Rule
-		vr := verifyRule{ID: rule.ID, State: rule.State, Verdict: verifyUnknown}
+		vr := verifyRule{ID: rule.ID, State: rule.State, Verdict: verifyUnknown, body: rule.Body, revision: rule.Revision}
 		if resp, ok := v.verdicts[rule.ID]; ok {
 			switch resp.Verdict {
 			case ruleeval.Compliant:

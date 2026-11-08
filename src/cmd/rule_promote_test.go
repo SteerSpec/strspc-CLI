@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -187,6 +188,28 @@ func TestRulePromoteGateCannotRun(t *testing.T) {
 			t.Errorf("state = %s, want P", got)
 		}
 	})
+	t.Run("another copy of the rule", func(t *testing.T) {
+		dir := setupVerifyRepo(t, "claude")
+		stub := &stubProvider{verdicts: map[string]*ruleeval.EvalResponse{
+			"TST-002": {Verdict: ruleeval.Compliant, Confidence: 0.95},
+		}}
+		stubEvalProvider(t, stub, nil)
+		other := t.TempDir()
+		setupEntityFile(t, other, "TST", makeRule("TST-002", "P", "Another text", "github:alice"))
+		out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "promote", "TST-002", "--dir", other, "--project", dir, "--json")
+		assertExit(t, err, exitConfig)
+		testutil.AssertContains(t, err.Error(), "hold a different TST-002 than --dir")
+		var res promoteOutput
+		if jsonErr := json.Unmarshal([]byte(out), &res); jsonErr != nil {
+			t.Fatalf("decoding JSON: %v\n%s", jsonErr, out)
+		}
+		if res.Verify != nil {
+			t.Errorf("a verdict on another copy must not be reported: %+v", res.Verify)
+		}
+		if f := loadEntityFile(t, other, "TST"); f.Rules[0].State != "P" {
+			t.Errorf("state = %s, want P", f.Rules[0].State)
+		}
+	})
 	t.Run("rule outside the sources", func(t *testing.T) {
 		dir := setupVerifyRepo(t, "claude")
 		stubEvalProvider(t, &stubProvider{}, nil)
@@ -220,6 +243,10 @@ func TestRefusalReason(t *testing.T) {
 		{verifyRule{Verdict: verifyCompliant, Confidence: 0.79}, "below --min-confidence"},
 		{verifyRule{Verdict: verifyViolated, Confidence: 0.9}, "the code violates it"},
 		{verifyRule{Verdict: verifyViolated, Confidence: 0.5}, "the verdict may be wrong"},
+		{verifyRule{Verdict: verifyCompliant, Confidence: math.NaN()}, "below --min-confidence"},
+		{verifyRule{Verdict: verifyCompliant, Confidence: math.Inf(1)}, "below --min-confidence"},
+		{verifyRule{Verdict: verifyCompliant, Confidence: 1.5}, "below --min-confidence"},
+		{verifyRule{Verdict: verifyViolated, Confidence: math.NaN()}, "the verdict may be wrong"},
 		{verifyRule{Verdict: verifyNotApplicable}, "no code it applies to"},
 		{verifyRule{Verdict: verifyUnknown}, "could not be judged"},
 	}
