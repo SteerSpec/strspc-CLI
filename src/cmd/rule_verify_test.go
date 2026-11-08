@@ -411,6 +411,9 @@ func TestRuleVerifyReportsEachVerdict(t *testing.T) {
 	if vo.OK || vo.Effort != "high" || vo.Provider != "claude" || vo.Scope != "all tracked files" {
 		t.Errorf("report header = %+v", vo)
 	}
+	if len(vo.FilesHash) != 64 || vo.AuditPrompt != "test/audit" {
+		t.Errorf("files hash %q, audit prompt %q", vo.FilesHash, vo.AuditPrompt)
+	}
 	if vo.Estimate.Files != 2 {
 		t.Errorf("files = %d, want 2 (untracked, .strspc/ and rules/ are not read)", vo.Estimate.Files)
 	}

@@ -41,7 +41,13 @@ type promoteOutput struct {
 	// Diagnostics are those of the verify run, such as RE002 for a request
 	// that failed: what explains a verdict the provider could not give.
 	Diagnostics []explainedDiagnostic `json:"diagnostics,omitempty"`
-	Error       string                `json:"error,omitempty"`
+	// Record is the verify record written for a promotion to Implemented,
+	// relative to --project, to be committed with the change to rules/.
+	Record string `json:"record,omitempty"`
+	Error  string `json:"error,omitempty"`
+
+	// report is the verify run the gate made.
+	report *verifyOutput
 }
 
 func newRulePromoteCmd() *cobra.Command {
@@ -60,8 +66,13 @@ func newRulePromoteCmd() *cobra.Command {
 			"the same. --path and --exclude choose the files read, as for rule verify, and narrow what\n" +
 			"counts as existing. --skip-verify promotes without verifying, for a rule a person has\n" +
 			"checked or a project without an AI provider.\n\n" +
+			"A promotion to Implemented writes .strspc/verified/<rule_id>.json in --project: the rule\n" +
+			"text's hash, the files read and their hash, the provider, model and effort, and the\n" +
+			"verdict with its explanation, confidence and evidence (or that verification was\n" +
+			"skipped). Commit it with the change to rules/. A project without .strspc/ gets none.\n\n" +
 			"Exit codes: 0 promoted, 1 refused (violated or inconclusive) or the promotion failed,\n" +
-			"2 configuration or rule resolution error, 3 AI provider unavailable.",
+			"2 configuration or rule resolution error, 3 AI provider unavailable, 4 promoted but the\n" +
+			"verify record could not be written.",
 		Example: "  strspc rule promote MYE-001\n" +
 			"  strspc rule promote MYE-002 --path src --exclude '**/*_test.go' --effort high\n" +
 			"  strspc rule promote MYE-002 --skip-verify --json",
@@ -116,6 +127,8 @@ func runRulePromote(ctx context.Context, out, errOut io.Writer, ruleID string, o
 		}
 	}
 
+	var promoted entity.Rule
+	var stamp string
 	err = modifyEntity(target, func(f *entity.File) error {
 		// The file is read again to be changed: a rule edited while it was
 		// being verified is not the rule the verdict is about.
@@ -126,9 +139,9 @@ func runRulePromote(ctx context.Context, out, errOut io.Writer, ruleID string, o
 		if promoteErr := entityops.PromoteRule(f, ruleID); promoteErr != nil {
 			return promoteErr
 		}
-		res.Version = f.RuleSet.Version
+		res.Version, stamp = f.RuleSet.Version, f.RuleSet.Timestamp
 		if r := findRule(f, ruleID); r != nil {
-			res.NewState = r.State
+			res.NewState, promoted = r.State, *r
 		}
 		return nil
 	})
@@ -138,8 +151,24 @@ func runRulePromote(ctx context.Context, out, errOut io.Writer, ruleID string, o
 		return reportRefusal(out, &res, o.jsonOut, err)
 	}
 
+	// A promotion to Implemented leaves a record of what it rested on.
+	var recordErr error
+	if res.OldState == stateCodePublished {
+		rec := newVerifyRecord(&promoted, res.Version, stamp, res.report, res.Verify, o.minConfidence)
+		res.Record, recordErr = writeVerifyRecord(o.verify.project, &rec)
+		if errors.Is(recordErr, errNoStrspcDir) {
+			recordErr = nil // nowhere to keep it; said below
+		} else if recordErr != nil {
+			recordErr = withExitCode(exitOutput, fmt.Errorf("promoted %s, but its verify record could not be written: %w", ruleID, recordErr))
+			res.Error = recordErr.Error()
+		}
+	}
+
 	if o.jsonOut {
-		return writeJSONOutput(out, res)
+		if err := writeJSONOutput(out, res); err != nil && recordErr == nil {
+			return err
+		}
+		return recordErr
 	}
 	printPromoteVerdict(out, &res)
 	writeln(out, brandStyle.Render(fmt.Sprintf("Promoted rule %s: %s → %s", ruleID, stateLabel(res.OldState), stateLabel(res.NewState))))
@@ -147,7 +176,13 @@ func runRulePromote(ctx context.Context, out, errOut io.Writer, ruleID string, o
 	if res.VerifySkipped {
 		writeln(out, descStyle.Render("  Not verified (--skip-verify)"))
 	}
-	return nil
+	switch {
+	case res.Record != "":
+		writeln(out, descStyle.Render(fmt.Sprintf("  Recorded in %s: commit it with the change to rules/", res.Record)))
+	case res.OldState == stateCodePublished && recordErr == nil:
+		writeln(out, descStyle.Render("  Not recorded: --project has no .strspc/ directory"))
+	}
+	return recordErr
 }
 
 // stateCodePublished is the state code of a Published rule, the one state
@@ -177,6 +212,7 @@ func ruleOf(t entityTarget, ruleID string) (rule *entity.Rule, version string, e
 func gatePromotion(ctx context.Context, errOut io.Writer, res *promoteOutput, rule *entity.Rule, o *promoteOptions) error {
 	report, err := verifyRules(ctx, errOut, []string{res.RuleID}, &o.verify)
 	if report != nil {
+		res.report = report
 		res.Diagnostics = report.Diagnostics
 		if len(report.Rules) == 1 {
 			res.Verify = &report.Rules[0]

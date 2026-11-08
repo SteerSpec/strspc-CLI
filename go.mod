@@ -10,6 +10,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
 	gopkg.in/yaml.v3 v3.0.1
+	lukechampine.com/blake3 v1.4.1
 )
 
 require (
@@ -47,5 +48,4 @@ require (
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
-	lukechampine.com/blake3 v1.4.1 // indirect
 )

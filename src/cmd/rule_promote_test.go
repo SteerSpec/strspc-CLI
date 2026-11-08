@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -71,6 +72,79 @@ func TestRulePromotePublishedToImplemented(t *testing.T) {
 	}
 	if got := stateOfTST002(t, dir); got != "I" {
 		t.Errorf("state = %s, want I", got)
+	}
+
+	// The promotion is recorded with what it rested on.
+	testutil.AssertContains(t, out, "Recorded in .strspc/verified/TST-002.json")
+	rec := readVerifyRecord(t, dir, "TST-002")
+	f := loadEntityFile(t, filepath.Join(dir, "rules"), "TST")
+	if rec.RuleID != "TST-002" || rec.Revision != 0 || !strings.HasPrefix(rec.BodyHash, "blake3:") || len(rec.BodyHash) != len("blake3:")+64 ||
+		rec.EntityVersion != f.RuleSet.Version || rec.PromotedAt != f.RuleSet.Timestamp || rec.Skipped {
+		t.Errorf("record identity = %+v", rec)
+	}
+	if rec.Scope != "tracked files under src" || rec.Files != 1 || len(rec.FilesHash) != 64 ||
+		rec.Provider != "claude" || rec.Model != "stub-model" || rec.AuditPrompt != "test/audit" || rec.MinConfidence != defaultMinConfidence {
+		t.Errorf("record run = %+v", rec)
+	}
+	if rec.Verdict != verifyCompliant || rec.Confidence != 0.9 || rec.Explanation != "every error is wrapped" ||
+		len(rec.Evidence) != 1 || !rec.Evidence[0].LineConfirmed {
+		t.Errorf("record verdict = %+v", rec)
+	}
+}
+
+// readVerifyRecord reads the verify record of ruleID under project.
+func readVerifyRecord(t *testing.T, project, ruleID string) verifyRecord {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(project, ".strspc", "verified", ruleID+".json"))
+	if err != nil {
+		t.Fatalf("reading verify record: %v", err)
+	}
+	var rec verifyRecord
+	if err := json.Unmarshal(data, &rec); err != nil {
+		t.Fatalf("decoding verify record: %v\n%s", err, data)
+	}
+	return rec
+}
+
+func TestRulePromoteRecordWriteFailure(t *testing.T) {
+	dir := setupVerifyRepo(t, "claude")
+	stubEvalProvider(t, &stubProvider{verdicts: map[string]*ruleeval.EvalResponse{
+		"TST-002": {Verdict: ruleeval.Compliant, Explanation: "fine", Confidence: 0.9},
+	}}, nil)
+	// A file where the records directory should be.
+	writeFile(t, dir, ".strspc/verified", "not a directory\n")
+
+	out, err := runPromoteGated(t, dir, "--json")
+	assertExit(t, err, exitOutput)
+	testutil.AssertContains(t, err.Error(), "promoted TST-002, but its verify record could not be written")
+	var res promoteOutput
+	if jsonErr := json.Unmarshal([]byte(out), &res); jsonErr != nil {
+		t.Fatalf("decoding JSON: %v\n%s", jsonErr, out)
+	}
+	if res.NewState != "I" || res.Record != "" || !strings.Contains(res.Error, "verify record") {
+		t.Errorf("report = %+v", res)
+	}
+	if got := stateOfTST002(t, dir); got != "I" {
+		t.Errorf("state = %s, want I (the promotion stands)", got)
+	}
+
+	// The human report says it was promoted, and exits the same.
+	dir = setupVerifyRepo(t, "claude")
+	writeFile(t, dir, ".strspc/verified", "not a directory\n")
+	out, err = runPromoteGated(t, dir)
+	assertExit(t, err, exitOutput)
+	testutil.AssertContains(t, out, "Published → Implemented")
+}
+
+func TestRulePromoteNoRecordOnRefusal(t *testing.T) {
+	dir := setupVerifyRepo(t, "claude")
+	stubEvalProvider(t, &stubProvider{verdicts: map[string]*ruleeval.EvalResponse{
+		"TST-002": {Verdict: ruleeval.Violated, Explanation: "bare error", Confidence: 0.95},
+	}}, nil)
+	_, err := runPromoteGated(t, dir)
+	assertExit(t, err, exitViolations)
+	if _, statErr := os.Stat(filepath.Join(dir, ".strspc", "verified")); !os.IsNotExist(statErr) {
+		t.Errorf("a refused promotion must leave no record: %v", statErr)
 	}
 }
 
@@ -249,11 +323,15 @@ func TestRulePromoteSkipVerify(t *testing.T) {
 	if jsonErr := json.Unmarshal([]byte(out), &res); jsonErr != nil {
 		t.Fatalf("decoding JSON: %v\n%s", jsonErr, out)
 	}
-	if !res.VerifySkipped || res.Verify != nil || res.NewState != "I" {
+	if !res.VerifySkipped || res.Verify != nil || res.NewState != "I" || res.Record != ".strspc/verified/TST-002.json" {
 		t.Errorf("report = %+v", res)
 	}
 	if stub.callCount() != 0 {
 		t.Errorf("provider calls = %d, want 0", stub.callCount())
+	}
+	// The record says verification was skipped, and carries no verdict.
+	if rec := readVerifyRecord(t, dir, "TST-002"); !rec.Skipped || rec.Verdict != "" || rec.Provider != "" || rec.MinConfidence != 0 {
+		t.Errorf("record = %+v", rec)
 	}
 
 	// The human report says so too.
@@ -401,10 +479,15 @@ func TestRulePromoteSubEntityGated(t *testing.T) {
 	assertExit(t, err, exitConfig)
 	testutil.AssertContains(t, err.Error(), "cannot verify SUB-001")
 
-	// ...unless verification is skipped.
-	out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "promote", "SUB-001", "--dir", dir, "--skip-verify")
+	// ...unless verification is skipped. The project has no .strspc/, so
+	// nothing is recorded, and none is created.
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "promote", "SUB-001", "--dir", dir, "--project", dir, "--skip-verify")
 	assertExit(t, err, exitOK)
 	testutil.AssertContains(t, out, "Published → Implemented")
+	testutil.AssertContains(t, out, "Not recorded: --project has no .strspc/ directory")
+	if _, statErr := os.Stat(filepath.Join(dir, ".strspc")); !os.IsNotExist(statErr) {
+		t.Errorf(".strspc/ must not be created: %v", statErr)
+	}
 }
 
 func TestRulePromoteInvalidState(t *testing.T) {
