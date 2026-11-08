@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/SteerSpec/strspc-manager/src/result"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval"
@@ -49,7 +50,7 @@ func newRuleVerifyCmd() *cobra.Command {
 			"and the lines it rests on. Something a rule requires that no file has is a violation. As with\n" +
 			"check, files under .strspc/ and rules/ are never read, even when --path matches them; nor are\n" +
 			"untracked, deleted, symlinked or binary files.\n\n" +
-			"This is the check to run before promoting a rule from Published to Implemented.\n\n" +
+			"This is the check rule promote runs before taking a rule from Published to Implemented.\n\n" +
 			"The files read stand for the whole code: --path and --exclude narrow what counts as existing,\n" +
 			"so excluding tests makes a rule such as \"every command has a test\" fail. A tree too large\n" +
 			"for one request is read in parts that collect what each file holds for each rule, then every\n" +
@@ -72,18 +73,24 @@ func newRuleVerifyCmd() *cobra.Command {
 	}
 
 	f := cmd.Flags()
+	addVerifyFlags(f, &o)
+	f.StringVar(&o.check.format, "format", formatHuman, "output format: human|json")
+	f.BoolVar(&o.dryRun, "dry-run", false, "report the size of the run without calling the provider")
+	return cmd
+}
+
+// addVerifyFlags registers the flags that choose what a verify run reads
+// and how it judges it, shared by rule verify and the gate of rule promote.
+func addVerifyFlags(f *pflag.FlagSet, o *verifyOptions) {
 	f.StringVar(&o.project, "project", ".", "project directory holding .strspc/config.yaml")
 	f.StringArrayVar(&o.paths, "path", nil, "only read tracked files matching this glob, relative to the project (repeatable)")
 	f.StringArrayVar(&o.excludes, "exclude", nil, "skip tracked files matching this glob, relative to the project (repeatable), e.g. '**/*_test.go'")
-	f.StringVar(&o.check.format, "format", formatHuman, "output format: human|json")
 	f.StringVar(&o.check.provider, "provider", "", "AI provider (overrides evaluator.provider): claude")
 	f.StringVar(&o.check.model, "model", "", "model identifier (overrides evaluator.model)")
 	f.StringVar(&o.check.effort, "effort", "", "reasoning effort (overrides evaluator.effort): low|medium|high|xhigh|max")
 	f.StringVar(&o.check.endpoint, "endpoint", "", "provider endpoint URL; opts in to a non-Anthropic host (also $"+envEvaluatorEndpoint+")")
 	f.BoolVar(&o.check.verbose, "verbose", false, "print resolution and usage details to stderr")
 	f.BoolVar(&o.check.noCache, "no-cache", false, "do not read or write the evaluation cache (.strspc/cache.db)")
-	f.BoolVar(&o.dryRun, "dry-run", false, "report the size of the run without calling the provider")
-	return cmd
 }
 
 // verifyRule is the outcome for one requested rule.
@@ -94,6 +101,10 @@ type verifyRule struct {
 	Explanation string           `json:"explanation,omitempty"`
 	Confidence  float64          `json:"confidence,omitempty"`
 	Evidence    []verifyEvidence `json:"evidence,omitempty"`
+	// body and revision are the rule's as judged, as the configured
+	// sources hold it.
+	body     string
+	revision int
 }
 
 // verifyEvidence is a provider-cited location. LineConfirmed reports that
@@ -144,10 +155,29 @@ type verifyRun struct {
 	*checkRun
 	files   []ruleeval.File
 	skipped []skippedFile
+	// capture keeps the report in report instead of printing it.
+	capture bool
+	report  *verifyOutput
 }
 
 func runVerify(ctx context.Context, out, errOut io.Writer, ids []string, o *verifyOptions) error {
 	r := &verifyRun{checkRun: &checkRun{ctx: ctx, out: out, errOut: errOut, cwd: o.project, opts: o.check}}
+	return r.run(ids, o)
+}
+
+// verifyRules runs rule verify for ids without printing its report. It
+// returns the report and the error matching its exit code, as rule verify
+// would exit. A failed run's report carries no rules, and none at all comes
+// back for an error that already carries its exit code.
+func verifyRules(ctx context.Context, errOut io.Writer, ids []string, o *verifyOptions) (*verifyOutput, error) {
+	opts := o.check
+	opts.format = formatJSON // the report is kept, never printed
+	r := &verifyRun{checkRun: &checkRun{ctx: ctx, out: io.Discard, errOut: errOut, cwd: o.project, opts: opts}, capture: true}
+	err := r.run(ids, &verifyOptions{check: opts, project: o.project, paths: o.paths, excludes: o.excludes})
+	return r.report, err
+}
+
+func (r *verifyRun) run(ids []string, o *verifyOptions) error {
 	if o.check.format != formatHuman && o.check.format != formatJSON {
 		return withExitCode(exitConfig, fmt.Errorf("invalid --format %q: must be human or json", o.check.format))
 	}
@@ -535,10 +565,13 @@ func (r *verifyRun) verifyOutput(code int, est verifyEstimate, diags []result.Di
 	return vo
 }
 
-// writeVerify prints the report and returns the error matching its exit
-// code. cause is the fatal error, if any.
-func (r *checkRun) writeVerify(vo *verifyOutput, cause error) error {
-	if r.opts.format == formatJSON {
+// writeVerify prints the report, or keeps it when capturing, and returns
+// the error matching its exit code. cause is the fatal error, if any.
+func (r *verifyRun) writeVerify(vo *verifyOutput, cause error) error {
+	switch {
+	case r.capture:
+		r.report = vo
+	case r.opts.format == formatJSON:
 		data, err := marshalIndentPrintable(vo)
 		if err == nil {
 			_, err = r.out.Write(data)
@@ -546,7 +579,7 @@ func (r *checkRun) writeVerify(vo *verifyOutput, cause error) error {
 		if err != nil && cause == nil {
 			return withExitCode(exitOutput, fmt.Errorf("writing JSON output: %w", err))
 		}
-	} else {
+	default:
 		r.printVerify(vo)
 	}
 	switch {
@@ -603,25 +636,31 @@ func (r *checkRun) printVerify(vo *verifyOutput) {
 		outputDiagnostics(w, &result.Result{Diagnostics: withLineInPath(diagsOf(vo.Diagnostics))}, false)
 	}
 	counts := map[string]int{}
-	for _, vr := range vo.Rules {
-		counts[vr.Verdict]++
-		line := fmt.Sprintf("%-12s %-15s", vr.ID, vr.Verdict)
-		if len(vr.Evidence) > 0 {
-			ev := vr.Evidence[0]
-			line += fmt.Sprintf(" %s:%d", ev.File, ev.Line)
-			if !ev.LineConfirmed {
-				line += " (line approximate)"
-			}
-		}
-		if vr.Explanation != "" {
-			line += "  " + vr.Explanation
-		}
-		writeln(w, sanitizeLine(line))
+	for i := range vo.Rules {
+		counts[vo.Rules[i].Verdict]++
+		writeln(w, verifyRuleLine(&vo.Rules[i]))
 	}
 	summary := fmt.Sprintf("Verified %d rule(s) against %s with %s/%s effort=%s: %d compliant, %d violated, %d not applicable, %d unknown",
 		len(vo.Rules), vo.Scope, vo.Provider, vo.Model, orDefault(vo.Effort, "default"),
 		counts[verifyCompliant], counts[verifyViolated], counts[verifyNotApplicable], counts[verifyUnknown])
 	writeln(w, brandStyle.Render(sanitizeLine(summary)))
+}
+
+// verifyRuleLine renders one rule's outcome as a line of the human report:
+// its ID, its verdict, the first location cited and the explanation.
+func verifyRuleLine(vr *verifyRule) string {
+	line := fmt.Sprintf("%-12s %-15s", vr.ID, vr.Verdict)
+	if len(vr.Evidence) > 0 {
+		ev := vr.Evidence[0]
+		line += fmt.Sprintf(" %s:%d", ev.File, ev.Line)
+		if !ev.LineConfirmed {
+			line += " (line approximate)"
+		}
+	}
+	if vr.Explanation != "" {
+		line += "  " + vr.Explanation
+	}
+	return sanitizeLine(line)
 }
 
 // verifyFail reports a fatal error in the selected format, with the files
@@ -812,7 +851,7 @@ func (v *verdictRecorder) report(inputs []ruleeval.RuleInput) []verifyRule {
 	out := make([]verifyRule, 0, len(inputs))
 	for i := range inputs {
 		rule := inputs[i].Rule
-		vr := verifyRule{ID: rule.ID, State: rule.State, Verdict: verifyUnknown}
+		vr := verifyRule{ID: rule.ID, State: rule.State, Verdict: verifyUnknown, body: rule.Body, revision: rule.Revision}
 		if resp, ok := v.verdicts[rule.ID]; ok {
 			switch resp.Verdict {
 			case ruleeval.Compliant:
