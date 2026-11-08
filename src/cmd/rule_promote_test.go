@@ -113,6 +113,14 @@ func TestRulePromoteRefusedByVerify(t *testing.T) {
 			out, err := runPromoteGated(t, dir, tc.args...)
 			assertExit(t, err, exitViolations)
 			testutil.AssertContains(t, err.Error(), tc.want)
+			if strings.Contains(tc.want, "without an explanation") {
+				// The provider no longer caches an empty answer, so asking
+				// again is the remedy, not bypassing the cache.
+				testutil.AssertContains(t, err.Error(), "run it again")
+				if strings.Contains(err.Error(), "--no-cache") {
+					t.Errorf("stale --no-cache advice: %v", err)
+				}
+			}
 			testutil.AssertContains(t, err.Error(), "--skip-verify")
 			testutil.AssertContains(t, out, "TST-002")
 			if got := stateOfTST002(t, dir); got != "P" {

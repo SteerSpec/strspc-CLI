@@ -28,7 +28,7 @@ flowchart LR
 ```
 
 Transitions are forward-only and no state may be skipped
-([SPEC §3](https://github.com/SteerSpec/strspc-manager/blob/v1.47.0/docs/SPEC.md#3-rule-lifecycle)).
+([SPEC §3](https://github.com/SteerSpec/strspc-manager/blob/v1.47.1/docs/SPEC.md#3-rule-lifecycle)).
 Every change bumps the rule set version: minor when a rule is promoted or retired, patch otherwise.
 
 ```bash
@@ -63,9 +63,10 @@ at least `--min-confidence` (default 0.8). A violation refuses it, and so does a
 conclusive: `unknown`, `not_applicable` (no code the rule applies to was found), or one below the
 threshold, such as a violation reported at 0.55. Models can be wrong about facts outside the code,
 like whether a URL resolves, and a low confidence is the sign. A verdict that comes without an
-explanation, a confidence or evidence is no judgement and is refused as such; an audit in parts
-caches it, so rerun with `--no-cache`. The refusal lists the verify run's diagnostics, such as RE002
-for a request that failed. When verification can't run (no
+explanation, a confidence or evidence is no judgement and is refused as such. The Claude provider
+never caches an empty answer. In an audit in parts it asks again for that rule once, and otherwise
+leaves the rule `unknown` with an RE002; in an audit that fits one request, an empty detail is
+reported as an RE002 and the verdict stands, without its reasons. The refusal lists the verify run's diagnostics, such as RE002 for a request that failed. When verification can't run (no
 `.strspc/config.yaml`, no AI provider, provider unavailable, or the rule isn't in the configured
 sources) the promotion is refused with verify's exit code. So is a rule whose copy under `--dir`
 differs from the one in the configured sources, since the verdict wouldn't be about it. `--skip-verify` promotes without
@@ -168,7 +169,7 @@ force on the replacement rule.
 ## Realms and dependencies
 
 `strspc realm init` creates `realm.json` and vendors the schemas in `_schema/`
-([SPEC §2.8](https://github.com/SteerSpec/strspc-manager/blob/v1.47.0/docs/SPEC.md#28-realm)). Non-core
+([SPEC §2.8](https://github.com/SteerSpec/strspc-manager/blob/v1.47.1/docs/SPEC.md#28-realm)). Non-core
 realms should depend on `dev.steerspec.core`, as in the [quick start](../README.md#quick-start).
 
 The schemas are copied unchanged from the `dev.steerspec.core` release tag in `strspc-rules`: the
