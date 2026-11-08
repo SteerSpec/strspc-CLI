@@ -266,7 +266,7 @@ func confident(c, minConfidence float64) bool {
 func refusalReason(vr *verifyRule, minConfidence float64) string {
 	if verdictWithoutReasons(vr) {
 		return fmt.Sprintf("the provider answered %s without an explanation, a confidence or evidence, which is no judgement; "+
-			"a cached audit in parts serves it again until a file changes, so rerun with --no-cache", vr.Verdict)
+			"run it again", vr.Verdict)
 	}
 	switch vr.Verdict {
 	case verifyCompliant:

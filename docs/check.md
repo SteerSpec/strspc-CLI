@@ -43,7 +43,7 @@ never evaluated. The check only writes inside `.strspc/` (`cache/`, `cache.db`).
 ## How evaluation works
 
 The flow follows
-[SPEC §8.3](https://github.com/SteerSpec/strspc-manager/blob/v1.47.0/docs/SPEC.md#83-evaluation-flow):
+[SPEC §8.3](https://github.com/SteerSpec/strspc-manager/blob/v1.47.1/docs/SPEC.md#83-evaluation-flow):
 
 1. Resolve the rule sources and collect the rules in `evaluate_on` states.
 2. Collect the diff. An empty diff ends evaluation with `RE004`.
