@@ -126,6 +126,8 @@ func TestRealmWritesKeepNotesAndRecomputeHash(t *testing.T) {
 		{"realm", "dep", "add", "dev.steerspec.core@" + manifestMinCore.String()},
 		{"realm", "dep", "add", "dev.lib@1.0.0"},
 		{"realm", "dep", "remove", "dev.lib"},
+		// testLinkedStandard's realm must be a dependency (STDREF-017).
+		{"realm", "dep", "add", testLinkedStandard.Realm + "@5.0.0"},
 		{"realm", "contributor", "add", "github:alice"},
 		{"realm", "contributor", "add", "github:bob"},
 		{"realm", "contributor", "remove", "github:bob"},

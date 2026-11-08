@@ -15,12 +15,20 @@ import (
 // testStdRealm is the realm_id of a Standard Realm a reference links to.
 const testStdRealm = "dev.steerspec.std.owasp.asvs.v5"
 
-// setupLinkRealm writes a realm at dir pinning core at manifestMinCore, with no source so
-// validation fetches nothing, and entity MYE with one rule.
+// setupLinkRealm writes a realm at dir pinning core at manifestMinCore and
+// depending on testStdRealm, which a linked reference must name
+// (STDREF-017), both with no source so validation fetches nothing, and
+// entity MYE with one rule.
 func setupLinkRealm(t *testing.T, dir string) {
 	t.Helper()
 	setupValidRealm(t, dir)
 	pinCoreFrom(t, dir, manifestMinCore.String(), "")
+	if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+		rf.Dependencies = append(rf.Dependencies, entity.RealmDep{RealmID: testStdRealm, Version: "5.0.0"})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	setupEntityFile(t, dir, "MYE", makeRule("MYE-001", "D", "The system MUST validate.", "github:alice"))
 }
 
