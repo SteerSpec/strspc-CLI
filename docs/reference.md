@@ -5,7 +5,7 @@ Back to the [README](../README.md).
 ## GitHub sources
 
 Rule sources and realm dependencies can point at a directory of a GitHub repository
-([SPEC §6.4](https://github.com/SteerSpec/strspc-manager/blob/v1.45.0/docs/SPEC.md#64-remote-sources-github)):
+([SPEC §6.4](https://github.com/SteerSpec/strspc-manager/blob/v1.47.0/docs/SPEC.md#64-remote-sources-github)):
 
 ```text
 github://<owner>/<repo>@<ref>[/<path>]
@@ -40,7 +40,7 @@ through the GitHub tarball API and cached under `.strspc/cache/`.
 ## Diagnostic codes
 
 Every code the manager emits (`RL`, `RD`, `RM`, `RR`, `RSV`, `RE`, `EC`, `RF`) is listed in
-[SPEC §6.3](https://github.com/SteerSpec/strspc-manager/blob/v1.45.0/docs/SPEC.md#63-diagnostic-codes).
+[SPEC §6.3](https://github.com/SteerSpec/strspc-manager/blob/v1.47.0/docs/SPEC.md#63-diagnostic-codes).
 The CLI adds two warnings of its own, `CHK002` and `CHK003`, described under
 [check](check.md#safety-and-configuration-checks). `strspc explain` covers all of them.
 

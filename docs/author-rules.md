@@ -28,7 +28,7 @@ flowchart LR
 ```
 
 Transitions are forward-only and no state may be skipped
-([SPEC §3](https://github.com/SteerSpec/strspc-manager/blob/v1.45.0/docs/SPEC.md#3-rule-lifecycle)).
+([SPEC §3](https://github.com/SteerSpec/strspc-manager/blob/v1.47.0/docs/SPEC.md#3-rule-lifecycle)).
 Every change bumps the rule set version: minor when a rule is promoted or retired, patch otherwise.
 
 ```bash
@@ -149,7 +149,7 @@ force on the replacement rule.
 ## Realms and dependencies
 
 `strspc realm init` creates `realm.json` and vendors the schemas in `_schema/`
-([SPEC §2.8](https://github.com/SteerSpec/strspc-manager/blob/v1.45.0/docs/SPEC.md#28-realm)). Non-core
+([SPEC §2.8](https://github.com/SteerSpec/strspc-manager/blob/v1.47.0/docs/SPEC.md#28-realm)). Non-core
 realms should depend on `dev.steerspec.core`, as in the [quick start](../README.md#quick-start).
 
 The schemas are copied unchanged from the `dev.steerspec.core` release tag in `strspc-rules`: the

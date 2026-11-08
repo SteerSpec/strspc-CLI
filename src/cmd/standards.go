@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"slices"
 	"strings"
 	"text/tabwriter"
@@ -33,14 +34,52 @@ type coverageMapping struct {
 	Note  string `json:"note"`
 }
 
+// coverageExclusion is the `exclusion` Realm Note behind an excluded clause
+// (STDREF-022): the manifest holding it, its ID and its justification.
+type coverageExclusion struct {
+	Realm   string `json:"realm"`
+	Note    string `json:"note"`
+	Content string `json:"content"`
+}
+
 // coverageClause is one clause of a standard as it stands in one entity.
 type coverageClause struct {
-	Standard string            `json:"standard"`
-	Version  string            `json:"version,omitempty"`
-	Clause   string            `json:"clause"`
-	Entity   string            `json:"entity"`
-	Status   string            `json:"status"`
-	Rules    []coverageMapping `json:"rules"`
+	Standard  string             `json:"standard"`
+	Version   string             `json:"version,omitempty"`
+	Clause    string             `json:"clause"`
+	Entity    string             `json:"entity"`
+	Status    string             `json:"status"`
+	Rules     []coverageMapping  `json:"rules"`
+	Exclusion *coverageExclusion `json:"exclusion,omitempty"`
+}
+
+// coverageFigure is the coverage figure of a Standard Reference that links a
+// Standard Realm (STDREF-024, STDREF-025): Covered of the clauses of the
+// linked list, narrowed to the profile, less those excluded.
+type coverageFigure struct {
+	Tree string `json:"tree"`
+	// Entity is the entity measured, empty for the Realm figure, which counts
+	// a clause covered in any entity of the tree.
+	Entity   string `json:"entity,omitempty"`
+	Standard string `json:"standard"`
+	Version  string `json:"version,omitempty"`
+	Realm    string `json:"realm"`
+	Profile  string `json:"profile,omitempty"`
+	// DeclaredBy is the realm_id of the manifest declaring the reference,
+	// empty when an entity declares it.
+	DeclaredBy string `json:"declared_by,omitempty"`
+	// Total is the number of clauses of the list, before exclusions. The
+	// others count the clauses not excluded, and add up to Total less
+	// Excluded.
+	Total    int `json:"total"`
+	Excluded int `json:"excluded"`
+	Covered  int `json:"covered"`
+	Mapped   int `json:"mapped"`
+	Lapsed   int `json:"lapsed"`
+	Unmapped int `json:"unmapped"`
+	// Figure is Covered over Total less Excluded, null when that is 0
+	// (STDREF-028), so an undefined figure never reads as 0 or 1.
+	Figure *float64 `json:"figure"`
 }
 
 // coverageOutput is the report, in the shape --json prints.
@@ -48,6 +87,7 @@ type coverageOutput struct {
 	Evaluator  coverageEvaluator    `json:"evaluator"`
 	Declared   []entity.StandardRef `json:"declared"`
 	Clauses    []coverageClause     `json:"clauses"`
+	Figures    []coverageFigure     `json:"figures"`
 	Unresolved []coverageMapping    `json:"unresolved"`
 	Warnings   []string             `json:"warnings"`
 }
@@ -76,8 +116,14 @@ func newStandardsCoverageCmd() *cobra.Command {
 			"and cited when the standard is only a source. Each entity is measured over its own rules and\n" +
 			"those it inherits, less those replaced.\n\n" +
 			"Implemented is a rule's state: the report shows the evaluator setting, which decides whether\n" +
-			"anything checks those rules. SteerSpec holds no clause lists, so a clause no rule maps isn't\n" +
-			"shown.\n\n" +
+			"anything checks those rules.\n\n" +
+			"A reference linked to a Standard Realm with `realm` is measured against that Realm's clause list,\n" +
+			"narrowed to its `profile` (STDREF-020). A clause of the list no rule maps is unmapped, and one an\n" +
+			"exclusion Realm Note names is excluded (STDREF-022, STDREF-023). Each entity, and the Realm as a\n" +
+			"whole, gets a figure: the clauses covered over those of the list less the excluded (STDREF-024,\n" +
+			"STDREF-025), undefined when none is left (STDREF-028). An implements reference only:\n" +
+			"derived_from gets none (STDREF-026). Without a linked Standard Realm, a clause no rule maps\n" +
+			"isn't shown: SteerSpec holds no clause lists.\n\n" +
 			"The report covers the local sources in .strspc/config.yaml that have a realm.json, with their\n" +
 			"sub-realms. --all-sources adds the remote ones.\n\n" +
 			"Exit codes: 0 when the report is printed; 2 when the configuration can't be read or a source\n" +
@@ -136,14 +182,29 @@ func coverageEntries(entries []ruleresolve.SourceEntry, all bool) []ruleresolve.
 }
 
 // coverageReport builds the report from what resolveRules left. Every entity
-// counts once, also when a source is listed twice.
+// counts once, also when a source is listed twice, and so does each Realm tree
+// added to the links. Two sources can't share an EUID: resolution refuses it
+// (RSV005).
 func (r *checkRun) coverageReport(evaluator coverageEvaluator) *coverageOutput {
 	var entities []*realmresolve.Inheritance
 	seen := make(map[string]bool)
+	links := coverage.NewLinks()
+	added := make(map[string]bool)
+	warnings := r.coverageWarnings()
 	for _, e := range r.entries {
 		tree := r.realmTrees[e.Source]
 		if tree == nil {
 			continue
+		}
+		treeKey := tree.dir
+		if abs, err := filepath.Abs(tree.dir); err == nil {
+			treeKey = abs
+		}
+		if !added[treeKey] {
+			added[treeKey] = true
+			if err := links.AddTree(tree.dir, tree.manifest, tree.resolved); err != nil {
+				warnings = append(warnings, fmt.Sprintf("%s: no coverage figure: %v", e.Source, err))
+			}
 		}
 		for _, in := range tree.resolved.Entities {
 			if id := in.Entity.Entity.Entity.ID; !seen[id] {
@@ -153,13 +214,14 @@ func (r *checkRun) coverageReport(evaluator coverageEvaluator) *coverageOutput {
 		}
 	}
 
-	report := coverage.Compute(entities)
+	report := coverage.Compute(entities, coverage.WithLinks(links))
 	out := &coverageOutput{
 		Evaluator:  evaluator,
 		Declared:   append([]entity.StandardRef{}, report.Declared...),
 		Clauses:    make([]coverageClause, 0, len(report.Clauses)),
+		Figures:    coverageFigures(report.Figures),
 		Unresolved: coverageMappings(report.Unresolved),
-		Warnings:   r.coverageWarnings(),
+		Warnings:   append(warnings, report.Warnings...),
 	}
 	for i := range report.Clauses {
 		c := &report.Clauses[i]
@@ -171,8 +233,40 @@ func (r *checkRun) coverageReport(evaluator coverageEvaluator) *coverageOutput {
 			Status:   string(c.Status),
 			Rules:    coverageMappings(c.Rules),
 		})
+		if ex := c.Exclusion; ex != nil {
+			out.Clauses[len(out.Clauses)-1].Exclusion = &coverageExclusion{Realm: ex.Realm, Note: ex.Note, Content: ex.Content}
+		}
 	}
 	return out
+}
+
+func coverageFigures(figs []coverage.Figure) []coverageFigure {
+	out := make([]coverageFigure, 0, len(figs))
+	for i := range figs {
+		f := &figs[i]
+		cf := coverageFigure{
+			Tree: f.Tree, Entity: f.Entity, Standard: f.Standard, Version: f.Version, Realm: f.Realm, Profile: f.Profile,
+			DeclaredBy: f.DeclaredBy, Total: f.Total + f.Excluded, Excluded: f.Excluded,
+			Covered: f.Covered, Mapped: f.Mapped, Lapsed: f.Lapsed, Unmapped: f.Unmapped,
+		}
+		if f.Defined {
+			v := float64(f.Covered) / float64(f.Total)
+			cf.Figure = &v
+		}
+		out = append(out, cf)
+	}
+	return out
+}
+
+// coveragePercent renders covered of total as a percentage, truncated to one
+// decimal, never rounded, so 100 % shows only when every clause is covered.
+// It reads "undefined" when total is 0 (STDREF-028).
+func coveragePercent(covered, total int) string {
+	if total <= 0 {
+		return "undefined"
+	}
+	tenths := covered * 1000 / total
+	return fmt.Sprintf("%d.%d %%", tenths/10, tenths%10)
 }
 
 func coverageMappings(mappings []coverage.Mapping) []coverageMapping {
@@ -245,6 +339,7 @@ type coverageGroup struct {
 	relations   []string
 	urls        []string
 	clauses     []coverageClause
+	figures     []coverageFigure
 }
 
 // coverageGroups groups the report by standard and edition, in the order of
@@ -275,6 +370,11 @@ func coverageGroups(report *coverageOutput) []*coverageGroup {
 		g := find(c.Standard, c.Version)
 		g.clauses = append(g.clauses, *c)
 	}
+	for i := range report.Figures {
+		f := &report.Figures[i]
+		g := find(f.Standard, f.Version)
+		g.figures = append(g.figures, *f)
+	}
 	return groups
 }
 
@@ -301,6 +401,7 @@ func writeCoverage(w io.Writer, report *coverageOutput) {
 		for _, u := range g.urls {
 			writeln(w, "  "+coverageCell(u))
 		}
+		writeCoverageFigures(w, g.figures)
 		if len(g.clauses) == 0 {
 			writeln(w, "  no clause mapped")
 			continue
@@ -308,13 +409,17 @@ func writeCoverage(w io.Writer, report *coverageOutput) {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		for i := range g.clauses {
 			c := &g.clauses[i]
-			rules := make([]string, 0, len(c.Rules))
+			rules := make([]string, 0, len(c.Rules)+1)
+			if ex := c.Exclusion; ex != nil {
+				rules = append(rules, fmt.Sprintf("excluded by %s (%s)", ex.Note, ex.Realm))
+			}
 			for _, m := range c.Rules {
 				rules = append(rules, fmt.Sprintf("%s (%s)", m.Rule, stateLabel(m.State)))
 			}
 			_, _ = fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", coverageCell(c.Clause), coverageCell(c.Entity), c.Status, coverageCell(strings.Join(rules, ", ")))
 		}
 		_ = tw.Flush()
+		writeCoverageExclusions(w, g)
 	}
 	if len(report.Unresolved) > 0 {
 		writeln(w, "\nNotes that resolve to no declared standard, not counted:")
@@ -322,9 +427,81 @@ func writeCoverage(w io.Writer, report *coverageOutput) {
 			writeln(w, fmt.Sprintf("  %s (note %s)", coverageCell(m.Rule), coverageCell(m.Note)))
 		}
 	}
-	writeln(w, "\ncovered: an Implemented rule maps the clause. mapped: only a rule in another state does.\n"+
-		"lapsed: the rule mapping it was retired or replaced. cited: the standard is a source, with no claim.\n"+
-		"SteerSpec holds no clause lists, so a clause no rule maps isn't shown.")
+	legend := "\ncovered: an Implemented rule maps the clause. mapped: only a rule in another state does.\n" +
+		"lapsed: the rule mapping it was retired or replaced. cited: the standard is a source, with no claim.\n"
+	if len(report.Figures) == 0 {
+		writeln(w, legend+"SteerSpec holds no clause lists, so a clause no rule maps isn't shown.")
+		return
+	}
+	writeln(w, legend+
+		"excluded: a Realm Note excludes the clause. unmapped: no rule maps a clause of the linked list.\n"+
+		"A figure is covered of the linked list less the excluded clauses, undefined when none is left.\n"+
+		"Without a linked Standard Realm, a clause no rule maps isn't shown.")
+}
+
+// writeCoverageFigures prints the figures of one standard: for each linked
+// Standard Realm, its clause list and the Realm figure, then each entity's.
+func writeCoverageFigures(w io.Writer, figs []coverageFigure) {
+	for i := range figs {
+		f := &figs[i]
+		if f.Entity != "" {
+			writeln(w, "    "+coverageCell(f.Entity)+": "+figureText(f))
+			continue
+		}
+		list := "Standard Realm " + f.Realm
+		if f.Profile != "" {
+			list += ", profile " + f.Profile
+		}
+		list += fmt.Sprintf(": %d clause(s)", f.Total)
+		if f.Excluded > 0 {
+			list += fmt.Sprintf(", %d excluded", f.Excluded)
+		}
+		writeln(w, "  "+coverageCell(list))
+		realm := "Realm " + f.Tree
+		if f.DeclaredBy != "" && f.DeclaredBy != f.Tree {
+			realm += " (declared by " + f.DeclaredBy + ")"
+		}
+		writeln(w, "  "+coverageCell(realm)+": "+figureText(f))
+	}
+}
+
+// writeCoverageExclusions lists, once each, the exclusions behind the excluded
+// clauses of a group, with their justification.
+func writeCoverageExclusions(w io.Writer, g *coverageGroup) {
+	type key struct{ realm, note string }
+	seen := make(map[key]bool)
+	var lines []string
+	for i := range g.clauses {
+		c := &g.clauses[i]
+		ex := c.Exclusion
+		if ex == nil || seen[key{ex.Realm, ex.Note}] {
+			continue
+		}
+		seen[key{ex.Realm, ex.Note}] = true
+		lines = append(lines, "    "+coverageCell(fmt.Sprintf("%s:%s  %s (%s): %s", c.Standard, c.Clause, ex.Note, ex.Realm, ex.Content)))
+	}
+	if len(lines) == 0 {
+		return
+	}
+	writeln(w, "  Exclusions:")
+	for _, l := range lines {
+		writeln(w, l)
+	}
+}
+
+// figureText renders a figure: covered of the clauses counted, or undefined
+// when none is counted (STDREF-028), never 0 % or 100 %: every clause is
+// excluded, or the profile lists none.
+func figureText(f *coverageFigure) string {
+	counted := f.Total - f.Excluded
+	switch {
+	case counted > 0:
+	case f.Total == 0:
+		return "undefined, the clause list is empty"
+	default:
+		return "undefined, every clause is excluded"
+	}
+	return fmt.Sprintf("%d of %d covered (%s)", f.Covered, counted, coveragePercent(f.Covered, counted))
 }
 
 func coverageEvaluatorLine(e coverageEvaluator) string {
