@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -27,6 +28,43 @@ func addDep(t *testing.T, dir, realmID, version string) {
 func runStrspc(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	return testutil.ExecuteCommand(NewRootCmd(), args...)
+}
+
+// TestIsSubRealmName accepts what realm validate accepts (RM008): a name
+// directly below the Realm, with neither slash on any OS.
+func TestIsSubRealmName(t *testing.T) {
+	for name, want := range map[string]bool{
+		"auth": true, "auth-v2": true,
+		"": false, ".": false, "..": false, "a/b": false, `a\b`: false, `\`: false, "/abs": false, "../up": false,
+	} {
+		if got := isSubRealmName(name); got != want {
+			t.Errorf("isSubRealmName(%q) = %v, want %v", name, got, want)
+		}
+	}
+}
+
+// TestStandardsLinkIgnoresBadSubRealm doesn't count a dependency declared
+// only under a sub_realms entry validate skips (RM008).
+func TestStandardsLinkIgnoresBadSubRealm(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	pinCoreFrom(t, dir, manifestMinCore.String(), "")
+	bad := `foo\bar`
+	if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+		rf.SubRealms = []string{bad}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// On Unix the entry is a directory name; give it a manifest declaring
+	// the realm, which validate still never reads.
+	if runtime.GOOS != "windows" {
+		setupSubRealm(t, dir, bad, "dev.steerspec.test")
+		addDep(t, filepath.Join(dir, bad), testStdRealm, "5.0.0")
+	}
+	if err := checkStandardRealmDeclared(dir, testStdRealm); err == nil {
+		t.Error("counted a dependency declared under a sub_realms entry validate skips")
+	}
 }
 
 // TestStandardsLinkRefusesUndeclaredRealm refuses, at both scopes and on add
