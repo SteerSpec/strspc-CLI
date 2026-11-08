@@ -10,6 +10,7 @@ import (
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/entityops"
+	"github.com/SteerSpec/strspc-manager/src/result"
 )
 
 // defaultMinConfidence is the confidence a compliant verdict needs to let a
@@ -37,7 +38,10 @@ type promoteOutput struct {
 	// Verify is the verdict the promotion to Implemented rests on.
 	Verify        *verifyRule `json:"verify,omitempty"`
 	VerifySkipped bool        `json:"verify_skipped,omitempty"`
-	Error         string      `json:"error,omitempty"`
+	// Diagnostics are those of the verify run, such as RE002 for a request
+	// that failed: what explains a verdict the provider could not give.
+	Diagnostics []explainedDiagnostic `json:"diagnostics,omitempty"`
+	Error       string                `json:"error,omitempty"`
 }
 
 func newRulePromoteCmd() *cobra.Command {
@@ -137,9 +141,7 @@ func runRulePromote(ctx context.Context, out, errOut io.Writer, ruleID string, o
 	if o.jsonOut {
 		return writeJSONOutput(out, res)
 	}
-	if res.Verify != nil {
-		writeln(out, verifyRuleLine(res.Verify))
-	}
+	printPromoteVerdict(out, &res)
 	writeln(out, brandStyle.Render(fmt.Sprintf("Promoted rule %s: %s → %s", ruleID, stateLabel(res.OldState), stateLabel(res.NewState))))
 	writeln(out, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", res.OldVersion, res.Version)))
 	if res.VerifySkipped {
@@ -174,8 +176,11 @@ func ruleOf(t entityTarget, ruleID string) (rule *entity.Rule, version string, e
 // promote.
 func gatePromotion(ctx context.Context, errOut io.Writer, res *promoteOutput, rule *entity.Rule, o *promoteOptions) error {
 	report, err := verifyRules(ctx, errOut, []string{res.RuleID}, &o.verify)
-	if report != nil && len(report.Rules) == 1 {
-		res.Verify = &report.Rules[0]
+	if report != nil {
+		res.Diagnostics = report.Diagnostics
+		if len(report.Rules) == 1 {
+			res.Verify = &report.Rules[0]
+		}
 	}
 	if res.Verify != nil && !sameRule(res.Verify, rule) {
 		// verify reads the rule from the configured sources, promote writes
@@ -223,6 +228,10 @@ func confident(c, minConfidence float64) bool {
 // Implemented, or "" when it does: only a compliant verdict at minConfidence
 // or above does.
 func refusalReason(vr *verifyRule, minConfidence float64) string {
+	if verdictWithoutReasons(vr) {
+		return fmt.Sprintf("the provider answered %s without an explanation, a confidence or evidence, which is no judgement; "+
+			"a cached audit in parts serves it again until a file changes, so rerun with --no-cache", vr.Verdict)
+	}
 	switch vr.Verdict {
 	case verifyCompliant:
 		if !confident(vr.Confidence, minConfidence) {
@@ -252,8 +261,17 @@ func reportRefusal(out io.Writer, res *promoteOutput, jsonOut bool, cause error)
 		}
 		return cause
 	}
+	printPromoteVerdict(out, res)
+	return cause
+}
+
+// printPromoteVerdict prints the diagnostics of the verify run and the
+// verdict, when the gate ran.
+func printPromoteVerdict(out io.Writer, res *promoteOutput) {
+	if len(res.Diagnostics) > 0 {
+		outputDiagnostics(out, &result.Result{Diagnostics: withLineInPath(diagsOf(res.Diagnostics))}, false)
+	}
 	if res.Verify != nil {
 		writeln(out, verifyRuleLine(res.Verify))
 	}
-	return cause
 }

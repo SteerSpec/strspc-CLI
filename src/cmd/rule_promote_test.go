@@ -94,7 +94,15 @@ func TestRulePromoteRefusedByVerify(t *testing.T) {
 			[]string{"--min-confidence", "0.9"},
 			"compliant with confidence 0.85, below --min-confidence 0.90",
 		},
-		{"compliance without confidence", &ruleeval.EvalResponse{Verdict: ruleeval.Compliant}, nil, "confidence 0.00"},
+		{
+			"compliance without reasons", &ruleeval.EvalResponse{Verdict: ruleeval.Compliant}, nil,
+			"answered compliant without an explanation, a confidence or evidence",
+		},
+		{
+			"violation without reasons", &ruleeval.EvalResponse{Verdict: ruleeval.Violated}, nil,
+			"answered violated without an explanation, a confidence or evidence, which is no judgement",
+		},
+		{"compliance without confidence", &ruleeval.EvalResponse{Verdict: ruleeval.Compliant, Explanation: "fine"}, nil, "confidence 0.00"},
 		{"not applicable", &ruleeval.EvalResponse{Verdict: ruleeval.NotApplicable}, nil, "no code it applies to was found"},
 	}
 	for _, tc := range cases {
@@ -193,6 +201,41 @@ func TestRulePromoteRefusedUnknown(t *testing.T) {
 	if res.NewState != "" || res.OldState != "P" || !strings.Contains(res.Error, "could not be judged") {
 		t.Errorf("report = %+v", res)
 	}
+	// What made it unknown is reported with it.
+	var re002 bool
+	for _, d := range res.Diagnostics {
+		re002 = re002 || d.Code == ruleeval.CodeProviderError
+	}
+	if !re002 {
+		t.Errorf("RE002 should explain the unknown verdict: %+v", res.Diagnostics)
+	}
+
+	human, err := runPromoteGated(t, dir)
+	assertExit(t, err, exitViolations)
+	testutil.AssertContains(t, human, "RE002")
+	testutil.AssertContains(t, human, "TST-002      unknown")
+}
+
+func TestVerdictWithoutReasons(t *testing.T) {
+	cases := []struct {
+		vr   verifyRule
+		want bool
+	}{
+		{verifyRule{Verdict: verifyViolated}, true},
+		{verifyRule{Verdict: verifyCompliant, Explanation: "  "}, true},
+		{verifyRule{Verdict: verifyViolated, Explanation: "bare error"}, false},
+		{verifyRule{Verdict: verifyViolated, Confidence: 0.4}, false},
+		{verifyRule{Verdict: verifyViolated, Evidence: []verifyEvidence{{}}}, false},
+		{verifyRule{Verdict: verifyNotApplicable}, false},
+		{verifyRule{Verdict: verifyUnknown}, false},
+	}
+	for _, tc := range cases {
+		if got := verdictWithoutReasons(&tc.vr); got != tc.want {
+			t.Errorf("verdictWithoutReasons(%+v) = %v, want %v", tc.vr, got, tc.want)
+		}
+	}
+	line := verifyRuleLine(&verifyRule{ID: "R-1", Verdict: verifyViolated})
+	testutil.AssertContains(t, line, "(no explanation, confidence or evidence given)")
 }
 
 func TestRulePromoteSkipVerify(t *testing.T) {

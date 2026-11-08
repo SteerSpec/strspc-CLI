@@ -660,7 +660,18 @@ func verifyRuleLine(vr *verifyRule) string {
 	if vr.Explanation != "" {
 		line += "  " + vr.Explanation
 	}
+	if verdictWithoutReasons(vr) {
+		line += "  (no explanation, confidence or evidence given)"
+	}
 	return sanitizeLine(line)
+}
+
+// verdictWithoutReasons reports a compliant or violated verdict that came
+// with no explanation, no confidence and no evidence: an answer, not a
+// judgement anyone can check. Other verdicts carry none by design.
+func verdictWithoutReasons(vr *verifyRule) bool {
+	return (vr.Verdict == verifyCompliant || vr.Verdict == verifyViolated) &&
+		strings.TrimSpace(vr.Explanation) == "" && vr.Confidence == 0 && len(vr.Evidence) == 0
 }
 
 // verifyFail reports a fatal error in the selected format, with the files
