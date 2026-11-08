@@ -40,6 +40,24 @@ type realmPin struct {
 	source  string
 }
 
+// structuredMinCore is the first dev.steerspec.core release whose entity
+// schema accepts a `structured` note (NTE-036 to NTE-039).
+var structuredMinCore = semver.MustParse("1.23.0")
+
+// checkCoreAcceptsNoteType refuses to write a note of noteType into the entity
+// file at path when the core pin that validates it predates that type:
+// `standard` needs standardsMinCore and `structured` structuredMinCore. The
+// other types are in every core release the CLI supports.
+func checkCoreAcceptsNoteType(dir, path, noteType string) error {
+	switch noteType {
+	case entity.NoteTypeStandard:
+		return checkCoreAccepts(dir, path, "type: standard", standardsMinCore)
+	case entity.NoteTypeStructured:
+		return checkCoreAccepts(dir, path, "type: structured", structuredMinCore)
+	}
+	return nil
+}
+
 // checkCoreAcceptsStandards refuses to declare a standard in the file at path
 // when the core pin that validates it predates standardsMinCore.
 func checkCoreAcceptsStandards(dir, path string) error {

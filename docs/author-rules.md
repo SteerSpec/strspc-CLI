@@ -98,11 +98,27 @@ must be Retired, or `strspc diff` warns (`RD006`). `rule retire` moves a rule fr
 Retired, so promote a Published rule first. A rule that's already Retired needs nothing.
 
 **Notes.** Types are `rationale`, `example`, `counter_example`, `reference`, `applies_to`, `changelog`,
-`clarification`, `deprecation_notice`, `supersedes`, `extends`, `related` and `standard`. A note can be
-revised but never removed. `changelog`, `supersedes`, `extends` and `related` notes can't change once added.
+`clarification`, `deprecation_notice`, `supersedes`, `extends`, `related`, `standard` and `structured`. A
+note can be revised but never removed. `changelog`, `supersedes`, `extends` and `related` notes can't change
+once added.
+
 A `standard` note maps its rule to one clause of a declared standard (`<standard-id>:<clause>`). It can be
 added, revised, or retyped to `reference` and back in any rule state, without changing the rule's revision
 (NTE-017, NTE-018); retyping it to `reference` is how a mapping is withdrawn (NTE-019).
+
+A `structured` note holds the machine-readable form of its rule, as `<format>:<payload>` with neither
+part blank (NTE-037), such as `json:{"max_retries": 3}`. SteerSpec doesn't interpret the payload
+(NTE-039). A rule holds at most one (NTE-040), and it is frozen once the rule leaves Draft: it can't be
+added, revised or retyped after that (NTE-041, which `strspc check` reports in a diff as RD025).
+
+```bash
+strspc note add CFG-001 --type structured --body 'json:{"max_retries": 3}' --added-by github:alice
+```
+
+Each of these two types needs a core pin whose entity schema accepts it: `standard` needs
+`dev.steerspec.core` 1.15.0 or later, and `structured` 1.23.0 or later. Under an older pin, `note add` and
+`note update` refuse to write a note of that type, whether it is new, retyped or only revised, and say
+how to upgrade the pin.
 
 **Contributors.** `--added-by` takes a contributor identifier, `<idp>:<login>` with `github` as the
 only provider (CTRB-001, CTRB-002). When the Realm lists `realm.contributors`, the value must name
