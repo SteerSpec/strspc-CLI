@@ -363,9 +363,13 @@ func planVerifyRules(system string, schema func([]string) map[string]any, entiti
 		for i := range rules {
 			ids[i] = rules[i].Rule.ID
 		}
-		data, err := json.Marshal(schema(ids))
+		s := schema(ids)
+		data, err := json.Marshal(s)
 		if err != nil {
-			return 0
+			// The schemas are maps of strings, slices and maps, which always
+			// marshal; should one not, its printed form is about as large,
+			// so the estimate never drops its cost.
+			return claude.EstimateTokens(fmt.Sprint(s))
 		}
 		return claude.EstimateTokens(string(data))
 	}

@@ -27,10 +27,13 @@ const (
 	skipSymlink = "symlink"
 	skipNotFile = "not a regular file"
 	skipBinary  = "binary"
+	// skipUnreadable is a file that cannot be inspected. The error itself is
+	// not reported: it names the absolute path and varies by OS.
+	skipUnreadable = "unreadable"
 )
 
 // skipReasons lists the kinds of skipped file, for messages.
-const skipReasons = "deleted, symlinked, binary or not a regular file"
+const skipReasons = "deleted, symlinked, binary, unreadable or not a regular file"
 
 // collectTreeFiles reads every tracked file under pathspecs (minus the
 // excludes and the generated directories) from the working tree, so that
@@ -83,7 +86,7 @@ func treeFileSkip(repoDir, p string, links map[string]bool) string {
 	case errors.Is(err, fs.ErrNotExist):
 		return skipDeleted
 	case err != nil:
-		return err.Error()
+		return skipUnreadable
 	case info.Mode()&fs.ModeSymlink != 0:
 		return skipSymlink
 	case !info.Mode().IsRegular():

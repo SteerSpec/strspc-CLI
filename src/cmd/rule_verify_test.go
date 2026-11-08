@@ -198,8 +198,8 @@ func TestTreeFileSkipUnreadable(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("NUL in a path is refused differently on Windows")
 	}
-	if reason := treeFileSkip(t.TempDir(), "a\x00b", map[string]bool{}); reason == "" {
-		t.Error("an unreadable path must be skipped")
+	if reason := treeFileSkip(t.TempDir(), "a\x00b", map[string]bool{}); reason != skipUnreadable {
+		t.Errorf("reason = %q, want %q and no raw error (it names the absolute path)", reason, skipUnreadable)
 	}
 	if !underSymlink(t.TempDir(), "d\x00", map[string]bool{}) {
 		t.Error("a directory that cannot be inspected counts as a symlink")
@@ -385,7 +385,7 @@ func TestRuleVerifyAllSkipped(t *testing.T) {
 	}
 	_, err = runVerifyCmd(t, "TST-001", "--project", dir, "--path", "assets")
 	assertExit(t, err, exitConfig)
-	if !strings.Contains(err.Error(), "skipped (deleted, symlinked, binary or not a regular file") {
+	if !strings.Contains(err.Error(), "skipped ("+skipReasons) {
 		t.Errorf("err = %v", err)
 	}
 }
