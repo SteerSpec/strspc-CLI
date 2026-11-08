@@ -56,7 +56,22 @@ func TestNoteTypesRefuseOldCore(t *testing.T) {
 			pinCore(t, dir, tc.minCore.String())
 			if out, err := testutil.ExecuteCommand(NewRootCmd(), "note", "add", "MYE-001", "--type", tc.noteType,
 				"--body", tc.body, "--added-by", "github:alice", "--dir", dir); err != nil {
-				t.Errorf("note add under %s: %v\n%s", tc.minCore, err, out)
+				t.Fatalf("note add under %s: %v\n%s", tc.minCore, err, out)
+			}
+
+			// A body-only update of that note is refused too once the pin
+			// falls below the type's release, as the file would stay invalid.
+			pinCore(t, dir, tc.old)
+			before, err = os.ReadFile(filepath.Join(dir, "MYE.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = testutil.ExecuteCommand(NewRootCmd(), "note", "update", "MYE-001/02", "--body", tc.body+"2", "--dir", dir)
+			if err == nil || !strings.Contains(err.Error(), "`type: "+tc.noteType+"`") {
+				t.Errorf("body-only update under %s: error = %v, want a refusal naming the type", tc.old, err)
+			}
+			if after, _ := os.ReadFile(filepath.Join(dir, "MYE.json")); !bytes.Equal(before, after) {
+				t.Error("the entity file changed on refusal of a body-only update")
 			}
 		})
 	}

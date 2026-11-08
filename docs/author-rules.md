@@ -116,8 +116,9 @@ strspc note add CFG-001 --type structured --body 'json:{"max_retries": 3}' --add
 ```
 
 Each of these two types needs a core pin whose entity schema accepts it: `standard` needs
-`dev.steerspec.core` 1.15.0 or later, and `structured` 1.23.0 or later. Under an older pin, `note add`
-and `note update --type` refuse it and say how to upgrade the pin.
+`dev.steerspec.core` 1.15.0 or later, and `structured` 1.23.0 or later. Under an older pin, `note add` and
+`note update` refuse to write a note of that type, whether it is new, retyped or only revised, and say
+how to upgrade the pin.
 
 **Contributors.** `--added-by` takes a contributor identifier, `<idp>:<login>` with `github` as the
 only provider (CTRB-001, CTRB-002). When the Realm lists `realm.contributors`, the value must name
