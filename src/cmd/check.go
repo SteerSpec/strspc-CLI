@@ -128,8 +128,10 @@ func newCheckCmd() *cobra.Command {
 	return cmd
 }
 
-// realmTree is a source's manifest and what it resolved to.
+// realmTree is a source's manifest, the directory holding it, and what it
+// resolved to.
 type realmTree struct {
+	dir      string
 	manifest *entity.RealmFile
 	resolved *realmresolve.ResolveResult
 }
@@ -450,7 +452,7 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 		rr := realmresolve.New(rrOpts...)
 		out, res := rr.Resolve(r.ctx, rf, dir)
 		diags = append(diags, res.Diagnostics...)
-		r.realmTrees[e.Source] = &realmTree{manifest: rf, resolved: out}
+		r.realmTrees[e.Source] = &realmTree{dir: dir, manifest: rf, resolved: out}
 		for _, c := range out.Inheritance {
 			r.chains[c.Entity.Entity.Entity.ID] = c
 		}
