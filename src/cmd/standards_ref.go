@@ -42,8 +42,10 @@ func (s *standardFlags) register(cmd *cobra.Command) {
 }
 
 // checkStandardRealm refuses a --realm that isn't a realm ID and an empty
-// --profile. The link itself (STDREF-017, STDREF-018, STDREF-027) needs the
-// linked Realm, so lint checks it.
+// --profile. Whether the Realm tree declares the realm as a dependency is
+// checked against the tree (checkStandardRealmDeclared); the rest of the link
+// (STDREF-017, STDREF-018, STDREF-027) needs the linked Realm, so lint checks
+// it.
 func checkStandardRealm(cmd *cobra.Command, realm, profile string) error {
 	if cmd.Flags().Changed("realm") && !realmIDPattern.MatchString(realm) {
 		return fmt.Errorf("--realm %q is not a realm ID such as dev.steerspec.std.owasp.asvs.v5", realm)

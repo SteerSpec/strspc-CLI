@@ -45,10 +45,15 @@ func (e *standardEdit) register(cmd *cobra.Command) {
 	cmd.MarkFlagsMutuallyExclusive("profile", "clear-profile")
 }
 
-// checkCore refuses a new realm or profile when the core pin that validates the
-// file at path predates manifestMinCore. Clearing either needs no check.
-func (e *standardEdit) checkCore(dir, path string) error {
-	return checkCoreAcceptsStandardLink(dir, path, &entity.StandardRef{Realm: e.realm, Profile: e.profile})
+// checkLink refuses a new realm or profile when the core pin that validates the
+// file at path predates manifestMinCore, and a new realm that no Realm of the
+// tree at dir declares as a dependency (STDREF-017). Clearing either needs no
+// check.
+func (e *standardEdit) checkLink(dir, path string) error {
+	if err := checkCoreAcceptsStandardLink(dir, path, &entity.StandardRef{Realm: e.realm, Profile: e.profile}); err != nil {
+		return err
+	}
+	return checkStandardRealmDeclared(dir, e.realm)
 }
 
 // check validates the flags before any file is read.
@@ -252,7 +257,7 @@ Examples:
 			if err != nil {
 				return err
 			}
-			if err := edit.checkCore(dir, target.path); err != nil {
+			if err := edit.checkLink(dir, target.path); err != nil {
 				return err
 			}
 			u := standardUpdate{Entity: args[0], Path: target.path}
@@ -318,7 +323,7 @@ Examples:
 			if err != nil {
 				return err
 			}
-			if err := edit.checkCore(dir, realmPath); err != nil {
+			if err := edit.checkLink(dir, realmPath); err != nil {
 				return err
 			}
 			u := standardUpdate{Path: realmPath}

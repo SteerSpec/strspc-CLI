@@ -280,6 +280,10 @@ func TestRealmNoteSubRealm(t *testing.T) {
 	pinCoreFrom(t, dir, manifestMinCore.String(), "")
 	setContributors(t, dir)
 	sub := filepath.Join(dir, "auth")
+	// The parent's dependency serves the sub-realm's link too (STDREF-017).
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", testStdRealm+"@5.0.0", "--dir", dir); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "standards", "add", "--id", "owasp.asvs", "--relation", "implements",
 		"--version", "5.0.0", "--realm", testStdRealm, "--dir", dir); err != nil {
 		t.Fatal(err)
@@ -375,7 +379,11 @@ func TestRealmStandardsGuardExclusions(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Changing the linked realm keeps a realm, so it goes through.
+	// Changing the linked realm keeps a realm, so it goes through once the
+	// new realm is a dependency (STDREF-017).
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "add", "dev.steerspec.std.owasp.asvs.v6@6.0.0", "--dir", dir); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "standards", "update", "--id", "owasp.asvs", "--realm", "dev.steerspec.std.owasp.asvs.v6", "--dir", dir); err != nil {
 		t.Errorf("relink: %v", err)
 	}

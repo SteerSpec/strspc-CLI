@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -32,9 +33,10 @@ type realmRehashResult struct {
 
 // isSubRealmName reports whether name, from a manifest's sub_realms, names a
 // directory directly below the manifest's, so a walk over sub-realms stays
-// inside --dir.
+// inside --dir. It accepts what realm validate accepts (RM008): neither slash
+// is allowed, on any OS, so a backslash is no separator on Unix only.
 func isSubRealmName(name string) bool {
-	return name != "" && name != "." && name != ".." && filepath.Base(name) == name && !filepath.IsAbs(name)
+	return name != "" && name != "." && name != ".." && filepath.IsLocal(name) && !strings.ContainsAny(name, `/\`)
 }
 
 // rehashRealmTree adds or refreshes the manifest hash (RLMMNFST-013) of the
