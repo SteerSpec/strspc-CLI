@@ -245,8 +245,15 @@ func newRealmNoteListCmd() *cobra.Command {
 		jsonOut bool
 	)
 	cmd := &cobra.Command{
-		Use:           "list",
-		Short:         "List the Realm Notes of realm.json",
+		Use:   "list",
+		Short: "List the Realm Notes of realm.json",
+		Long: `List the Realm Notes of the manifest in --dir, in the order realm.json holds
+them: ID, type, the clause an exclusion refers to, revision, author, date and
+content. Text from the manifest is escaped before it is printed. A sub-realm's
+notes are in its own realm.json, so list them with --dir pointing there.
+
+--json prints the realm ID, the manifest path and the notes as stored, with
+notes always an array.`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
