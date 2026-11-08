@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -83,10 +84,11 @@ func TestRulePromotePublishedToImplemented(t *testing.T) {
 		t.Errorf("record identity = %+v", rec)
 	}
 	if rec.Scope != "tracked files under src" || rec.Files != 1 || len(rec.FilesHash) != 64 ||
-		rec.Provider != "claude" || rec.Model != "stub-model" || rec.AuditPrompt != "test/audit" || rec.MinConfidence != defaultMinConfidence {
+		rec.Provider != "claude" || rec.Model != "stub-model" || rec.AuditPrompt != "test/audit" ||
+		rec.MinConfidence == nil || *rec.MinConfidence != defaultMinConfidence {
 		t.Errorf("record run = %+v", rec)
 	}
-	if rec.Verdict != verifyCompliant || rec.Confidence != 0.9 || rec.Explanation != "every error is wrapped" ||
+	if rec.Verdict != verifyCompliant || rec.Confidence == nil || *rec.Confidence != 0.9 || rec.Explanation != "every error is wrapped" ||
 		len(rec.Evidence) != 1 || !rec.Evidence[0].LineConfirmed {
 		t.Errorf("record verdict = %+v", rec)
 	}
@@ -134,6 +136,77 @@ func TestRulePromoteRecordWriteFailure(t *testing.T) {
 	out, err = runPromoteGated(t, dir)
 	assertExit(t, err, exitOutput)
 	testutil.AssertContains(t, out, "Published → Implemented")
+}
+
+func TestRulePromoteRecordKeepsZeroConfidence(t *testing.T) {
+	dir := setupVerifyRepo(t, "claude")
+	stubEvalProvider(t, &stubProvider{verdicts: map[string]*ruleeval.EvalResponse{
+		"TST-002": {Verdict: ruleeval.Compliant, Explanation: "fine", Confidence: 0},
+	}}, nil)
+
+	// A threshold of 0 lets a compliant verdict at 0 through; the record
+	// must still say both.
+	_, err := runPromoteGated(t, dir, "--min-confidence", "0")
+	assertExit(t, err, exitOK)
+	data, err := os.ReadFile(filepath.Join(dir, ".strspc", "verified", "TST-002.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"min_confidence": 0`, `"confidence": 0`} {
+		testutil.AssertContains(t, string(data), want)
+	}
+}
+
+func TestWriteVerifyRecordRefusesLinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symbolic links need privileges on Windows")
+	}
+	rec := &verifyRecord{RuleID: "TST-002"}
+	for _, link := range []string{".strspc", ".strspc/verified"} {
+		t.Run(link, func(t *testing.T) {
+			project, outside := t.TempDir(), t.TempDir()
+			if err := os.MkdirAll(filepath.Join(project, ".strspc"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if link == ".strspc" {
+				if err := os.Remove(filepath.Join(project, ".strspc")); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.Symlink(outside, filepath.Join(project, filepath.FromSlash(link))); err != nil {
+				t.Fatal(err)
+			}
+			_, err := writeVerifyRecord(project, rec)
+			if err == nil || errors.Is(err, errNoStrspcDir) {
+				t.Fatalf("err = %v, want a refusal", err)
+			}
+			testutil.AssertContains(t, err.Error(), "symbolic link")
+			entries, readErr := os.ReadDir(outside)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if len(entries) != 0 {
+				t.Errorf("wrote outside the project: %v", entries)
+			}
+		})
+	}
+}
+
+func TestWriteVerifyRecordNoStrspc(t *testing.T) {
+	rec := &verifyRecord{RuleID: "TST-002"}
+	// No .strspc, or a file in its place: no record, not an error.
+	project := t.TempDir()
+	if _, err := writeVerifyRecord(project, rec); !errors.Is(err, errNoStrspcDir) {
+		t.Errorf("missing .strspc: err = %v", err)
+	}
+	writeFile(t, project, ".strspc", "not a directory\n")
+	if _, err := writeVerifyRecord(project, rec); !errors.Is(err, errNoStrspcDir) {
+		t.Errorf(".strspc file: err = %v", err)
+	}
+	// A project that can't be opened is an error.
+	if _, err := writeVerifyRecord(filepath.Join(project, "missing"), rec); err == nil || errors.Is(err, errNoStrspcDir) {
+		t.Errorf("missing project: err = %v", err)
+	}
 }
 
 func TestRulePromoteNoRecordOnRefusal(t *testing.T) {
@@ -338,7 +411,7 @@ func TestRulePromoteSkipVerify(t *testing.T) {
 		t.Errorf("provider calls = %d, want 0", stub.callCount())
 	}
 	// The record says verification was skipped, and carries no verdict.
-	if rec := readVerifyRecord(t, dir, "TST-002"); !rec.Skipped || rec.Verdict != "" || rec.Provider != "" || rec.MinConfidence != 0 {
+	if rec := readVerifyRecord(t, dir, "TST-002"); !rec.Skipped || rec.Verdict != "" || rec.Provider != "" || rec.MinConfidence != nil || rec.Confidence != nil {
 		t.Errorf("record = %+v", rec)
 	}
 

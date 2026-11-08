@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -32,18 +33,20 @@ type verifyRecord struct {
 	Skipped       bool   `json:"skipped,omitempty"`
 
 	// The verify run: what it read and with what.
-	Scope         string  `json:"scope,omitempty"`
-	Files         int     `json:"files,omitempty"`
-	FilesHash     string  `json:"files_hash,omitempty"`
-	Provider      string  `json:"provider,omitempty"`
-	Model         string  `json:"model,omitempty"`
-	Effort        string  `json:"effort,omitempty"`
-	AuditPrompt   string  `json:"audit_prompt,omitempty"`
-	MinConfidence float64 `json:"min_confidence,omitempty"`
+	Scope       string `json:"scope,omitempty"`
+	Files       int    `json:"files,omitempty"`
+	FilesHash   string `json:"files_hash,omitempty"`
+	Provider    string `json:"provider,omitempty"`
+	Model       string `json:"model,omitempty"`
+	Effort      string `json:"effort,omitempty"`
+	AuditPrompt string `json:"audit_prompt,omitempty"`
+	// MinConfidence and Confidence are set, zero included, whenever a
+	// verdict is recorded, and absent when verification was skipped.
+	MinConfidence *float64 `json:"min_confidence,omitempty"`
 
 	// The verdict.
 	Verdict     string           `json:"verdict,omitempty"`
-	Confidence  float64          `json:"confidence,omitempty"`
+	Confidence  *float64         `json:"confidence,omitempty"`
 	Explanation string           `json:"explanation,omitempty"`
 	Evidence    []verifyEvidence `json:"evidence,omitempty"`
 }
@@ -68,8 +71,9 @@ func newVerifyRecord(rule *entity.Rule, version, timestamp string, report *verif
 		rec.Provider, rec.Model, rec.Effort, rec.AuditPrompt = report.Provider, report.Model, report.Effort, report.AuditPrompt
 	}
 	if vr != nil {
-		rec.MinConfidence = minConfidence
-		rec.Verdict, rec.Confidence, rec.Explanation, rec.Evidence = vr.Verdict, vr.Confidence, vr.Explanation, vr.Evidence
+		confidence := vr.Confidence
+		rec.MinConfidence, rec.Confidence = &minConfidence, &confidence
+		rec.Verdict, rec.Explanation, rec.Evidence = vr.Verdict, vr.Explanation, vr.Evidence
 	}
 	return rec
 }
@@ -80,13 +84,33 @@ var errNoStrspcDir = errors.New("the project has no .strspc/ directory")
 
 // writeVerifyRecord writes rec to .strspc/verified/<RULE-ID>.json under
 // project and returns that path, relative to the project and with forward
-// slashes. A project without .strspc/ gets no record (errNoStrspcDir).
+// slashes. A project without a .strspc/ directory gets no record
+// (errNoStrspcDir); any other failure to inspect or write it is an error.
+// Every step resolves inside the project, and .strspc and
+// .strspc/verified must not be symbolic links, so a link cannot send the
+// record outside it.
 func writeVerifyRecord(project string, rec *verifyRecord) (string, error) {
-	if fi, err := os.Stat(filepath.Join(project, ".strspc")); err != nil || !fi.IsDir() {
+	root, err := os.OpenRoot(project)
+	if err != nil {
+		return "", fmt.Errorf("writing verify record: %w", err)
+	}
+	defer func() { _ = root.Close() }()
+
+	switch fi, err := root.Lstat(".strspc"); {
+	case errors.Is(err, fs.ErrNotExist):
+		return "", errNoStrspcDir
+	case err != nil:
+		return "", fmt.Errorf("writing verify record: %w", err)
+	case fi.Mode()&fs.ModeSymlink != 0:
+		return "", errors.New("writing verify record: .strspc is a symbolic link")
+	case !fi.IsDir():
 		return "", errNoStrspcDir
 	}
-	dir := filepath.Join(project, filepath.FromSlash(verifiedDir))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir := filepath.FromSlash(verifiedDir)
+	if fi, err := root.Lstat(dir); err == nil && fi.Mode()&fs.ModeSymlink != 0 {
+		return "", fmt.Errorf("writing verify record: %s is a symbolic link", verifiedDir)
+	}
+	if err := root.MkdirAll(dir, 0o755); err != nil {
 		return "", fmt.Errorf("writing verify record: %w", err)
 	}
 	data, err := marshalJSON(rec)
@@ -96,7 +120,7 @@ func writeVerifyRecord(project string, rec *verifyRecord) (string, error) {
 	// The rule ID names the file: an EUID and three digits, as
 	// entityIDFromRuleID and resolveEntityTarget checked.
 	name := rec.RuleID + ".json"
-	if err := replaceFile(filepath.Join(dir, name), data, "verify record"); err != nil {
+	if err := replaceFileIn(root, filepath.Join(dir, name), data, "verify record"); err != nil {
 		return "", err
 	}
 	return path.Join(verifiedDir, name), nil
