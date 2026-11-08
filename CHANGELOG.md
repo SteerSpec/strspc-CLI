@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.39.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.38.0...v1.39.0) (2026-11-08)
+
+
+### Features
+
+* **cli:** add skill command to print or install the agent skill ([#287](https://github.com/SteerSpec/strspc-CLI/issues/287)) ([6c0ac0a](https://github.com/SteerSpec/strspc-CLI/commit/6c0ac0a96fa6e65ff8a14dd2eb0fd1e8f31f9214))
+* **cli:** guide new users in root help and uninitialized status ([#283](https://github.com/SteerSpec/strspc-CLI/issues/283)) ([72a7ba2](https://github.com/SteerSpec/strspc-CLI/commit/72a7ba2e71fce0f33300c40a005cb2e7c15debb5))
+* **realm:** author Realm Notes and exclusions ([#295](https://github.com/SteerSpec/strspc-CLI/issues/295)) ([ba53468](https://github.com/SteerSpec/strspc-CLI/commit/ba5346835652269d4fc1d5df06fff840944862c4))
+* **realm:** recompute the manifest hash on every write, and add realm rehash ([#292](https://github.com/SteerSpec/strspc-CLI/issues/292)) ([d516644](https://github.com/SteerSpec/strspc-CLI/commit/d516644f3360c391c6e06bccd26381eb78f7f424))
+* **rule:** add experimental rule verify command ([#291](https://github.com/SteerSpec/strspc-CLI/issues/291)) ([#293](https://github.com/SteerSpec/strspc-CLI/issues/293)) ([f96a98d](https://github.com/SteerSpec/strspc-CLI/commit/f96a98d2b04d810b61fbabe7a76598699fbedd9a))
+* **rule:** rule promote records the verify evidence it rested on ([#305](https://github.com/SteerSpec/strspc-CLI/issues/305)) ([941db00](https://github.com/SteerSpec/strspc-CLI/commit/941db006f5d383962255b6f24f7b547b56462941))
+* **rule:** rule promote verifies the code before Published → Implemented ([#300](https://github.com/SteerSpec/strspc-CLI/issues/300)) ([7f0d9da](https://github.com/SteerSpec/strspc-CLI/commit/7f0d9da594b669b29deed9dd365690c9c27f6833))
+* **rule:** verify audits the code as it stands ([#299](https://github.com/SteerSpec/strspc-CLI/issues/299)) ([f74f99f](https://github.com/SteerSpec/strspc-CLI/commit/f74f99f1a69e449fe5d41ccd4eed34319a9c4963))
+* **standards:** coverage against linked Standard Realms, with excluded, unmapped and figures ([#301](https://github.com/SteerSpec/strspc-CLI/issues/301)) ([00842be](https://github.com/SteerSpec/strspc-CLI/commit/00842be90d56665e24c6917c3b8a2218c37e4670))
+* **standards:** link a Standard Reference to a Standard Realm ([#294](https://github.com/SteerSpec/strspc-CLI/issues/294)) ([8494c6e](https://github.com/SteerSpec/strspc-CLI/commit/8494c6eeea62581b1d1a398d6da27a0b1224375c))
+
+
+### Bug Fixes
+
+* **note:** refuse structured and standard notes under a core pin that predates them ([#302](https://github.com/SteerSpec/strspc-CLI/issues/302)) ([8ddfb95](https://github.com/SteerSpec/strspc-CLI/commit/8ddfb95462c2d5de14340fbbcc70a237bb905250))
+* **realm:** give realm note list a Long description, and test every command has both ([#306](https://github.com/SteerSpec/strspc-CLI/issues/306)) ([b270814](https://github.com/SteerSpec/strspc-CLI/commit/b270814ad2904138fb2b591364bb2aed6f34bf40))
+* **realm:** keep Realm Notes and the manifest hash on every realm.json write ([#288](https://github.com/SteerSpec/strspc-CLI/issues/288)) ([bf60f69](https://github.com/SteerSpec/strspc-CLI/commit/bf60f6922bcffea7d93fbdf8a42842476c3cb31b))
+* **realm:** refuse a Standard Reference realm the tree doesn't depend on (STDREF-017) ([#307](https://github.com/SteerSpec/strspc-CLI/issues/307)) ([8b00b97](https://github.com/SteerSpec/strspc-CLI/commit/8b00b970f4e1e97bd05b15ac38ebcb3a7519cbc9))
+* **rule:** explain a refused promotion with verify's diagnostics ([#303](https://github.com/SteerSpec/strspc-CLI/issues/303)) ([bafebda](https://github.com/SteerSpec/strspc-CLI/commit/bafebda644a08603d3b719c2987e2ed73dc7fc98))
+
 ## [1.38.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.37.0...v1.38.0) (2026-11-07)
 
 
