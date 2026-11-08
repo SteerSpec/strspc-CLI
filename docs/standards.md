@@ -238,7 +238,7 @@ A baseline that can't be read or parsed exits 2. The comparison comes from strsp
 request review and the planned cloud dashboard share one definition of a regression.
 
 In GitHub Actions, a push to `develop` would record the baseline, and a pull request into `develop`
-be gated against the latest one. A pull request into another branch would need that branch's own
+would be gated against the latest one. A pull request into another branch would need that branch's own
 baseline, so the trigger names `develop` for both:
 
 ```yaml
