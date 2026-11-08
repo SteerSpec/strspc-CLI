@@ -135,13 +135,18 @@ type verifyEstimate struct {
 
 // verifyOutput is the JSON report of a verify run.
 type verifyOutput struct {
-	OK          bool                  `json:"ok"`
-	ExitCode    int                   `json:"exit_code"`
-	DryRun      bool                  `json:"dry_run,omitempty"`
-	Provider    string                `json:"provider,omitempty"`
-	Model       string                `json:"model,omitempty"`
-	Effort      string                `json:"effort,omitempty"`
-	Scope       string                `json:"scope"`
+	OK       bool   `json:"ok"`
+	ExitCode int    `json:"exit_code"`
+	DryRun   bool   `json:"dry_run,omitempty"`
+	Provider string `json:"provider,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Effort   string `json:"effort,omitempty"`
+	// AuditPrompt is the provider's audit prompt version.
+	AuditPrompt string `json:"audit_prompt,omitempty"`
+	Scope       string `json:"scope"`
+	// FilesHash identifies the file set read (ruleeval.FilesHash): the
+	// same hash means the same files with the same content.
+	FilesHash   string                `json:"files_hash,omitempty"`
 	Skipped     []skippedFile         `json:"skipped,omitempty"`
 	Estimate    verifyEstimate        `json:"estimate"`
 	Usage       *ruleeval.Usage       `json:"usage,omitempty"`
@@ -558,6 +563,12 @@ func (r *verifyRun) verifyOutput(code int, est verifyEstimate, diags []result.Di
 		Estimate:    est,
 		Rules:       []verifyRule{},
 		Diagnostics: explainDiagnostics(diags, false),
+	}
+	if len(r.files) > 0 {
+		vo.FilesHash = ruleeval.FilesHash(r.files)
+	}
+	if a, ok := r.provider.(ruleeval.Auditor); ok {
+		vo.AuditPrompt = a.AuditPromptVersion()
 	}
 	if r.provider == nil {
 		vo.Provider, vo.Model, vo.Effort = "", "", "" // dry run: nothing was configured
