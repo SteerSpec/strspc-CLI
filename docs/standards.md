@@ -29,10 +29,15 @@ realms. `--realm` sets the `realm_id` of the Standard Realm the reference links 
 Realm must be a dependency of the Realm tree, and its edition must equal the reference's `version`
 (STDREF-018). `--profile` limits the reference to one of that Realm's profiles (STDREF-019,
 STDREF-027), and needs a realm. `update` takes `--realm`, `--profile`, `--clear-realm` and
-`--clear-profile`. The CLI checks the realm ID and that a profile has a realm. Lint checks the link
-against the Realm. Both fields need `dev.steerspec.core` 1.21.0 or later.
+`--clear-profile`. The CLI checks the realm ID, that a profile has a realm, and that a Realm of the
+tree declares the realm as a dependency: the Realm at `--dir`, its parent if it's a sub-realm, or one
+of its sub-realms, as `realm validate` on the same `--dir` reads it (RM026). Declare the dependency
+first. `realm dep remove` keeps a dependency a reference still links to, unless another Realm of the
+tree declares it too. Lint checks the rest of the link against the Realm, which it fetches. Both
+fields need `dev.steerspec.core` 1.21.0 or later.
 
 ```bash
+strspc realm dep add dev.steerspec.std.owasp.asvs.v5@5.0.0
 strspc realm standards add --id owasp.asvs --relation implements --version 5.0.0 \
   --realm dev.steerspec.std.owasp.asvs.v5 --profile L1
 ```

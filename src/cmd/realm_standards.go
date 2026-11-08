@@ -40,8 +40,9 @@ the relation implements or derived_from (STDREF-004).
 
 --realm links the reference to a Standard Realm the Realm tree depends on
 (STDREF-017), whose edition is the --version (STDREF-018); --profile limits it
-to one of that Realm's profiles (STDREF-019, STDREF-027). Lint checks the link
-against the Realm. Both need dev.steerspec.core ` + manifestMinCore.String() + ` or later. A Realm
+to one of that Realm's profiles (STDREF-019, STDREF-027). A --realm that no
+Realm of the tree declares as a dependency is refused; realm validate checks the
+rest of the link against the Realm. Both need dev.steerspec.core ` + manifestMinCore.String() + ` or later. A Realm
 Note of type exclusion names a linked reference (NTE-034).
 
 Examples:
@@ -63,6 +64,9 @@ Examples:
 				return err
 			}
 			if err := checkCoreAcceptsStandardLink(dir, realmPath, &ref); err != nil {
+				return err
+			}
+			if err := checkStandardRealmDeclared(dir, ref.Realm); err != nil {
 				return err
 			}
 			var realmID string
