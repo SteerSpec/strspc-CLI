@@ -12,7 +12,7 @@ import (
 
 // defaultCoreSource is the global rule source written by `strspc init`.
 // Bumped on every strspc-rules release so fresh projects pin the current core realm.
-const defaultCoreSource = "github://SteerSpec/strspc-rules@v1.21.0/rules/core"
+const defaultCoreSource = "github://SteerSpec/strspc-rules@v1.23.0/rules/core"
 
 // readmeURL is the only documentation link the CLI prints; steerspec.dev/docs
 // pages do not exist yet (CFG-002).
@@ -129,6 +129,7 @@ Examples:
 			writeln(w, cmdStyle.Render("  3.")+descStyle.Render(" Validate rules: ")+cmdStyle.Render("strspc lint rules/ --strict"))
 			writeln(w, cmdStyle.Render("  4.")+descStyle.Render(" Run structural checks: ")+cmdStyle.Render("strspc check --static-only"))
 			writeln(w)
+			writeln(w, descStyle.Render("Using an AI agent? Give it the strspc workflow: ")+cmdStyle.Render("strspc skill --install"))
 			writeln(w, descStyle.Render("Reference: "+readmeURL))
 
 			return nil

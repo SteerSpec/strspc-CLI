@@ -3,11 +3,36 @@ package cmd
 import (
 	"bytes"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/spf13/cobra"
 )
+
+// TestEveryCommandHasShortAndLong enforces CMD-001 on the whole command tree,
+// hidden commands included, so a command added without a Long description is
+// caught here rather than by an audit.
+func TestEveryCommandHasShortAndLong(t *testing.T) {
+	var walked int
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		walked++
+		if strings.TrimSpace(c.Short) == "" {
+			t.Errorf("%q has no Short description (CMD-001)", c.CommandPath())
+		}
+		if strings.TrimSpace(c.Long) == "" {
+			t.Errorf("%q has no Long description (CMD-001)", c.CommandPath())
+		}
+		for _, sub := range c.Commands() {
+			walk(sub)
+		}
+	}
+	walk(NewRootCmd())
+	if walked < 30 {
+		t.Errorf("walked %d commands, want the whole tree", walked)
+	}
+}
 
 func TestHelpContainsAvailableCommands(t *testing.T) {
 	output, err := testutil.ExecuteCommand(NewRootCmd(), "--help")
@@ -127,4 +152,23 @@ func TestSubcommandHelpHasNoLicenseFooter(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	testutil.AssertNotContains(t, output, "Licensed under")
+}
+
+func TestRootHelpHasGettingStarted(t *testing.T) {
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "--help")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertContains(t, output, "Getting started:")
+	for _, s := range gettingStarted {
+		testutil.AssertContains(t, output, s.command)
+	}
+}
+
+func TestSubcommandHelpHasNoGettingStarted(t *testing.T) {
+	output, err := testutil.ExecuteCommand(NewRootCmd(), "version", "--help")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	testutil.AssertNotContains(t, output, "Getting started:")
 }

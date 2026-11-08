@@ -22,6 +22,10 @@ type standardEdit struct {
 	url          string
 	clearVersion bool
 	clearURL     bool
+	realm        string
+	profile      string
+	clearRealm   bool
+	clearProfile bool
 }
 
 func (e *standardEdit) register(cmd *cobra.Command) {
@@ -31,8 +35,25 @@ func (e *standardEdit) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&e.url, "url", "", "new absolute http(s) URL of the standard (not empty)")
 	cmd.Flags().BoolVar(&e.clearVersion, "clear-version", false, "remove the reference's version")
 	cmd.Flags().BoolVar(&e.clearURL, "clear-url", false, "remove the reference's url")
+	cmd.Flags().StringVar(&e.realm, "realm", "", "new "+standardRealmUsage)
+	cmd.Flags().StringVar(&e.profile, "profile", "", "new "+standardProfileUsage)
+	cmd.Flags().BoolVar(&e.clearRealm, "clear-realm", false, "remove the reference's realm, and so its link to a Standard Realm")
+	cmd.Flags().BoolVar(&e.clearProfile, "clear-profile", false, "remove the reference's profile")
 	cmd.MarkFlagsMutuallyExclusive("version", "clear-version")
 	cmd.MarkFlagsMutuallyExclusive("url", "clear-url")
+	cmd.MarkFlagsMutuallyExclusive("realm", "clear-realm")
+	cmd.MarkFlagsMutuallyExclusive("profile", "clear-profile")
+}
+
+// checkLink refuses a new realm or profile when the core pin that validates the
+// file at path predates manifestMinCore, and a new realm that no Realm of the
+// tree at dir declares as a dependency (STDREF-017). Clearing either needs no
+// check.
+func (e *standardEdit) checkLink(dir, path string) error {
+	if err := checkCoreAcceptsStandardLink(dir, path, &entity.StandardRef{Realm: e.realm, Profile: e.profile}); err != nil {
+		return err
+	}
+	return checkStandardRealmDeclared(dir, e.realm)
 }
 
 // check validates the flags before any file is read.
@@ -41,8 +62,9 @@ func (e *standardEdit) check(cmd *cobra.Command) error {
 		return errors.New("--id is required")
 	}
 	changed := func(name string) bool { return cmd.Flags().Changed(name) }
-	if !changed("relation") && !changed("version") && !changed("url") && !e.clearVersion && !e.clearURL {
-		return errors.New("nothing to change: give --relation, --version, --url, --clear-version or --clear-url")
+	if !changed("relation") && !changed("version") && !changed("url") && !changed("realm") && !changed("profile") &&
+		!e.clearVersion && !e.clearURL && !e.clearRealm && !e.clearProfile {
+		return errors.New("nothing to change: give --relation, --version, --url, --realm, --profile or a --clear-* flag")
 	}
 	if changed("version") && e.version == "" {
 		return errors.New("--version must not be empty: use --clear-version to remove it (STDREF-007)")
@@ -50,7 +72,10 @@ func (e *standardEdit) check(cmd *cobra.Command) error {
 	if changed("url") && e.url == "" {
 		return errors.New("--url must not be empty: use --clear-url to remove it")
 	}
-	for _, f := range [][2]string{{"--id", e.id}, {"--relation", e.relation}, {"--version", e.version}, {"--url", e.url}} {
+	if err := checkStandardRealm(cmd, e.realm, e.profile); err != nil {
+		return err
+	}
+	for _, f := range [][2]string{{"--id", e.id}, {"--relation", e.relation}, {"--version", e.version}, {"--url", e.url}, {"--profile", e.profile}} {
 		if err := rejectControlChars(f[0], f[1]); err != nil {
 			return err
 		}
@@ -60,7 +85,7 @@ func (e *standardEdit) check(cmd *cobra.Command) error {
 
 // apply edits the reference with e's id in refs, returning the new array and
 // the reference before and after. The edit must change something and leave a
-// valid reference (STDREF-004, STDREF-007, STDREF-008).
+// valid reference (STDREF-004, STDREF-007, STDREF-008, STDREF-019).
 func (e *standardEdit) apply(cmd *cobra.Command, refs []entity.StandardRef) (out []entity.StandardRef, before, after entity.StandardRef, err error) {
 	i := slices.IndexFunc(refs, func(r entity.StandardRef) bool { return r.ID == e.id })
 	if i < 0 {
@@ -82,6 +107,18 @@ func (e *standardEdit) apply(cmd *cobra.Command, refs []entity.StandardRef) (out
 		after.URL = ""
 	case cmd.Flags().Changed("url"):
 		after.URL = e.url
+	}
+	switch {
+	case e.clearRealm:
+		after.Realm = ""
+	case cmd.Flags().Changed("realm"):
+		after.Realm = e.realm
+	}
+	switch {
+	case e.clearProfile:
+		after.Profile = ""
+	case cmd.Flags().Changed("profile"):
+		after.Profile = e.profile
 	}
 	if after == before {
 		err := fmt.Errorf("standard %q already reads %s: nothing to change", e.id, describeStandard(&before))
@@ -193,17 +230,22 @@ func newEntityStandardsUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <EUID>",
 		Short: "Edit a standard an entity declares",
-		Long: `Change the relation, version or url of a Standard Reference the entity declares,
-in place, so the ` + "`standard`" + ` notes mapping it keep resolving. The entity's rule_set
+		Long: `Change the relation, version, url, realm or profile of a Standard Reference the
+entity declares, in place, so the ` + "`standard`" + ` notes mapping it keep resolving. The entity's rule_set
 version is patch-bumped and its timestamp and hash refreshed, along with those of
 the entities containing it.
 
 A new version names another edition: the notes that resolve to the reference then
 map clauses of that edition (STDREF-011), and are listed.
 
+--realm links the reference to a Standard Realm (STDREF-017) and --profile limits
+it to one of that Realm's profiles (STDREF-019); --clear-realm and --clear-profile
+remove them. A profile needs a realm.
+
 Examples:
   strspc entity standards update API --id owasp.asvs --version 5.0.0
-  strspc entity standards update KWRD --id ietf.rfc2119 --relation implements --clear-url`,
+  strspc entity standards update KWRD --id ietf.rfc2119 --relation implements --clear-url
+  strspc entity standards update API --id owasp.asvs --realm dev.steerspec.std.owasp.asvs.v5`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -213,6 +255,9 @@ Examples:
 			}
 			target, err := resolveEntityTarget(dir, args[0])
 			if err != nil {
+				return err
+			}
+			if err := edit.checkLink(dir, target.path); err != nil {
 				return err
 			}
 			u := standardUpdate{Entity: args[0], Path: target.path}
@@ -254,14 +299,19 @@ func newRealmStandardsUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update",
 		Short: "Edit a standard a Realm declares",
-		Long: `Change the relation, version or url of a Standard Reference in realm.json, in
-place, so the ` + "`standard`" + ` notes mapping it keep resolving.
+		Long: `Change the relation, version, url, realm or profile of a Standard Reference in
+realm.json, in place, so the ` + "`standard`" + ` notes mapping it keep resolving.
 
 A new version names another edition: the notes that resolve to the reference then
 map clauses of that edition (STDREF-011), and are listed.
 
-Example:
-  strspc realm standards update --id owasp.asvs --version 5.0.0`,
+--realm links the reference to a Standard Realm (STDREF-017) and --profile limits
+it to one of that Realm's profiles (STDREF-019); --clear-realm and --clear-profile
+remove them. A profile needs a realm.
+
+Examples:
+  strspc realm standards update --id owasp.asvs --version 5.0.0
+  strspc realm standards update --id owasp.asvs --realm dev.steerspec.std.owasp.asvs.v5 --profile L1`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -273,11 +323,19 @@ Example:
 			if err != nil {
 				return err
 			}
+			if err := edit.checkLink(dir, realmPath); err != nil {
+				return err
+			}
 			u := standardUpdate{Path: realmPath}
 			err = loadModifyWriteRealm(realmPath, func(rf *entity.RealmFile) error {
 				refs, before, after, err := edit.apply(cmd, rf.Realm.Standards)
 				if err != nil {
 					return err
+				}
+				if before.Realm != "" && after.Realm == "" {
+					if err := checkNoExclusionNames(rf, edit.id, "unlink"); err != nil {
+						return err
+					}
 				}
 				rf.Realm.Standards = refs
 				u.Realm, u.Standard, u.OldStandard = rf.Realm.ID, after, before

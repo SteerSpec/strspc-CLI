@@ -24,6 +24,42 @@ The `standards` field needs `dev.steerspec.core` 1.15.0 or later. `add` is refus
 validates the file is older: the nearest one among the sub-realm's own, the realm's and its parent's, since a
 sub-realm that pins its own core is checked only against that pin. The error names the command that moves it.
 
+**Link a reference to a Standard Realm.** Core 1.21.0 adds the Draft rules for standards published as
+realms. `--realm` sets the `realm_id` of the Standard Realm the reference links to (STDREF-017). That
+Realm must be a dependency of the Realm tree, and its edition must equal the reference's `version`
+(STDREF-018). `--profile` limits the reference to one of that Realm's profiles (STDREF-019,
+STDREF-027), and needs a realm. `update` takes `--realm`, `--profile`, `--clear-realm` and
+`--clear-profile`. The CLI checks the realm ID, that a profile has a realm, and that a Realm of the
+tree declares the realm as a dependency: the Realm at `--dir`, its parent if it's a sub-realm, or one
+of its sub-realms, as `realm validate` on the same `--dir` reads it (RM026). Declare the dependency
+first. `realm dep remove` keeps a dependency a reference still links to, unless another Realm of the
+tree declares it too. Lint checks the rest of the link against the Realm, which it fetches. Both
+fields need `dev.steerspec.core` 1.21.0 or later.
+
+```bash
+strspc realm dep add dev.steerspec.std.owasp.asvs.v5@5.0.0
+strspc realm standards add --id owasp.asvs --relation implements --version 5.0.0 \
+  --realm dev.steerspec.std.owasp.asvs.v5 --profile L1
+```
+
+**Exclude a clause.** A Realm Note sits in the `notes` array of `realm.json`, not next to a rule
+(NTE-029). Its ID is `REALM/NNN`, numbered from `REALM/001` in each manifest (NTE-030). It is one of
+four types: `exclusion`, `rationale`, `clarification` or `reference` (NTE-031). An `exclusion`
+declares one clause not applicable to the realm, and its content is the justification (NTE-033). Its
+`--ref` is `<id>:<clause>`, and the `<id>` must name a reference of the same manifest that is linked
+with `--realm` (NTE-034). An exclusion is never deleted. To withdraw it, retype it to `reference`,
+which keeps its ref and content (NTE-035). `--added-by` is checked as for rule notes, against the
+realm's contributors, or for a sub-realm its parent's. A sub-realm holds its own notes, for its own
+linked references. Removing a reference, or clearing its `realm`, is refused while an exclusion names
+it. The notes are Draft rules of core 1.21.0 and need that core pin. Every write recomputes the
+manifest hash when the manifest has one.
+
+```bash
+strspc realm note add --type exclusion --ref owasp.asvs:V3.1.1 --body "The CLI renders no HTML." --added-by github:alice
+strspc realm note list
+strspc realm note update REALM/001 --type reference   # withdraw the exclusion
+```
+
 `strspc standards coverage` then lists each mapped clause, per standard and entity. The output below
 is a sample:
 
@@ -47,11 +83,50 @@ owasp.asvs 4.0.3 (implements)
 | `mapped` | A rule in another state maps it, and no Implemented rule does |
 | `lapsed` | The rule mapping it was retired or replaced, and nothing maps it now |
 | `cited` | The standard is a source (`derived_from`), so the rule claims no coverage |
+| `excluded` | An `exclusion` Realm Note names the clause of a linked standard, whatever maps it |
+| `unmapped` | A clause of a linked standard's list that no rule maps |
 
 Each entity is measured over its own rules and those it inherits, less those replaced. An overriding
 rule doesn't take on the mapping of the rule it replaces, so a clause it drops shows as `lapsed`.
 Implemented is a rule's state: the first line shows the evaluator setting, which decides whether
-anything checks those rules. SteerSpec holds no clause lists, so a clause no rule maps isn't shown.
+anything checks those rules. Without a linked Standard Realm, a clause no rule maps isn't shown:
+SteerSpec holds no clause lists.
+
+### Against a linked Standard Realm
+
+A reference linked with `--realm` is measured against that realm's clause list, narrowed to its
+`--profile` (STDREF-020). The clauses no rule maps show as `unmapped`, and those an exclusion names as
+`excluded`, with the justification (STDREF-022, STDREF-023). Each entity, and the Realm as a whole,
+gets a figure: the clauses covered over those of the list less the excluded (STDREF-024,
+STDREF-025). A clause that several rules of the Standard Realm transcribe counts once. The Realm figure
+counts a clause covered when any entity of the tree covers it. The figure is `undefined` when no
+clause is left to count, because every clause is excluded or the profile lists none (STDREF-028),
+never 0 % or 100 %, and the percentage is truncated, so 100 % means
+every clause. Only an `implements` reference gets one (STDREF-026).
+
+```text
+$ strspc standards coverage
+Evaluator: claude, runs on Implemented rules
+
+owasp.asvs 5.0.0 (implements)
+  Standard Realm dev.steerspec.std.owasp.asvs.v5, profile L1: 70 clause(s), 1 excluded
+  Realm dev.acme: 12 of 69 covered (17.3 %)
+    AUTH: 9 of 69 covered (13.0 %)
+    BILL: 4 of 69 covered (5.7 %)
+  V1.2.1  AUTH  covered   dev.acme:AUTH-004 (Implemented)
+  V1.2.2  AUTH  unmapped
+  V3.1.1  AUTH  excluded  excluded by REALM/001 (dev.acme)
+  ...
+  Exclusions:
+    owasp.asvs:V3.1.1  REALM/001 (dev.acme): The CLI renders no HTML.
+```
+
+`--json` adds a `figures` array, one entry per Realm figure and entity figure (`entity` left out for
+the Realm's). Each has `total`, the clauses of the profile's list; `excluded`; `covered`, `mapped`,
+`lapsed` and `unmapped`, which count the clauses not excluded and add up to `total` less `excluded`;
+`declared_by`, the manifest declaring the reference; and `figure`, the ratio, or `null` when
+undefined. An excluded clause carries its `exclusion`: the manifest, the `REALM/NNN` note and its
+content. With no linked reference, `figures` is empty and the report is as before.
 
 The report covers the local sources in `.strspc/config.yaml` that have a `realm.json`, with their
 sub-realms, and `--all-sources` adds the remote ones. A source with no `realm.json` can't declare a
@@ -140,13 +215,16 @@ jobs:
 Until `develop` has a successful run, there is no artifact to fetch, so leave out the fetch step and
 `--baseline` until then.
 
-There is no percentage threshold: without a standard's clause list, a report has nothing to divide by.
+A percentage threshold needs a linked Standard Realm's figures. #239 adds it as `--min-coverage`; an
+undefined figure neither passes nor fails it.
 
 ## Planned: standards published as realms
 
-> **Not yet implemented.** Proposed in
-> [strspc-rules#144](https://github.com/SteerSpec/strspc-rules/issues/144); still a design under
-> discussion.
+> **Mostly implemented.** Designed in
+> [strspc-rules#144](https://github.com/SteerSpec/strspc-rules/issues/144). The rules are Draft in core
+> 1.21.0. Linking a reference to a Standard Realm (`--realm`), excluding a clause (`realm note`), lint
+> of a note's clause against the linked realm, and coverage against its clause list all work today, as
+> above. The crosswalk between editions is not yet implemented.
 
 A standard's publisher, or anyone its licence allows, publishes it as a SteerSpec realm with one rule
 per clause, for example OWASP ASVS 5.0.0 in a GitHub repository. A project declares it as a

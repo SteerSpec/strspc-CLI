@@ -76,7 +76,7 @@ strspc init
 
 # Author rules in your own realm, pinned to the core realm
 strspc realm init --dir rules --id com.acme.app --title "Acme App" \
-  --dependency dev.steerspec.core@1.21.0=github://SteerSpec/strspc-rules@v1.21.0/rules/core
+  --dependency dev.steerspec.core@1.23.0=github://SteerSpec/strspc-rules@v1.23.0/rules/core
 strspc realm add CFG --title "Configuration"
 strspc rule add CFG --body "The CLI MUST write a config file." --added-by github:alice
 
@@ -103,6 +103,7 @@ Add `./rules/` to `.strspc/config.yaml` to
 | Find a command | [Commands](docs/architecture.md#commands) |
 | Configure a project | [Configure a project](docs/configuration.md#configure-a-project) |
 | See how a project stands, or diagnose my setup | [Status and doctor](docs/configuration.md#see-how-a-project-stands) |
+| Give an AI agent the strspc workflow | `strspc skill --install` writes `.claude/skills/strspc/SKILL.md` |
 | Validate rules and their lifecycle | [Validate rules](docs/validate.md#validate-rules) |
 | Check that docs cite live rules | [Validate rule citations](docs/validate.md#validate-rule-citations) |
 | Understand a diagnostic code | [Understand a diagnostic](docs/validate.md#understand-a-diagnostic) |

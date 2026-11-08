@@ -68,12 +68,22 @@ Examples:
 			if err != nil {
 				return err
 			}
-
 			var (
 				oldVersion, version string
 				revision            int
 			)
 			err = modifyEntity(target, func(f *entity.File) error {
+				// The note's type after the update, its own when --type isn't
+				// given, must be one the core pin's schema accepts.
+				effective := noteType
+				for _, n := range f.Notes {
+					if n.ID == noteID && effective == "" {
+						effective = n.Type
+					}
+				}
+				if err := checkCoreAcceptsNoteType(dir, target.path, effective); err != nil {
+					return err
+				}
 				oldVersion = f.RuleSet.Version
 				if updErr := entityops.UpdateNote(f, noteID, body, noteType); updErr != nil {
 					return updErr

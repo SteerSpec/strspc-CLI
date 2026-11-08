@@ -21,6 +21,12 @@ var standardsMinCore = semver.MustParse("1.15.0")
 // schema accepts a `contributors` array (CTRB-004).
 var contributorsMinCore = semver.MustParse("1.16.0")
 
+// manifestMinCore is the first dev.steerspec.core release whose realm schema
+// accepts a manifest `hash` (RLMMNFST-013) and Realm Notes (RLMMNFST-012), and
+// whose schemas accept the `realm` and `profile` of a Standard Reference
+// (STDREF-017, STDREF-019).
+var manifestMinCore = semver.MustParse("1.21.0")
+
 // coreReleasePin matches a pin that selects a core release's schemas, as the
 // manager's schema.WithCoreVersion reads it. Lint ignores any other form and
 // uses the latest schemas.
@@ -34,10 +40,41 @@ type realmPin struct {
 	source  string
 }
 
+// structuredMinCore is the first dev.steerspec.core release whose entity
+// schema accepts a `structured` note (NTE-036 to NTE-039).
+var structuredMinCore = semver.MustParse("1.23.0")
+
+// checkCoreAcceptsNoteType refuses to write a note of noteType into the entity
+// file at path when the core pin that validates it predates that type:
+// `standard` needs standardsMinCore and `structured` structuredMinCore. The
+// other types are in every core release the CLI supports.
+func checkCoreAcceptsNoteType(dir, path, noteType string) error {
+	switch noteType {
+	case entity.NoteTypeStandard:
+		return checkCoreAccepts(dir, path, "type: standard", standardsMinCore)
+	case entity.NoteTypeStructured:
+		return checkCoreAccepts(dir, path, "type: structured", structuredMinCore)
+	}
+	return nil
+}
+
 // checkCoreAcceptsStandards refuses to declare a standard in the file at path
 // when the core pin that validates it predates standardsMinCore.
 func checkCoreAcceptsStandards(dir, path string) error {
 	return checkCoreAccepts(dir, path, "standards", standardsMinCore)
+}
+
+// checkCoreAcceptsStandardLink refuses to write a Standard Reference with a
+// realm or a profile into the file at path when the core pin that validates it
+// predates manifestMinCore.
+func checkCoreAcceptsStandardLink(dir, path string, ref *entity.StandardRef) error {
+	switch {
+	case ref.Realm != "":
+		return checkCoreAccepts(dir, path, "realm", manifestMinCore)
+	case ref.Profile != "":
+		return checkCoreAccepts(dir, path, "profile", manifestMinCore)
+	}
+	return nil
 }
 
 // checkCoreAccepts refuses to write field into the file at path when the core

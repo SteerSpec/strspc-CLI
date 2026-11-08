@@ -1,2 +1,5 @@
 # Golden files compare byte for byte, so Windows checkouts must keep LF.
 *.golden text eol=lf
+
+# The embedded agent skill is compared and printed as written, so keep LF on Windows.
+src/cmd/skills/**/SKILL.md text eol=lf

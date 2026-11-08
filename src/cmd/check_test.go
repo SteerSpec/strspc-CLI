@@ -140,18 +140,20 @@ index 0000000..1111111 100644
 // stubProvider is a ruleeval.Provider whose verdicts are fixed per rule ID.
 // It implements Describer so it can be used with the cache.
 type stubProvider struct {
-	mu       sync.Mutex
-	verdicts map[string]*ruleeval.EvalResponse
-	err      error            // returned by every Evaluate call when set
-	errFor   map[string]error // returned for these rule ids only
-	calls    int
-	lastDiff string // diff of the most recent Evaluate call
+	mu        sync.Mutex
+	verdicts  map[string]*ruleeval.EvalResponse
+	err       error            // returned by every Evaluate call when set
+	errFor    map[string]error // returned for these rule ids only
+	calls     int
+	lastDiff  string          // diff of the most recent Evaluate call
+	lastFiles []ruleeval.File // file set of the most recent Evaluate call (an audit)
 }
 
 func (s *stubProvider) Evaluate(_ context.Context, req ruleeval.EvalRequest) (*ruleeval.EvalResponse, error) { //nolint:gocritic // ruleeval.Provider signature
 	s.mu.Lock()
 	s.calls++
 	s.lastDiff = req.Diff
+	s.lastFiles = req.Files
 	s.mu.Unlock()
 	if s.err != nil {
 		return nil, s.err
@@ -169,10 +171,24 @@ func (s *stubProvider) Model() string { return "stub-model" }
 
 func (s *stubProvider) PromptVersion() string { return "test/v1" }
 
+// AuditPromptVersion makes the stub a ruleeval.Auditor, for rule verify.
+func (s *stubProvider) AuditPromptVersion() string { return "test/audit" }
+
 func (s *stubProvider) seenDiff() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.lastDiff
+}
+
+// seenFiles returns the paths of the file set last audited.
+func (s *stubProvider) seenFiles() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	paths := make([]string, len(s.lastFiles))
+	for i, f := range s.lastFiles {
+		paths[i] = f.Path
+	}
+	return paths
 }
 
 func (s *stubProvider) callCount() int {
@@ -185,11 +201,11 @@ func (s *stubProvider) callCount() int {
 // request path of the evaluator is exercised.
 type batchStubProvider struct{ stubProvider }
 
-func (b *batchStubProvider) EvaluateBatch(ctx context.Context, req ruleeval.BatchRequest) (*ruleeval.BatchResponse, error) {
+func (b *batchStubProvider) EvaluateBatch(ctx context.Context, req ruleeval.BatchRequest) (*ruleeval.BatchResponse, error) { //nolint:gocritic // ruleeval.BatchProvider signature
 	out := &ruleeval.BatchResponse{Verdicts: map[string]*ruleeval.EvalResponse{}}
 	for i := range req.Inputs {
 		rule := req.Inputs[i].Rule
-		v, err := b.Evaluate(ctx, ruleeval.EvalRequest{Rule: rule, Diff: req.Diff})
+		v, err := b.Evaluate(ctx, ruleeval.EvalRequest{Rule: rule, Diff: req.Diff, Files: req.Files})
 		if err != nil {
 			return nil, err
 		}

@@ -65,6 +65,7 @@ type checkOptions struct {
 	format     string
 	provider   string
 	model      string
+	effort     string // overrides evaluator.effort (rule verify only for now)
 	endpoint   string
 	staticOnly bool
 	noCache    bool
@@ -127,8 +128,10 @@ func newCheckCmd() *cobra.Command {
 	return cmd
 }
 
-// realmTree is a source's manifest and what it resolved to.
+// realmTree is a source's manifest, the directory holding it, and what it
+// resolved to.
 type realmTree struct {
+	dir      string
 	manifest *entity.RealmFile
 	resolved *realmresolve.ResolveResult
 }
@@ -151,6 +154,7 @@ type checkRun struct {
 	providerName string
 	provider     ruleeval.Provider
 	model        string
+	effort       string
 
 	fetcher  *remote.Fetcher
 	resolved []*ruleresolve.ResolvedFile
@@ -287,6 +291,10 @@ func (r *checkRun) buildProvider() (int, error) {
 	if r.opts.model != "" {
 		r.model = r.opts.model
 	}
+	r.effort = r.cfg.Evaluator.Effort
+	if r.opts.effort != "" {
+		r.effort = strings.TrimSpace(r.opts.effort)
+	}
 
 	if r.opts.staticOnly || isStaticProviderName(r.providerName) {
 		// No provider will be built, so a custom endpoint left in the config
@@ -300,6 +308,9 @@ func (r *checkRun) buildProvider() (int, error) {
 	if err := rejectControlChars("evaluator.model", r.model); err != nil {
 		return exitConfig, err
 	}
+	if err := rejectControlChars("evaluator.effort", r.effort); err != nil {
+		return exitConfig, err
+	}
 
 	endpoint, err := resolveEndpoint(r.cfg.Evaluator.Endpoint, r.opts.endpoint, os.Getenv(envEvaluatorEndpoint))
 	if err != nil {
@@ -309,7 +320,7 @@ func (r *checkRun) buildProvider() (int, error) {
 	p, err := newEvalProvider(r.providerName, providers.Options{
 		Model:    r.model,
 		Endpoint: endpoint,
-		Effort:   r.cfg.Evaluator.Effort,
+		Effort:   r.effort,
 	})
 	switch {
 	case err == nil:
@@ -339,6 +350,15 @@ func (r *checkRun) buildProvider() (int, error) {
 // .strspc/cache/) and validates the realm dependencies of sources that ship
 // a realm.json. Any error-severity diagnostic aborts the check.
 func (r *checkRun) resolveRules() error {
+	if err := r.resolveSources(); err != nil {
+		return r.fail(exitConfig, err, r.resolutionDiags...)
+	}
+	return nil
+}
+
+// resolveSources is resolveRules without the reporting: on failure the
+// diagnostics are left in r.resolutionDiags for the caller to render.
+func (r *checkRun) resolveSources() error {
 	cacheDir := filepath.Join(r.cwd, ".strspc", "cache")
 	r.fetcher = newRemoteFetcher(cacheDir, r.ttl)
 
@@ -373,7 +393,7 @@ func (r *checkRun) resolveRules() error {
 	}
 	if fatal > 0 {
 		r.resolutionDiags = diags
-		return r.fail(exitConfig, fmt.Errorf("rule resolution failed with %d error(s)", fatal), diags...)
+		return fmt.Errorf("rule resolution failed with %d error(s)", fatal)
 	}
 	r.resolved = resolved
 	r.verbosef("sources: %d resolved, %d entity file(s)", len(r.entries), len(resolved))
@@ -432,7 +452,7 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 		rr := realmresolve.New(rrOpts...)
 		out, res := rr.Resolve(r.ctx, rf, dir)
 		diags = append(diags, res.Diagnostics...)
-		r.realmTrees[e.Source] = &realmTree{manifest: rf, resolved: out}
+		r.realmTrees[e.Source] = &realmTree{dir: dir, manifest: rf, resolved: out}
 		for _, c := range out.Inheritance {
 			r.chains[c.Entity.Entity.Entity.ID] = c
 		}
@@ -571,6 +591,37 @@ func (r *checkRun) sourceLabel(rf *ruleresolve.ResolvedFile, base string) string
 	return rel + "/"
 }
 
+// openEvalCache opens the evaluation cache, .strspc/cache.db, and prunes its
+// expired entries. When the cache is locked or unusable it warns and returns
+// nil: evaluation goes on without it. Call closeStore once done with a
+// non-nil store.
+func (r *checkRun) openEvalCache(ctx context.Context) (store *evalcache.Store, closeStore func()) {
+	dbPath := filepath.Join(r.cwd, ".strspc", "cache.db")
+	store, err := evalcache.Open(ctx, dbPath, evalcache.WithTTL(r.ttl))
+	switch {
+	case errors.Is(err, evalcache.ErrLocked):
+		_, _ = fmt.Fprintf(r.errOut, "warning: evaluation cache is locked by another process; continuing without cache\n")
+		return nil, nil
+	case err != nil:
+		writeWarning(r.errOut, "evaluation cache unavailable (%v); continuing without cache", err)
+		return nil, nil
+	}
+	r.notices = append(r.notices, store.Diagnostics().Diagnostics...)
+	// Get treats expired entries as misses but keeps them; prune so cache.db
+	// does not grow with every distinct diff.
+	if pruned, perr := store.Prune(); perr != nil {
+		r.verbosef("cache: prune: %v", perr)
+	} else if pruned > 0 {
+		r.verbosef("cache: pruned %d expired entry(ies)", pruned)
+	}
+	r.verbosef("cache: %s (ttl %s)", dbPath, r.ttl)
+	return store, func() {
+		if cerr := store.Close(); cerr != nil {
+			r.verbosef("cache: close: %v", cerr)
+		}
+	}
+}
+
 // evaluate runs the evaluator (static or AI) and reports the outcome.
 func (r *checkRun) evaluate() error {
 	r.buildInputs()
@@ -591,28 +642,9 @@ func (r *checkRun) evaluate() error {
 	evalOpts = append(evalOpts, ruleeval.WithObserver(obs))
 
 	if !r.static && !r.opts.noCache {
-		store, err := evalcache.Open(ctx, filepath.Join(r.cwd, ".strspc", "cache.db"), evalcache.WithTTL(r.ttl))
-		switch {
-		case err == nil:
-			defer func() {
-				if cerr := store.Close(); cerr != nil {
-					r.verbosef("cache: close: %v", cerr)
-				}
-			}()
-			r.notices = append(r.notices, store.Diagnostics().Diagnostics...)
-			// Get treats expired entries as misses but keeps them; prune so
-			// cache.db does not grow with every distinct diff.
-			if pruned, perr := store.Prune(); perr != nil {
-				r.verbosef("cache: prune: %v", perr)
-			} else if pruned > 0 {
-				r.verbosef("cache: pruned %d expired entry(ies)", pruned)
-			}
+		if store, closeStore := r.openEvalCache(ctx); store != nil {
+			defer closeStore()
 			evalOpts = append(evalOpts, ruleeval.WithCache(store))
-			r.verbosef("cache: %s (ttl %s)", filepath.Join(r.cwd, ".strspc", "cache.db"), r.ttl)
-		case errors.Is(err, evalcache.ErrLocked):
-			_, _ = fmt.Fprintf(r.errOut, "warning: evaluation cache is locked by another process; continuing without cache\n")
-		default:
-			writeWarning(r.errOut, "evaluation cache unavailable (%v); continuing without cache", err)
 		}
 	} else {
 		r.verbosef("cache: disabled")
@@ -629,7 +661,7 @@ func (r *checkRun) evaluate() error {
 			evaluateOn = fmt.Sprint(r.evaluateOn)
 		}
 		r.verbosef("evaluator: %s model=%s effort=%s fail_on=%v evaluate_on=%s",
-			r.providerName, r.model, orDefault(r.cfg.Evaluator.Effort, "default"), r.failOn, evaluateOn)
+			r.providerName, r.model, orDefault(r.effort, "default"), r.failOn, evaluateOn)
 	}
 
 	res := evaluator.Evaluate(ctx, r.inputs, r.diff)

@@ -12,9 +12,12 @@ func newRealmDepRemoveCmd() *cobra.Command {
 	var dir string
 
 	cmd := &cobra.Command{
-		Use:           "remove <realm_id>",
-		Short:         "Remove a dependency from a Realm",
-		Long:          "Remove the dependency declared for <realm_id> from realm.json.",
+		Use:   "remove <realm_id>",
+		Short: "Remove a dependency from a Realm",
+		Long: "Remove the dependency declared for <realm_id> from realm.json.\n\n" +
+			"A dependency a Standard Reference of the Realm tree still links to (its realm) is kept,\n" +
+			"unless another Realm of the tree declares it too: the references would name no dependency\n" +
+			"(STDREF-017). Remove them, or clear their realm, first.",
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -30,6 +33,9 @@ func newRealmDepRemoveCmd() *cobra.Command {
 			realmPath, checkErr := checkRealmJSON(dir)
 			if checkErr != nil {
 				return checkErr
+			}
+			if err := checkDepUnlinked(dir, realmID); err != nil {
+				return err
 			}
 
 			err := loadAndWriteRealm(realmPath, func(deps []entity.RealmDep) ([]entity.RealmDep, error) {

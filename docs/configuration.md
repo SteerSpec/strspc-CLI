@@ -7,11 +7,11 @@ Back to the [README](../README.md).
 `strspc init` writes `.strspc/config.yaml` and a `.strspc/.gitignore` that keeps `cache.db` and
 `cache/` out of version control. Pass `--provider null` for an offline setup without an API key, and
 `--force` to overwrite. This example adds a local realm to the generated config
-([SPEC §2.9](https://github.com/SteerSpec/strspc-manager/blob/v1.44.0/docs/SPEC.md#29-configuration)):
+([SPEC §2.9](https://github.com/SteerSpec/strspc-manager/blob/v1.47.1/docs/SPEC.md#29-configuration)):
 
 ```yaml
 rules:
-  - source: github://SteerSpec/strspc-rules@v1.21.0/rules/core   # bumped per rules release
+  - source: github://SteerSpec/strspc-rules@v1.23.0/rules/core   # bumped per rules release
     scope: global
   - source: ./rules/
     scope: global
@@ -57,7 +57,7 @@ Config: .strspc/config.yaml
   Cache TTL: 24h0m0s
 
 Sources:
-  - github://SteerSpec/strspc-rules@v1.21.0/rules/core (global): pinned, cached, 154 rule(s)
+  - github://SteerSpec/strspc-rules@v1.23.0/rules/core (global): pinned, cached, 154 rule(s)
   - ./rules/ (global): local, 13 rule(s)
 
 Rules: 167 total

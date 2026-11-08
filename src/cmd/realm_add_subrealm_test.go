@@ -555,3 +555,29 @@ func TestRealmAddSubrealmFetchErrors(t *testing.T) {
 		})
 	}
 }
+
+// TestRealmAddSubrealmForceReplacesLink replaces a target realm.json that is a
+// symbolic link with a regular file, and leaves the link's target alone.
+func TestRealmAddSubrealmForceReplacesLink(t *testing.T) {
+	parentDir := makeParentRealm(t, "com.test.parent", nil)
+	target := filepath.Join(t.TempDir(), "outside.json")
+	if err := os.WriteFile(target, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	childDir := t.TempDir()
+	link := filepath.Join(childDir, "realm.json")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "add-subrealm",
+		"--id", "com.test.parent.child", "--dir", childDir, "--parent-dir", parentDir, "--force"); err != nil {
+		t.Fatalf("unexpected error with --force: %v", err)
+	}
+	if isLink, err := isLinkPath(link); err != nil || isLink {
+		t.Errorf("realm.json is still a link (err %v)", err)
+	}
+	if data, err := os.ReadFile(target); err != nil || string(data) != "{}" {
+		t.Errorf("the link's target was written: %q (err %v)", data, err)
+	}
+}
