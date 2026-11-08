@@ -33,14 +33,23 @@ type coverageMapping struct {
 	Note  string `json:"note"`
 }
 
+// coverageExclusion is the `exclusion` Realm Note behind an excluded clause
+// (STDREF-022): the manifest holding it, its ID and its justification.
+type coverageExclusion struct {
+	Realm   string `json:"realm"`
+	Note    string `json:"note"`
+	Content string `json:"content"`
+}
+
 // coverageClause is one clause of a standard as it stands in one entity.
 type coverageClause struct {
-	Standard string            `json:"standard"`
-	Version  string            `json:"version,omitempty"`
-	Clause   string            `json:"clause"`
-	Entity   string            `json:"entity"`
-	Status   string            `json:"status"`
-	Rules    []coverageMapping `json:"rules"`
+	Standard  string             `json:"standard"`
+	Version   string             `json:"version,omitempty"`
+	Clause    string             `json:"clause"`
+	Entity    string             `json:"entity"`
+	Status    string             `json:"status"`
+	Rules     []coverageMapping  `json:"rules"`
+	Exclusion *coverageExclusion `json:"exclusion,omitempty"`
 }
 
 // coverageFigure is the coverage figure of a Standard Reference that links a
@@ -55,10 +64,18 @@ type coverageFigure struct {
 	Version  string `json:"version,omitempty"`
 	Realm    string `json:"realm"`
 	Profile  string `json:"profile,omitempty"`
-	// Total is the number of clauses of the list, before exclusions.
+	// DeclaredBy is the realm_id of the manifest declaring the reference,
+	// empty when an entity declares it.
+	DeclaredBy string `json:"declared_by,omitempty"`
+	// Total is the number of clauses of the list, before exclusions. The
+	// others count the clauses not excluded, and add up to Total less
+	// Excluded.
 	Total    int `json:"total"`
 	Excluded int `json:"excluded"`
 	Covered  int `json:"covered"`
+	Mapped   int `json:"mapped"`
+	Lapsed   int `json:"lapsed"`
+	Unmapped int `json:"unmapped"`
 	// Figure is Covered over Total less Excluded, null when that is 0
 	// (STDREF-028), so an undefined figure never reads as 0 or 1.
 	Figure *float64 `json:"figure"`
@@ -209,6 +226,9 @@ func (r *checkRun) coverageReport(evaluator coverageEvaluator) *coverageOutput {
 			Status:   string(c.Status),
 			Rules:    coverageMappings(c.Rules),
 		})
+		if ex := c.Exclusion; ex != nil {
+			out.Clauses[len(out.Clauses)-1].Exclusion = &coverageExclusion{Realm: ex.Realm, Note: ex.Note, Content: ex.Content}
+		}
 	}
 	return out
 }
@@ -219,7 +239,8 @@ func coverageFigures(figs []coverage.Figure) []coverageFigure {
 		f := &figs[i]
 		cf := coverageFigure{
 			Tree: f.Tree, Entity: f.Entity, Standard: f.Standard, Version: f.Version, Realm: f.Realm, Profile: f.Profile,
-			Total: f.Total + f.Excluded, Excluded: f.Excluded, Covered: f.Covered,
+			DeclaredBy: f.DeclaredBy, Total: f.Total + f.Excluded, Excluded: f.Excluded,
+			Covered: f.Covered, Mapped: f.Mapped, Lapsed: f.Lapsed, Unmapped: f.Unmapped,
 		}
 		if f.Defined {
 			v := float64(f.Covered) / float64(f.Total)
@@ -381,13 +402,17 @@ func writeCoverage(w io.Writer, report *coverageOutput) {
 		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 		for i := range g.clauses {
 			c := &g.clauses[i]
-			rules := make([]string, 0, len(c.Rules))
+			rules := make([]string, 0, len(c.Rules)+1)
+			if ex := c.Exclusion; ex != nil {
+				rules = append(rules, fmt.Sprintf("excluded by %s (%s)", ex.Note, ex.Realm))
+			}
 			for _, m := range c.Rules {
 				rules = append(rules, fmt.Sprintf("%s (%s)", m.Rule, stateLabel(m.State)))
 			}
 			_, _ = fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\n", coverageCell(c.Clause), coverageCell(c.Entity), c.Status, coverageCell(strings.Join(rules, ", ")))
 		}
 		_ = tw.Flush()
+		writeCoverageExclusions(w, g)
 	}
 	if len(report.Unresolved) > 0 {
 		writeln(w, "\nNotes that resolve to no declared standard, not counted:")
@@ -420,7 +445,35 @@ func writeCoverageFigures(w io.Writer, figs []coverageFigure) {
 			list += fmt.Sprintf(", %d excluded", f.Excluded)
 		}
 		writeln(w, "  "+coverageCell(list))
-		writeln(w, "  "+coverageCell("Realm "+f.Tree)+": "+figureText(f))
+		realm := "Realm " + f.Tree
+		if f.DeclaredBy != "" && f.DeclaredBy != f.Tree {
+			realm += " (declared by " + f.DeclaredBy + ")"
+		}
+		writeln(w, "  "+coverageCell(realm)+": "+figureText(f))
+	}
+}
+
+// writeCoverageExclusions lists, once each, the exclusions behind the excluded
+// clauses of a group, with their justification.
+func writeCoverageExclusions(w io.Writer, g *coverageGroup) {
+	type key struct{ realm, note string }
+	seen := make(map[key]bool)
+	var lines []string
+	for i := range g.clauses {
+		c := &g.clauses[i]
+		ex := c.Exclusion
+		if ex == nil || seen[key{ex.Realm, ex.Note}] {
+			continue
+		}
+		seen[key{ex.Realm, ex.Note}] = true
+		lines = append(lines, "    "+coverageCell(fmt.Sprintf("%s:%s  %s (%s): %s", c.Standard, c.Clause, ex.Note, ex.Realm, ex.Content)))
+	}
+	if len(lines) == 0 {
+		return
+	}
+	writeln(w, "  Exclusions:")
+	for _, l := range lines {
+		writeln(w, l)
 	}
 }
 

@@ -119,17 +119,26 @@ func findFigure(t *testing.T, report *coverageOutput, euid string) *coverageFigu
 	return nil
 }
 
-func assertFigure(t *testing.T, f *coverageFigure, total, excluded, covered int) {
+// figureCounts are the counts of a figure: total, excluded, then covered,
+// mapped, lapsed and unmapped.
+type figureCounts [6]int
+
+func assertFigure(t *testing.T, f *coverageFigure, want figureCounts) {
 	t.Helper()
-	if f.Standard != "owasp.asvs" || f.Version != "5.0.0" || f.Realm != linkedStdRealm || f.Profile != "L1" || f.Tree != "dev.app" {
+	if f.Standard != "owasp.asvs" || f.Version != "5.0.0" || f.Realm != linkedStdRealm || f.Profile != "L1" || f.Tree != "dev.app" || f.DeclaredBy != "dev.app" {
 		t.Errorf("figure %+v: wrong reference", f)
 	}
-	if f.Total != total || f.Excluded != excluded || f.Covered != covered {
-		t.Errorf("figure %q = total %d, excluded %d, covered %d; want %d, %d, %d", f.Entity, f.Total, f.Excluded, f.Covered, total, excluded, covered)
+	got := figureCounts{f.Total, f.Excluded, f.Covered, f.Mapped, f.Lapsed, f.Unmapped}
+	if got != want {
+		t.Errorf("figure %q counts = %v, want %v (total, excluded, covered, mapped, lapsed, unmapped)", f.Entity, got, want)
 	}
-	want := float64(covered) / float64(total-excluded)
-	if f.Figure == nil || *f.Figure != want {
-		t.Errorf("figure %q = %v, want %v", f.Entity, f.Figure, want)
+	if f.Covered+f.Mapped+f.Lapsed+f.Unmapped != f.Total-f.Excluded {
+		t.Errorf("figure %q: the statuses don't add up to the clauses counted", f.Entity)
+	}
+	total, excluded, covered := want[0], want[1], want[2]
+	ratio := float64(covered) / float64(total-excluded)
+	if f.Figure == nil || *f.Figure != ratio {
+		t.Errorf("figure %q = %v, want %v", f.Entity, f.Figure, ratio)
 	}
 }
 
@@ -154,10 +163,19 @@ func TestStandardsCoverageLinkedJSON(t *testing.T) {
 	}
 
 	// V3 counts once though two rules transcribe it, and V2 is outside L1.
-	assertFigure(t, findFigure(t, &report, "AUTH"), 4, 1, 1)
-	assertFigure(t, findFigure(t, &report, "BILL"), 4, 1, 1)
-	// The Realm covers V1 through AUTH and V3 through BILL.
-	assertFigure(t, findFigure(t, &report, ""), 4, 1, 2)
+	assertFigure(t, findFigure(t, &report, "AUTH"), figureCounts{4, 1, 1, 1, 0, 1})
+	assertFigure(t, findFigure(t, &report, "BILL"), figureCounts{4, 1, 1, 0, 1, 1})
+	// The Realm covers V1 through AUTH and V3 through BILL; V4 is lapsed in
+	// BILL and unmapped in AUTH, so lapsed.
+	assertFigure(t, findFigure(t, &report, ""), figureCounts{4, 1, 2, 0, 1, 0})
+	for _, c := range report.Clauses {
+		switch {
+		case c.Status == "excluded" && (c.Exclusion == nil || *c.Exclusion != coverageExclusion{Realm: "dev.app", Note: "REALM/001", Content: "Not applicable here."}):
+			t.Errorf("%s %s: exclusion = %+v, want REALM/001 of dev.app", c.Entity, c.Clause, c.Exclusion)
+		case c.Status != "excluded" && c.Exclusion != nil:
+			t.Errorf("%s %s (%s) carries an exclusion", c.Entity, c.Clause, c.Status)
+		}
+	}
 	if len(report.Figures) != 3 {
 		t.Errorf("figures = %+v, want the Realm's and two entities'", report.Figures)
 	}
@@ -174,7 +192,8 @@ func TestStandardsCoverageLinkedHuman(t *testing.T) {
 		"Realm dev.app: 2 of 3 covered (66.6 %)",
 		"    AUTH: 1 of 3 covered (33.3 %)",
 		"    BILL: 1 of 3 covered (33.3 %)",
-		"unmapped", "excluded",
+		"unmapped", "excluded by REALM/001 (dev.app)",
+		"  Exclusions:\n    owasp.asvs:V5  REALM/001 (dev.app): Not applicable here.\n",
 		"excluded: a Realm Note excludes the clause.",
 		"Without a linked Standard Realm, a clause no rule maps isn't shown.",
 	} {
@@ -183,6 +202,94 @@ func TestStandardsCoverageLinkedHuman(t *testing.T) {
 	if i, j := strings.Index(out, "Realm dev.app:"), strings.Index(out, "    AUTH:"); i < 0 || j < i {
 		t.Errorf("the Realm figure should precede the entities':\n%s", out)
 	}
+	if n := strings.Count(out, "REALM/001 (dev.app): "); n != 1 {
+		t.Errorf("the exclusion is listed %d times, want once:\n%s", n, out)
+	}
+}
+
+// TestStandardsCoverageLinkedExcludesMapped shows a mapped clause that an
+// exclusion names as excluded, its mappings kept, and counts it covered
+// nowhere.
+func TestStandardsCoverageLinkedExcludesMapped(t *testing.T) {
+	dir := setupLinkedCoverageProject(t, entity.RelationImplements, linkedExclusion(1, "V3", "Handled upstream."))
+	report := coverageJSON(t, dir)
+	for _, c := range report.Clauses {
+		if c.Clause != "V3" {
+			continue
+		}
+		if c.Status != "excluded" || c.Exclusion == nil || c.Exclusion.Note != "REALM/001" || len(c.Rules) != 1 {
+			t.Errorf("%s V3 = %+v, want excluded by REALM/001 with its mapping kept", c.Entity, c)
+		}
+	}
+	// AUTH covers V1 only; BILL's V3 no longer counts.
+	assertFigure(t, findFigure(t, &report, "AUTH"), figureCounts{4, 1, 1, 0, 0, 2})
+	assertFigure(t, findFigure(t, &report, "BILL"), figureCounts{4, 1, 0, 0, 1, 2})
+	assertFigure(t, findFigure(t, &report, ""), figureCounts{4, 1, 1, 0, 1, 1})
+}
+
+// TestStandardsCoverageLinkedSubRealm gives a sub-realm that declares the
+// reference too a Realm figure of its own, with its own exclusion, told apart
+// by declared_by.
+func TestStandardsCoverageLinkedSubRealm(t *testing.T) {
+	dir := setupLinkedCoverageProject(t, entity.RelationImplements, linkedExclusion(1, "V5", "Not applicable here."))
+	rules := filepath.Join(dir, "rules")
+	rf, err := entity.LoadRealm(filepath.Join(rules, "realm.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rf.SubRealms = []string{"pay"}
+	writeJSONFile(t, filepath.Join(rules, "realm.json"), rf)
+	pay := filepath.Join(rules, "pay")
+	writeEntityFile(t, pay, "realm.json", fmt.Sprintf(`{"realm": {"id": "dev.app.pay", "title": "p", "version": "1.0.0",
+  "standards": [{"id": "owasp.asvs", "relation": "implements", "version": "5.0.0", "realm": %q, "profile": "L1"}]},
+  "dependencies": [], "notes": [%s]}`, linkedStdRealm, mustJSON(t, linkedExclusion(1, "V1", "No sessions here."))))
+	writeInheritFile(t, pay, "PAY", withStandardNotes(inheritEntityJSON("PAY", "", "",
+		inheritRule{id: "PAY-001", state: "I"}, inheritRule{id: "PAY-002", state: "I"}),
+		[2]string{"PAY-001", "owasp.asvs:V1"}, [2]string{"PAY-002", "owasp.asvs:V4"}))
+
+	report := coverageJSON(t, dir)
+	declarers := make(map[string]int)
+	for i := range report.Figures {
+		f := &report.Figures[i]
+		if f.Entity == "" {
+			declarers[f.DeclaredBy]++
+		}
+		if f.Entity == "PAY" {
+			// V1 is excluded by the sub-realm; V4 is covered.
+			got := figureCounts{f.Total, f.Excluded, f.Covered, f.Mapped, f.Lapsed, f.Unmapped}
+			if f.DeclaredBy != "dev.app.pay" || got != (figureCounts{4, 1, 1, 0, 0, 2}) {
+				t.Errorf("PAY figure = %+v, want declared by dev.app.pay, counts {4 1 1 0 0 2}", f)
+			}
+		}
+	}
+	if declarers["dev.app"] != 1 || declarers["dev.app.pay"] != 1 || len(declarers) != 2 {
+		t.Errorf("Realm figures by declarer = %v, want one each for dev.app and dev.app.pay", declarers)
+	}
+
+	out, err := runCoverage(t, dir)
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, out, "(declared by dev.app.pay)")
+	testutil.AssertContains(t, out, "REALM/001 (dev.app.pay): No sessions here.")
+}
+
+// TestStandardsCoverageLinkedEscapesJustification keeps an exclusion's
+// justification from driving the terminal or a CI runner.
+func TestStandardsCoverageLinkedEscapesJustification(t *testing.T) {
+	dir := setupLinkedCoverageProject(t, entity.RelationImplements, linkedExclusion(1, "V5", "Fine.\n::error::injected\x1b[31m"))
+	out, err := runCoverage(t, dir)
+	assertExit(t, err, exitOK)
+	if strings.Contains(out, "\n::error::") || strings.Contains(out, "\x1b") {
+		t.Errorf("the justification reached the output raw:\n%q", out)
+	}
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	data, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
 }
 
 // TestStandardsCoverageLinkedUndefined reports a figure undefined, never 0 %
