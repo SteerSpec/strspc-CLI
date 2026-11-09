@@ -279,3 +279,30 @@ func TestRuleShowStandardFields(t *testing.T) {
 		t.Errorf("clause appears %d times in %s, want once", n, data)
 	}
 }
+
+// TestRuleAddStandardNestedSubRealmPin follows the core pin of a sub-realm
+// nested two deep, not only of the first sub-realm below --dir.
+func TestRuleAddStandardNestedSubRealmPin(t *testing.T) {
+	dir := t.TempDir()
+	writeJSONFile(t, filepath.Join(dir, "realm.json"), &entity.RealmFile{
+		Realm: entity.RealmMeta{ID: "dev.test", Title: "t", Version: "0.1.0"}, SubRealms: []string{"a"},
+		Dependencies: []entity.RealmDep{{RealmID: coreRealmID, Version: "1.23.0"}},
+	})
+	a := filepath.Join(dir, "a")
+	writeJSONFile(t, filepath.Join(a, "realm.json"), &entity.RealmFile{
+		Realm: entity.RealmMeta{ID: "dev.test.a", Title: "a", Version: "0.1.0"}, SubRealms: []string{"leaf"},
+		Dependencies: []entity.RealmDep{},
+	})
+	leaf := filepath.Join(a, "leaf")
+	writeJSONFile(t, filepath.Join(leaf, "realm.json"), &entity.RealmFile{
+		Realm: standardRealmMeta("dev.test.a.leaf", "L1"), Dependencies: []entity.RealmDep{{RealmID: coreRealmID, Version: "1.20.0"}},
+	})
+	setupEntityFileWithSub(t, leaf, "V03", "V03S01")
+
+	_, err := runRule(t, "add", "V03S01", "--body", "B.", "--clause", "V3.1.1", "--profiles", "L1",
+		"--added-by", "github:alice", "--dir", dir)
+	if err == nil {
+		t.Fatal("rule add succeeded against a 1.20.0 pin")
+	}
+	testutil.AssertContains(t, err.Error(), "realm dev.test.a.leaf pins "+coreRealmID+" 1.20.0, whose schemas reject `clause`")
+}
