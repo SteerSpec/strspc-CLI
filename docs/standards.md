@@ -148,6 +148,7 @@ strspc standards coverage --require owasp.asvs@5.0.0            # declared as im
 strspc standards coverage --require-evaluator                   # covered clauses that something checks
 strspc standards coverage --min-coverage 60                     # every linked Realm figure at 60 % or more
 strspc standards coverage --min-coverage owasp.asvs=80          # owasp.asvs at 80 % or more
+strspc standards coverage --baseline coverage-base.json         # no regression against an earlier --json report
 ```
 
 - `--fail-on` fails on each clause `lapsed` or only `mapped` in an entity, and with `unresolved` on
@@ -168,12 +169,14 @@ strspc standards coverage --min-coverage owasp.asvs=80          # owasp.asvs at 
   with at most one decimal, and compared exactly, so `66.6` passes 2 of 3 and `66.7` doesn't.
   Entity figures are shown but not gated. A threshold no figure is there to check fails, so the
   gate never passes on nothing. An undefined figure (STDREF-028) is not checked: it is a warning.
+- `--baseline <file>` fails on each regression against an earlier `--json` report: see
+  [Gate against a baseline](#gate-against-a-baseline).
 
 The STDREF rules defining the statuses and figures are Draft in `dev.steerspec.core`.
 
-Exit 2 still wins over 1: a gate flag that can't be read, a configuration that can't be read or a
-source or dependency that doesn't resolve exits 2 before the gate runs, so a gate never passes on a
-report that understates the coverage. A `--json` report that can't be written exits 4.
+Exit 2 still wins over 1: a gate flag, a baseline or a configuration that can't be read, or a source
+or dependency that doesn't resolve, exits 2 before the gate runs, so a gate never passes on a report
+that understates the coverage. A `--json` report that can't be written exits 4.
 
 `--json` adds a `gate` object, absent when no gate flag is set:
 
@@ -194,9 +197,11 @@ report that understates the coverage. A `--json` report that can't be written ex
 }
 ```
 
-`kind` is `lapsed`, `mapped`, `unresolved`, `required`, `evaluator` or `min_coverage`. The other
-fields say what failed, where they apply: `standard`, `version`, `clause`, `entity`, `tree` (the Realm
-of a figure), `rules` (the mappings behind a clause or the unresolved note), `figure` and `threshold`.
+`kind` is `lapsed`, `mapped`, `unresolved`, `required`, `evaluator`, `min_coverage` or `regression`.
+The other fields say what failed, where they apply: `standard`, `version`, `clause`, `realm` (the Realm
+tree holding the entity), `entity`, `tree` (the Realm of a figure), `rules` (the mappings behind a
+clause or the unresolved note), `figure` and `threshold`, and for a regression `regression` (its kind),
+`base` and `head` (the clause's status in each report).
 
 In GitHub Actions:
 
@@ -217,28 +222,50 @@ jobs:
           --min-coverage owasp.asvs=60
 ```
 
-### Planned: regression against a baseline
-
-> **Not yet implemented.** Phase 2 of [#239](https://github.com/SteerSpec/strspc-CLI/issues/239);
-> the flag below may change.
+### Gate against a baseline
 
 ```bash
-strspc standards coverage --baseline coverage-base.json         # no regression against an earlier --json report
+strspc standards coverage --json > coverage-base.json           # on the base branch
+strspc standards coverage --baseline coverage-base.json         # on the change
 ```
 
-`--baseline` compares with the `--json` report of the base branch, kept as a CI artifact. It fails
-when:
-- a covered clause becomes mapped or lapsed
-- a covered or mapped clause is lost
-- an `implements` standard is dropped or becomes `derived_from`
-- a note that resolved stops resolving
+`--baseline` reads an earlier `--json` report, such as the base branch's, kept as a CI artifact, and
+fails on each way this report is worse. Each clause is matched on its standard, edition, clause, Realm
+tree and entity, so each `clauses` entry of `--json` carries `realm`. The regressions, the
+`regression` of each failure, are:
 
-A baseline that can't be read or parsed exits 2. The comparison comes from strspc-manager
-([strspc-manager#269](https://github.com/SteerSpec/strspc-manager/issues/269)), so the CLI, the pull
-request review and the planned cloud dashboard share one definition of a regression.
+| `regression` | In the baseline | Now |
+|---|---|---|
+| `downgraded` | a clause covered | mapped or lapsed in the same entity |
+| `downgraded` | a clause mapped | lapsed in the same entity |
+| `lost` | a clause covered or mapped | not in the report, or only `unmapped` or `cited` |
+| `excluded` | a clause covered or mapped | excluded by an `exclusion` Realm Note (STDREF-022) |
+| `dropped` | a standard declared as `implements` | not declared as `implements` in that edition |
+| `rebased` | a clause or standard that would be lost or dropped | only another edition of the standard is declared as `implements` |
+| `unresolved` | a `standard` note behind a covered or mapped clause | resolves to no declared standard |
 
-In GitHub Actions, a push to `develop` would record the baseline, and a pull request into `develop`
-would be gated against the latest one. A pull request into another branch would need that branch's own
+An improvement, such as a clause mapped in the baseline and covered now, passes, and a `cited` clause
+never regresses (STDREF-006). The comparison is strspc-manager's `coverage.Compare`, so the CLI, the
+pull request review and the planned cloud dashboard share one definition of a regression.
+
+Two kinds may be fine on purpose, so a flag makes each a warning instead of a failure:
+- `--allow-rebase`: an edition upgrade, such as `owasp.asvs` 4.0.3 to 5.0.0. Editions are different
+  clauses (STDREF-011), and until a crosswalk between them exists
+  ([strspc-rules#144](https://github.com/SteerSpec/strspc-rules/issues/144)) the comparison can't
+  tell what carried forward. When the report spans several Realm trees and only one of them upgrades,
+  the old edition is still declared, so that tree's clauses show as `lost`, not `rebased`.
+- `--allow-excluded`: a clause an exclusion note now excludes. The note gives the reason.
+
+Record the baseline with the same sources as the gate, `--all-sources` or not, or the clauses of the
+sources only one of them reads show as lost. The baseline's `figures`, `evaluator`, `warnings` and
+`gate` are not read.
+
+A baseline that can't be read, isn't JSON, or isn't a `--json` coverage report exits 2, and so does
+one written before clauses had a `realm`: record it again. `--allow-rebase` and `--allow-excluded`
+without `--baseline` exit 2 too.
+
+In GitHub Actions, a push to `develop` records the baseline, and a pull request into `develop` is
+gated against the latest one. A pull request into another branch would need that branch's own
 baseline, so the trigger names `develop` for both:
 
 ```yaml
@@ -283,8 +310,9 @@ jobs:
           --baseline baseline/coverage.json
 ```
 
-Until `develop` has a successful run, there is no artifact to fetch, so leave out the fetch step and
-`--baseline` until then.
+The recording step has no gate flag, so it exits 0 whenever the report prints. Until `develop` has a
+successful run, there is no artifact to fetch, so leave out the fetch step and `--baseline` until
+then.
 
 ## Planned: standards published as realms
 

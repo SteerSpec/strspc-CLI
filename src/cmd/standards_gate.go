@@ -21,6 +21,7 @@ const (
 	gateRequired    = "required"
 	gateEvaluator   = "evaluator"
 	gateMinCoverage = "min_coverage"
+	gateRegression  = "regression"
 )
 
 // coverageGateFlags holds the gate flags of standards coverage as given.
@@ -29,6 +30,12 @@ type coverageGateFlags struct {
 	require          []string
 	requireEvaluator bool
 	minCoverage      []string
+	// baseline is the --baseline path, given when baselineSet, so an empty
+	// value is refused rather than read as no baseline.
+	baseline      string
+	baselineSet   bool
+	allowRebase   bool
+	allowExcluded bool
 }
 
 // standardSelector names a standard, and an edition of it unless version is
@@ -61,10 +68,16 @@ type coverageGateOptions struct {
 	require          []standardSelector
 	requireEvaluator bool
 	minCoverage      []coverageThreshold
+	// baselinePath is the --baseline to read; baseline is the report read
+	// from it, which runStandardsCoverage sets before the gate runs.
+	baselinePath  string
+	baseline      *coverage.Report
+	allowRebase   bool
+	allowExcluded bool
 }
 
 func (o *coverageGateOptions) enabled() bool {
-	return len(o.failOn) > 0 || len(o.require) > 0 || o.requireEvaluator || len(o.minCoverage) > 0
+	return len(o.failOn) > 0 || len(o.require) > 0 || o.requireEvaluator || len(o.minCoverage) > 0 || o.baselinePath != ""
 }
 
 // coverageGate is the gate's verdict, the `gate` object of --json.
@@ -83,16 +96,36 @@ type coverageGateFailure struct {
 	Standard  string            `json:"standard,omitempty"`
 	Version   string            `json:"version,omitempty"`
 	Clause    string            `json:"clause,omitempty"`
+	Realm     string            `json:"realm,omitempty"`
 	Entity    string            `json:"entity,omitempty"`
 	Tree      string            `json:"tree,omitempty"`
 	Rules     []coverageMapping `json:"rules,omitempty"`
 	Figure    *float64          `json:"figure,omitempty"`
 	Threshold *float64          `json:"threshold,omitempty"`
+	// Regression is the kind of a regression against the baseline, and Base
+	// and Head the clause's status in each report.
+	Regression string `json:"regression,omitempty"`
+	Base       string `json:"base,omitempty"`
+	Head       string `json:"head,omitempty"`
 }
 
 // parseCoverageGate checks the gate flags and parses them.
 func parseCoverageGate(f *coverageGateFlags) (*coverageGateOptions, error) {
-	opts := &coverageGateOptions{requireEvaluator: f.requireEvaluator}
+	opts := &coverageGateOptions{requireEvaluator: f.requireEvaluator, allowRebase: f.allowRebase, allowExcluded: f.allowExcluded}
+	if f.baselineSet {
+		if strings.TrimSpace(f.baseline) == "" {
+			return nil, errors.New("--baseline: want the path of a report written by standards coverage --json")
+		}
+		opts.baselinePath = f.baseline
+	}
+	for _, allow := range []struct {
+		flag string
+		set  bool
+	}{{"--allow-rebase", f.allowRebase}, {"--allow-excluded", f.allowExcluded}} {
+		if allow.set && opts.baselinePath == "" {
+			return nil, fmt.Errorf("%s allows a regression against the baseline, so it needs --baseline", allow.flag)
+		}
+	}
 	var err error
 	if opts.failOn, err = parseFailOnStatuses(f.failOn); err != nil {
 		return nil, err
@@ -214,7 +247,8 @@ func tenthsText(tenths int) string {
 }
 
 // evaluateCoverageGate checks report against opts: the evaluator, the required
-// standards, the clauses and notes --fail-on names, then the figures.
+// standards, the clauses and notes --fail-on names, the figures, then the
+// regressions against the baseline.
 func evaluateCoverageGate(report *coverageOutput, opts *coverageGateOptions) *coverageGate {
 	g := &coverageGate{Failures: []coverageGateFailure{}}
 	if opts.requireEvaluator {
@@ -228,7 +262,7 @@ func evaluateCoverageGate(report *coverageOutput, opts *coverageGateOptions) *co
 		if slices.Contains(opts.failOn, c.Status) {
 			g.Failures = append(g.Failures, coverageGateFailure{
 				Kind: c.Status, Message: clauseFailureMessage(c),
-				Standard: c.Standard, Version: c.Version, Clause: c.Clause, Entity: c.Entity, Rules: c.Rules,
+				Standard: c.Standard, Version: c.Version, Clause: c.Clause, Realm: c.Realm, Entity: c.Entity, Rules: c.Rules,
 			})
 		}
 	}
@@ -242,6 +276,7 @@ func evaluateCoverageGate(report *coverageOutput, opts *coverageGateOptions) *co
 		}
 	}
 	g.checkMinCoverage(report, opts.minCoverage)
+	g.checkRegressions(report, opts)
 	g.Passed = len(g.Failures) == 0
 	return g
 }
