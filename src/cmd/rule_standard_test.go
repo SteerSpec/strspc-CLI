@@ -113,6 +113,10 @@ func TestRuleAddStandardRefusals(t *testing.T) {
 	}{
 		{name: "clause in a code realm", code: true, args: []string{"--clause", "V1"}, wantErr: "RUL-017"},
 		{name: "profiles in a code realm", code: true, args: []string{"--profiles", "L1"}, wantErr: "RUL-017"},
+		{name: "empty clause in a code realm", code: true, args: []string{"--clause="}, wantErr: "RUL-017"},
+		{name: "empty profiles in a code realm", code: true, args: []string{"--profiles="}, wantErr: "RUL-017"},
+		{name: "empty profiles", args: []string{"--clause", "V1.1.1", "--profiles="}, wantErr: "--profiles: want one or more profile names (RUL-016)"},
+		{name: "empty clause", args: []string{"--clause=", "--profiles", "L1"}, wantErr: "STDRLM-005"},
 		{name: "no clause", args: []string{"--profiles", "L1"}, wantErr: "STDRLM-005"},
 		{name: "no profiles", args: []string{"--clause", "V1.1.1"}, wantErr: "STDRLM-018"},
 		{name: "undeclared profile", args: []string{"--clause", "V1.1.1", "--profiles", "L4"}, wantErr: "STDRLM-008"},
@@ -220,6 +224,20 @@ func TestRuleAddStandardOldCore(t *testing.T) {
 		t.Fatal("rule add succeeded")
 	}
 	testutil.AssertContains(t, err.Error(), "whose schemas reject `clause` (it needs "+manifestMinCore.String()+" or later)")
+
+	// A code Realm refuses the flags as such (RUL-017), whatever its core pin.
+	dir = t.TempDir()
+	writeJSONFile(t, filepath.Join(dir, "realm.json"), &entity.RealmFile{
+		Realm:        entity.RealmMeta{ID: "dev.test.code", Title: "c", Version: "0.1.0"},
+		Dependencies: []entity.RealmDep{{RealmID: coreRealmID, Version: "1.20.0"}},
+	})
+	setupEntityFile(t, dir, "CODE")
+	_, err = runRule(t, "add", "CODE", "--body", "B.", "--clause", "V1", "--added-by", "github:alice", "--dir", dir)
+	if err == nil {
+		t.Fatal("rule add succeeded in a code realm")
+	}
+	testutil.AssertContains(t, err.Error(), "RUL-017")
+	testutil.AssertNotContains(t, err.Error(), "schemas reject")
 }
 
 // TestRuleSupersedeStandard keeps the clause and profiles of the superseded

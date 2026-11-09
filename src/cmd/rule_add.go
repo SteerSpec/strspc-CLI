@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -78,10 +79,8 @@ Examples:
 			if err != nil {
 				return err
 			}
-			if clause != "" || len(profiles) > 0 {
-				if err := checkCoreAccepts(dir, target.path, "clause", manifestMinCore); err != nil {
-					return err
-				}
+			if err := checkStandardFlags(cmd, realm, dir, target); err != nil {
+				return err
 			}
 			opts := entityops.AddRuleOptions{Clause: clause, Profiles: profiles, Realm: realm}
 
@@ -142,6 +141,24 @@ Examples:
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 
 	return cmd
+}
+
+// checkStandardFlags refuses --clause or --profiles, even given empty, outside
+// a Standard Realm (RUL-017), and an empty --profiles (RUL-016); AddRuleWith
+// would take an empty value for no flag. In a Standard Realm it refuses them
+// when the core pin's schemas predate them.
+func checkStandardFlags(cmd *cobra.Command, realm *entity.RealmMeta, dir string, target entityTarget) error {
+	clauseSet, profilesSet := cmd.Flags().Changed("clause"), cmd.Flags().Changed("profiles")
+	if !clauseSet && !profilesSet {
+		return nil
+	}
+	if realm == nil || realm.Kind != entity.KindStandard {
+		return fmt.Errorf("--clause and --profiles describe a rule of a Standard Realm: the realm holding %s isn't one (RUL-017)", target.path)
+	}
+	if profiles, _ := cmd.Flags().GetStringSlice("profiles"); profilesSet && len(profiles) == 0 {
+		return errors.New("--profiles: want one or more profile names (RUL-016)")
+	}
+	return checkCoreAccepts(dir, target.path, "clause", manifestMinCore)
 }
 
 // addStandardFields adds a rule's clause and profiles to its JSON output, when
