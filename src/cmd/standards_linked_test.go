@@ -99,8 +99,8 @@ func linkedExclusion(n int, clause, content string) entity.RealmNote {
 // clause of the report.
 func clauseStatuses(report *coverageOutput) map[string]string {
 	got := make(map[string]string)
-	for _, c := range report.Clauses {
-		if c.Standard == "owasp.asvs" {
+	for i := range report.Clauses {
+		if c := &report.Clauses[i]; c.Standard == "owasp.asvs" {
 			got[c.Entity+" "+c.Clause] = c.Status
 		}
 	}

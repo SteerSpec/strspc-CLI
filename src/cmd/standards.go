@@ -42,11 +42,14 @@ type coverageExclusion struct {
 	Content string `json:"content"`
 }
 
-// coverageClause is one clause of a standard as it stands in one entity.
+// coverageClause is one clause of a standard as it stands in one entity. Realm
+// is the ID of the Realm tree holding the entity, which a --baseline needs to
+// match the clause.
 type coverageClause struct {
 	Standard  string             `json:"standard"`
 	Version   string             `json:"version,omitempty"`
 	Clause    string             `json:"clause"`
+	Realm     string             `json:"realm"`
 	Entity    string             `json:"entity"`
 	Status    string             `json:"status"`
 	Rules     []coverageMapping  `json:"rules"`
@@ -135,20 +138,31 @@ func newStandardsCoverageCmd() *cobra.Command {
 			"of it, is declared as implements with a covered clause. --require-evaluator fails when clauses\n" +
 			"are covered but nothing evaluates Implemented rules. --min-coverage fails a Realm figure under\n" +
 			"the percentage, given for every standard or as <id>[@<version>]=<percent> for one, and a\n" +
-			"threshold with no figure to check; an undefined figure is only a warning. The report then ends\n" +
-			"with the gate's verdict, the `gate` object of --json. The STDREF rules defining the statuses\n" +
-			"and figures are Draft in dev.steerspec.core.\n\n" +
+			"threshold with no figure to check; an undefined figure is only a warning.\n\n" +
+			"--baseline fails on each regression against an earlier --json report, such as one the base\n" +
+			"branch recorded with the same sources: a clause covered there and mapped or lapsed here\n" +
+			"(downgraded), a covered or mapped clause no longer claimed (lost) or now excluded (excluded),\n" +
+			"an implements standard no longer declared (dropped) or moved to another edition (rebased), and\n" +
+			"a note that resolved and no longer does (unresolved). --allow-rebase and --allow-excluded make\n" +
+			"those two kinds warnings. A report written before clauses had a realm can't be a baseline:\n" +
+			"record it again. When only one of several Realm trees upgrades an edition, its clauses show as\n" +
+			"lost, not rebased.\n\n" +
+			"The report then ends with the gate's verdict, the `gate` object of --json. The STDREF rules\n" +
+			"defining the statuses and figures are Draft in dev.steerspec.core.\n\n" +
 			"Exit codes: 0 when the report is printed and any gate passes; 1 when the gate fails; 2 when the\n" +
-			"configuration or a gate flag can't be read or a source or dependency doesn't resolve, as a\n" +
-			"report would then understate the coverage; 4 when the JSON report can't be written.\n\n" +
+			"configuration, a gate flag or the baseline can't be read or a source or dependency doesn't\n" +
+			"resolve, as a report would then understate the coverage; 4 when the JSON report can't be\n" +
+			"written.\n\n" +
 			"Examples:\n" +
 			"  strspc standards coverage --fail-on lapsed,mapped,unresolved\n" +
 			"  strspc standards coverage --require owasp.asvs@5.0.0 --require-evaluator\n" +
-			"  strspc standards coverage --min-coverage 60 --min-coverage owasp.asvs=80 --json",
+			"  strspc standards coverage --min-coverage 60 --min-coverage owasp.asvs=80 --json\n" +
+			"  strspc standards coverage --baseline baseline/coverage.json --allow-rebase",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			gate.baselineSet = cmd.Flags().Changed("baseline")
 			return runStandardsCoverage(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), ".", allSources, jsonOutput, &gate)
 		},
 	}
@@ -158,6 +172,9 @@ func newStandardsCoverageCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&gate.require, "require", nil, "fail unless this standard, <id>[@<version>], is implemented with a covered clause (repeatable)")
 	cmd.Flags().BoolVar(&gate.requireEvaluator, "require-evaluator", false, "fail when clauses are covered but nothing evaluates Implemented rules")
 	cmd.Flags().StringArrayVar(&gate.minCoverage, "min-coverage", nil, "fail a Realm figure under this percentage: <percent>, or <id>[@<version>]=<percent> for one standard (repeatable)")
+	cmd.Flags().StringVar(&gate.baseline, "baseline", "", "fail on each regression against this earlier standards coverage --json report")
+	cmd.Flags().BoolVar(&gate.allowRebase, "allow-rebase", false, "with --baseline, warn instead of failing when a standard moved to another edition")
+	cmd.Flags().BoolVar(&gate.allowExcluded, "allow-excluded", false, "with --baseline, warn instead of failing when an exclusion note now excludes a clause")
 	return cmd
 }
 
@@ -170,6 +187,11 @@ func runStandardsCoverage(ctx context.Context, out, errOut io.Writer, cwd string
 	gate, err := parseCoverageGate(gateFlags)
 	if err != nil {
 		return r.fail(exitConfig, err)
+	}
+	if gate.baselinePath != "" {
+		if gate.baseline, err = loadCoverageBaseline(cwd, gate.baselinePath); err != nil {
+			return r.fail(exitConfig, err)
+		}
 	}
 	if err := r.loadConfig(); err != nil {
 		return r.fail(exitConfig, err)
@@ -271,6 +293,7 @@ func (r *checkRun) coverageReport(evaluator coverageEvaluator) *coverageOutput {
 			Standard: c.Standard,
 			Version:  c.Version,
 			Clause:   c.Clause,
+			Realm:    c.Realm,
 			Entity:   c.Entity,
 			Status:   string(c.Status),
 			Rules:    coverageMappings(c.Rules),
