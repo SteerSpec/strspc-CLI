@@ -40,7 +40,7 @@ rules:
 # AI evaluator settings
 evaluator:
   provider: %s          # requires ANTHROPIC_API_KEY; use "null" to skip AI evaluation
-  # model: claude-sonnet-5-5   # model override
+  # model: claude-haiku-5-5    # model override (the default)
   # effort: medium             # low | medium | high
 
 # Local cache settings

@@ -20,7 +20,7 @@ rules:
 evaluator:
   provider: claude        # claude | null (structural checks only)
   # endpoint: null        # custom endpoint (defaults per provider)
-  # model: claude-sonnet-5-5
+  # model: claude-haiku-5-5   # the default
   # effort: medium        # low | medium | high | xhigh | max
 
 # Local cache settings
