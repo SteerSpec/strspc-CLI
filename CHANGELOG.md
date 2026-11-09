@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.40.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.39.0...v1.40.0) (2026-11-09)
+
+
+### Features
+
+* **check:** default the AI evaluator to claude-haiku-5-5 ([#315](https://github.com/SteerSpec/strspc-CLI/issues/315)) ([a53fd98](https://github.com/SteerSpec/strspc-CLI/commit/a53fd98bb334cf8eaacd21d6871ac78b275945e7))
+* **rule:** author Standard Realms with rule add --clause and realm init --kind ([#311](https://github.com/SteerSpec/strspc-CLI/issues/311)) ([#313](https://github.com/SteerSpec/strspc-CLI/issues/313)) ([16bdaa8](https://github.com/SteerSpec/strspc-CLI/commit/16bdaa87a4ebe3061bd88ad865050f0008ad42c4))
+* **standards:** gate CI on standards coverage ([#239](https://github.com/SteerSpec/strspc-CLI/issues/239)) ([#310](https://github.com/SteerSpec/strspc-CLI/issues/310)) ([1692100](https://github.com/SteerSpec/strspc-CLI/commit/16921002f4205184a2edaff5426fa16253db2538))
+* **standards:** gate coverage against a baseline report ([#239](https://github.com/SteerSpec/strspc-CLI/issues/239)) ([#312](https://github.com/SteerSpec/strspc-CLI/issues/312)) ([8157e4b](https://github.com/SteerSpec/strspc-CLI/commit/8157e4b2e9c5eb494c4dca10f298826200eaad56))
+
+
+### Bug Fixes
+
+* **render:** name the file in an entity parse error ([#314](https://github.com/SteerSpec/strspc-CLI/issues/314)) ([eaa5e41](https://github.com/SteerSpec/strspc-CLI/commit/eaa5e41efaf2069ccb1b094391db393940481352))
+
 ## [1.39.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.38.0...v1.39.0) (2026-11-08)
 
 
