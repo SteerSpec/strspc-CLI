@@ -130,6 +130,9 @@ func TestRealmInitStandardRefusals(t *testing.T) {
 		{name: "spaced license", args: with("--license", " MIT"), wantErr: "invalid --license"},
 		{name: "repeated profile", args: with("--profiles", "L1,L1"), wantErr: `lists "L1" twice`},
 		{name: "blank profile", args: with("--profiles", "L1,"), wantErr: "invalid --profiles entry"},
+		{name: "empty profiles", args: append(without("--profiles"), "--profiles="), wantErr: "--profiles: want one or more profile names"},
+		{name: "empty profiles without kind", args: []string{"--profiles="}, wantErr: "pass --kind standard"},
+		{name: "empty edition without kind", args: []string{"--edition="}, wantErr: "pass --kind standard"},
 		{name: "control character", args: with("--edition", "5\x1b0"), wantErr: "--edition"},
 		{name: "old core", args: append(slices.Clone(standardInitArgs), "--core-version", "1.20.0"), wantErr: "a Standard Realm needs dev.steerspec.core " + manifestMinCore.String() + " or later"},
 	}

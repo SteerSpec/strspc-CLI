@@ -62,6 +62,9 @@ type standardRealmFlags struct {
 	kind, edition, license          string
 	attributionText, attributionURL string
 	profiles                        []string
+	// editionSet and profilesSet record that the flag was given, so an empty
+	// value is refused rather than read as no flag.
+	editionSet, profilesSet bool
 }
 
 // attributionURLPattern is the attribution url pattern of realm.v1.schema.json
@@ -89,8 +92,10 @@ func (f *standardRealmFlags) apply(m *realmMeta) error {
 	switch {
 	case f.kind != "" && !standard:
 		return fmt.Errorf("invalid --kind %q: the only kind is %q (RLMMNFST-008); leave it out for a code Realm", f.kind, entity.KindStandard)
-	case !standard && (f.edition != "" || len(f.profiles) > 0):
+	case !standard && (f.edition != "" || f.editionSet || len(f.profiles) > 0 || f.profilesSet):
 		return fmt.Errorf("--edition and --profiles describe a Standard Realm: pass --kind %s", entity.KindStandard)
+	case f.profilesSet && len(f.profiles) == 0:
+		return errors.New("--profiles: want one or more profile names, or leave it out (STDRLM-004)")
 	case (f.attributionText == "") != (f.attributionURL == ""):
 		return errors.New("--attribution-text and --attribution-url go together: an attribution has a text and a url (RLMMNFST-011)")
 	case f.attributionURL != "" && !attributionURLPattern.MatchString(f.attributionURL):
@@ -240,6 +245,7 @@ func newRealmInitCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			std.editionSet, std.profilesSet = cmd.Flags().Changed("edition"), cmd.Flags().Changed("profiles")
 			realmPath := filepath.Join(dir, "realm.json")
 
 			if !force {
