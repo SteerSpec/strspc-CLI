@@ -11,7 +11,7 @@ maps a rule to one clause, with content `<standard-id>:<clause>`:
 ```bash
 strspc realm standards add --id owasp.asvs --relation implements --version 4.0.3
 strspc entity standards add AUTH --id ietf.rfc2119 --relation derived_from --url https://www.rfc-editor.org/rfc/rfc2119
-strspc note add AUTH-004 --type standard --body "owasp.asvs:2.1.1" --added-by github:alice
+strspc note add AUTH-004 --type standard --body "owasp.asvs:2.1.1" --added-by github:alice  # strspc-refs: ignore
 ```
 
 `implements` claims coverage of the standard and `derived_from` only cites it as a source. An id is
@@ -68,13 +68,13 @@ $ strspc standards coverage
 Evaluator: claude, runs on Implemented rules
 
 ietf.rfc2119 (derived_from)
-  MUST  AUTH  cited  dev.acme:AUTH-004 (Implemented)
+  MUST  AUTH  cited  dev.acme:AUTH-004 (Implemented)  # strspc-refs: ignore
 
 owasp.asvs 4.0.3 (implements)
   https://owasp.org/www-project-application-security-verification-standard/
-  2.1.1  AUTH  covered  dev.acme:AUTH-004 (Implemented)
+  2.1.1  AUTH  covered  dev.acme:AUTH-004 (Implemented)  # strspc-refs: ignore
   2.1.2  AUTH  mapped   dev.acme:AUTH-005 (Published)
-  2.1.3  AUTH  lapsed   dev.acme:AUTH-001 (Retired)
+  2.1.3  AUTH  lapsed   dev.acme:AUTH-001 (Retired)  # strspc-refs: ignore
 ```
 
 | Status | Meaning |
@@ -113,7 +113,7 @@ owasp.asvs 5.0.0 (implements)
   Realm dev.acme: 12 of 69 covered (17.3 %)
     AUTH: 9 of 69 covered (13.0 %)
     BILL: 4 of 69 covered (5.7 %)
-  V1.2.1  AUTH  covered   dev.acme:AUTH-004 (Implemented)
+  V1.2.1  AUTH  covered   dev.acme:AUTH-004 (Implemented)  # strspc-refs: ignore
   V1.2.2  AUTH  unmapped
   V3.1.1  AUTH  excluded  excluded by REALM/001 (dev.acme)
   ...

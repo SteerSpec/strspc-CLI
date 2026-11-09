@@ -121,7 +121,7 @@ func newRenderCmd() *cobra.Command {
 func renderFile(cmd *cobra.Command, newRenderer rendererFactory, path, outputDir, schemaVersion string) error {
 	ef, err := entity.Load(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", path, err)
 	}
 
 	if err := schema.ValidateFileSchema(ef, schemaVersion); err != nil {
@@ -266,7 +266,7 @@ func marshalRendered(chains *chainResolver, path string, ef *entity.File) ([]byt
 func renderFileJSON(cmd *cobra.Command, chains *chainResolver, path, outputDir, schemaVersion string) error {
 	ef, err := entity.Load(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s: %w", path, err)
 	}
 
 	if err := schema.ValidateFileSchema(ef, schemaVersion); err != nil {
