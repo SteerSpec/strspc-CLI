@@ -228,3 +228,40 @@ one needs a `dev.steerspec.core` pin of 1.21.0 or later.
 strspc realm rehash                 # add or refresh the hash of ./rules/realm.json and its sub-realms
 strspc realm rehash --json
 ```
+
+## Author a Standard Realm
+
+A Standard Realm transcribes an external standard, such as OWASP ASVS 5.0.0, so that projects can
+measure their coverage of it ([Against a linked Standard Realm](standards.md#against-a-linked-standard-realm)).
+Its rules are the standard's text, and each carries the `clause` it transcribes. The rules defining it
+(STDRLM, RUL-015 to RUL-017, RLMMNFST-008 to RLMMNFST-011) are Draft in `dev.steerspec.core`, and a
+Standard Realm needs core 1.21.0 or later.
+
+`realm init --kind standard` writes the manifest. A Standard Realm needs the `--edition` it
+transcribes (STDRLM-002), the SPDX `--license` of the text (STDRLM-003) and an attribution,
+`--attribution-text` with `--attribution-url` (STDRLM-015). `--profiles` lists, in order, the profiles
+its rules may declare, such as the standard's levels (STDRLM-004). A code Realm may have a license and
+an attribution too. `--edition` and `--profiles` are refused without `--kind standard`. Add the
+`--dependency` on `dev.steerspec.core` as in the [quick start](../README.md#quick-start).
+
+```bash
+strspc realm init --dir rules --id dev.steerspec.std.owasp.asvs.v5 --title "OWASP ASVS" \
+  --kind standard --edition 5.0.0 --profiles L1,L2,L3 --license CC-BY-SA-4.0 \
+  --attribution-text "OWASP ASVS 5.0.0, by the OWASP Foundation" --attribution-url https://owasp.org/
+strspc realm add V01 --title "Chapter V1"
+strspc entity add V01S01 --parent V01 --title "Section V1.1"
+strspc rule add V01S01 --clause V1.1.1 --profiles L2,L3 --body "<the requirement's text>" --added-by github:alice
+```
+
+`rule add --clause --profiles` sets the rule's `clause` (RUL-015) and `profiles` (RUL-016). The Realm
+is the one whose `realm.json` is nearest above the entity file, so a sub-realm's own. In a Standard
+Realm every new rule needs a clause (STDRLM-005), and profiles when the Realm declares any
+(STDRLM-018). Each profile must be one the Realm declares (STDRLM-008), and the rules of one clause in
+an entity declare the same profiles (STDRLM-009), so a clause written as several sentences is several
+rules with one clause and one set of profiles. Outside a Standard Realm both flags are refused
+(RUL-017). Each refusal cites the rule it enforces.
+
+`rule supersede` keeps the clause and profiles of the rule it supersedes (STDRLM-012), and `rule show`
+prints both. A Standard Realm's rules are Published once the transcription is checked, and never
+Implemented (STDRLM-010). The clause and profiles of an existing Draft rule can't be changed: abandon
+it and add another.

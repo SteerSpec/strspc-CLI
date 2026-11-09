@@ -27,6 +27,9 @@ The original rule is not modified — it must be retired separately.
 When the superseded rule overrides an inherited rule, pass the same
 --overrides to keep the override in force (RUL-011); otherwise it lapses.
 
+In a Standard Realm, the new rule keeps the clause and profiles of the rule it
+supersedes (STDRLM-012).
+
 Examples:
   strspc rule supersede MYE-001 --body "Updated requirement MUST..." --added-by github:alice
   strspc rule supersede MYE-001 --body "New rule" --added-by github:bob --json
@@ -59,8 +62,9 @@ Examples:
 				return err
 			}
 
-			var newRuleID, lapsed string
+			var newRuleID, lapsed, clause string
 			var oldVersion, version string
+			var profiles []string
 
 			err = modifyEntity(target, func(f *entity.File) error {
 				oldVersion = f.RuleSet.Version
@@ -76,6 +80,11 @@ Examples:
 					return supersedeErr
 				}
 				version = f.RuleSet.Version
+				for i := range f.Rules {
+					if r := &f.Rules[i]; r.ID == newRuleID {
+						clause, profiles = r.Clause, r.Profiles
+					}
+				}
 				return setOverrides(f, newRuleID, overridesID)
 			})
 			if err != nil {
@@ -100,6 +109,7 @@ Examples:
 				if lapsed != "" {
 					out["lapsed_overrides"] = lapsed
 				}
+				addStandardFields(out, clause, profiles)
 				return writeJSONOutput(w, out)
 			}
 
@@ -110,6 +120,7 @@ Examples:
 			if lapsed != "" {
 				writeln(w, descStyle.Render(fmt.Sprintf("  Note: %s overrides %s; the override lapses unless restated with --overrides %s (RUL-011)", ruleID, lapsed, lapsed)))
 			}
+			writeStandardFields(w, clause, profiles)
 			writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", oldVersion, version)))
 			writeAddedBySource(w, addedBy, addedBySource)
 
