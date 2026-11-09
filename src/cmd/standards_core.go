@@ -129,10 +129,10 @@ func depUpgradable(source string) bool {
 }
 
 // corePinFor returns the core pin that validates the file at path, or nil: that
-// of the nearest Realm depending on dev.steerspec.core, among the sub-realm of
-// dir holding the file, the Realm at dir and that Realm's parent. A sub-realm
-// that pins its own core is linted only against that pin; one that doesn't uses
-// its parent's (RLM-014).
+// of the nearest Realm depending on dev.steerspec.core, among the sub-realms
+// from dir down to the one holding the file, however deeply nested, the Realm
+// at dir and that Realm's parent. A sub-realm that pins its own core is linted
+// only against that pin; one that doesn't uses its parent's (RLM-014).
 func corePinFor(dir, path string) *realmPin {
 	rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
 	if err != nil {
@@ -144,18 +144,32 @@ func corePinFor(dir, path string) *realmPin {
 		}
 		return nil
 	}
-	if rel, err := filepath.Rel(dir, path); err == nil {
-		if first, _, nested := strings.Cut(filepath.ToSlash(rel), "/"); nested && slices.Contains(rf.SubRealms, first) {
-			subDir := filepath.Join(dir, first)
-			if sub, err := entity.LoadRealm(filepath.Join(subDir, "realm.json")); err == nil {
-				if p := pin(sub, subDir); p != nil {
-					return p
-				}
+	// The Realms from dir down to the one holding the file, each a sub-realm
+	// its parent lists, nearest last.
+	type realmAt struct {
+		rf  *entity.RealmFile
+		dir string
+	}
+	chain := []realmAt{{rf, dir}}
+	if rel, err := filepath.Rel(dir, filepath.Dir(path)); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+		cur := chain[0]
+		for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+			if !slices.Contains(cur.rf.SubRealms, part) {
+				break
 			}
+			subDir := filepath.Join(cur.dir, part)
+			sub, err := entity.LoadRealm(filepath.Join(subDir, "realm.json"))
+			if err != nil {
+				break
+			}
+			cur = realmAt{sub, subDir}
+			chain = append(chain, cur)
 		}
 	}
-	if p := pin(rf, dir); p != nil {
-		return p
+	for i := len(chain) - 1; i >= 0; i-- {
+		if p := pin(chain[i].rf, chain[i].dir); p != nil {
+			return p
+		}
 	}
 	if parent := entity.ParentRealm(dir, rf.Realm.ID); parent != nil {
 		if abs, err := filepath.Abs(dir); err == nil {

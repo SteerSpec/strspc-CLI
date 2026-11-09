@@ -69,6 +69,22 @@ func TestRenderInvalidPath(t *testing.T) {
 	}
 }
 
+// TestRenderParseErrorNamesFile names the file that doesn't parse, in both
+// Markdown and JSON output.
+func TestRenderParseErrorNamesFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bad.json")
+	if err := os.WriteFile(path, []byte(`{"entity": `), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"render", path}, {"render", path, "--json"}} {
+		_, err := testutil.ExecuteCommand(NewRootCmd(), args...)
+		if err == nil {
+			t.Fatalf("%v: expected an error", args)
+		}
+		testutil.AssertContains(t, err.Error(), path+": parsing entity JSON")
+	}
+}
+
 func TestRenderUnsupportedFormat(t *testing.T) {
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "render", "testdata/basic.json", "--format", "html")
 	if err == nil {
