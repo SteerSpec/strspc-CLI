@@ -17,7 +17,7 @@ rules:
     scope: global
 evaluator:
   provider: claude          # requires ANTHROPIC_API_KEY; use "null" to skip AI evaluation
-  model: claude-sonnet-5-5  # the default
+  model: claude-haiku-5-5   # the default
   effort: medium            # low | medium | high
 cache:
   ttl: 24h
