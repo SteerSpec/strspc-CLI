@@ -3,10 +3,13 @@ package cmd
 import (
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/rulelint"
+	"github.com/SteerSpec/strspc-manager/src/schema"
 )
 
 // verbatimBody is worded as a standard words it: no key word (RL021) and an
@@ -61,14 +64,11 @@ func lintBodyCodes(t *testing.T, args ...string) map[string]int {
 }
 
 // firstPathPart is the file of a diagnostic path, which may go on with
-// ": <JSON path>".
+// ": <JSON path>". Only a colon followed by a space separates them, so a
+// Windows drive letter stays in the file.
 func firstPathPart(p string) string {
-	for i := range len(p) {
-		if p[i] == ':' {
-			return p[:i]
-		}
-	}
-	return p
+	file, _, _ := strings.Cut(p, ": ")
+	return file
 }
 
 // TestLintStandardRealmBodies skips RL021 and RL026 for the rules of a
@@ -130,5 +130,68 @@ func TestLintSubRealmKinds(t *testing.T) {
 	}
 	if got["RL021 STD.json"] != 0 || got["RL026 STD.json"] != 0 {
 		t.Errorf("STD.json, in a Standard Realm: %v, want no RL021 or RL026", got)
+	}
+}
+
+// TestLintDotFindsOneLetterSubRealm lints "." with a Standard sub-realm whose
+// name is one character, as long as "." itself.
+func TestLintDotFindsOneLetterSubRealm(t *testing.T) {
+	root := t.TempDir()
+	writeKindManifest(t, root, "dev.test", false, "s")
+	copyRepoSchemas(t, root)
+	setupEntityFile(t, root, "ROOT")
+	addVerbatimRule(t, root, "ROOT", false)
+	s := filepath.Join(root, "s")
+	writeKindManifest(t, s, "dev.test.s", true)
+	setupEntityFile(t, s, "STD")
+	addVerbatimRule(t, s, "STD", true)
+
+	t.Chdir(root)
+	got := lintBodyCodes(t, ".")
+	if got["RL021 ROOT.json"] == 0 {
+		t.Errorf("ROOT.json: %v, want RL021", got)
+	}
+	if got["RL021 STD.json"] != 0 || got["RL026 STD.json"] != 0 {
+		t.Errorf("s/STD.json, in a Standard Realm: %v, want no RL021 or RL026", got)
+	}
+}
+
+// TestCollectSubRealmLintersReuse builds a linter for a sub-realm only when
+// its core pin or kind differs from its parent's.
+func TestCollectSubRealmLintersReuse(t *testing.T) {
+	root := t.TempDir()
+	pin := func(v string) []entity.RealmDep {
+		return []entity.RealmDep{{RealmID: coreRealmID, Version: v, Source: "github://SteerSpec/strspc-rules@v" + v + "/rules/core"}}
+	}
+	write := func(dir, id string, meta entity.RealmMeta, deps []entity.RealmDep, subs ...string) {
+		meta.ID = id
+		if deps == nil {
+			deps = []entity.RealmDep{}
+		}
+		writeJSONFile(t, filepath.Join(dir, "realm.json"), &entity.RealmFile{Realm: meta, Dependencies: deps, SubRealms: subs})
+	}
+	code := entity.RealmMeta{Title: "t", Version: "0.1.0"}
+	write(root, "dev.t", code, pin("1.23.0"), "same", "other", "unpinned", "std")
+	write(filepath.Join(root, "same"), "dev.t.same", code, pin("1.23.0"))
+	write(filepath.Join(root, "other"), "dev.t.other", code, pin("1.22.0"))
+	write(filepath.Join(root, "unpinned"), "dev.t.unpinned", code, nil)
+	write(filepath.Join(root, "std"), "dev.t.std", standardRealmMeta("x", "L1"), nil)
+
+	var built []string
+	newLinter := func(_ []schema.Option, kind string) *rulelint.Linter {
+		built = append(built, kind)
+		return rulelint.New(rulelint.WithRealmKind(kind))
+	}
+	parent := realmLinting{linter: rulelint.New(), pin: corePinKey(root)}
+	out := make(map[string]*rulelint.Linter)
+	collectSubRealmLinters(root, parent, newLinter, out, 0)
+
+	for name, shared := range map[string]bool{"same": true, "unpinned": true, "other": false, "std": false} {
+		if l := out[filepath.Join(root, name)]; (l == parent.linter) != shared {
+			t.Errorf("%s: shares the parent's linter = %v, want %v", name, l == parent.linter, shared)
+		}
+	}
+	if len(built) != 2 {
+		t.Errorf("built %d linter(s), kinds %q; want 2: the other pin and the Standard Realm", len(built), built)
 	}
 }

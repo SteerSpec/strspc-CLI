@@ -73,13 +73,17 @@ func newLintCmd() *cobra.Command {
 			}
 			rootOpts := realmSchemaOptions(realmDir, core)
 			linter := newLinter(rootOpts, realmKindIn(realmDir))
+			rootPin := corePinKey(realmDir)
+			if core {
+				rootPin = "core " + realmDir
+			}
 
 			var res *result.Result
 			if info.IsDir() {
 				if crossRef {
 					res = linter.LintDir(cmd.Context(), inputPath)
 				} else {
-					res = lintDirPerFile(cmd.Context(), linter, inputPath, rootOpts, newLinter)
+					res = lintDirPerFile(cmd.Context(), linter, inputPath, rootOpts, rootPin, newLinter)
 				}
 			} else {
 				data, readErr := os.ReadFile(inputPath)
@@ -143,12 +147,16 @@ type realmLinterFactory func(schemaOpts []schema.Option, kind string) *rulelint.
 // Realm above it that has one, so a sub-realm is checked against its pin and
 // not also against dir's (RLM-014), as realm validate does; and its own kind,
 // since each Realm's kind is its own manifest's (RLMMNFST-009).
-func lintDirPerFile(ctx context.Context, linter *rulelint.Linter, dir string, schemaOpts []schema.Option, newLinter realmLinterFactory) *result.Result {
+func lintDirPerFile(ctx context.Context, linter *rulelint.Linter, dir string, schemaOpts []schema.Option, pin string,
+	newLinter realmLinterFactory,
+) *result.Result {
 	res := &result.Result{}
 	seen := 0
+	root := filepath.Clean(dir)
 	subLinters := make(map[string]*rulelint.Linter)
 	if newLinter != nil {
-		collectSubRealmLinters(dir, linter, schemaOpts, realmKindIn(dir), newLinter, subLinters, 0)
+		parent := realmLinting{linter: linter, schemaOpts: schemaOpts, pin: pin, kind: realmKindIn(dir)}
+		collectSubRealmLinters(root, parent, newLinter, subLinters, 0)
 	}
 
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
@@ -189,7 +197,7 @@ func lintDirPerFile(ctx context.Context, linter *rulelint.Linter, dir string, sc
 		}
 
 		fileLinter := linter
-		for d := filepath.Dir(path); len(d) > len(filepath.Clean(dir)); d = filepath.Dir(d) {
+		for d := filepath.Dir(path); d != root && d != "." && d != filepath.Dir(d); d = filepath.Dir(d) {
 			if l := subLinters[d]; l != nil {
 				fileLinter = l
 				break
@@ -282,16 +290,36 @@ func realmKindIn(dir string) string {
 	return rf.Realm.Kind
 }
 
+// corePinKey identifies the core pin of the manifest in dir, which selects
+// its schemas: its dev.steerspec.core version and source, or "" when it has
+// none or no manifest that can be loaded.
+func corePinKey(dir string) string {
+	rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
+	if err != nil {
+		return ""
+	}
+	if dep := corePin(rf); dep != nil {
+		return dep.Version + " " + dep.Source
+	}
+	return ""
+}
+
+// realmLinting is how the files of one Realm are linted: its linter, the
+// schemas and core pin it was built from, and its kind.
+type realmLinting struct {
+	linter     *rulelint.Linter
+	schemaOpts []schema.Option
+	pin, kind  string
+}
+
 // collectSubRealmLinters adds to out, by directory, the linter of each
-// sub-realm the manifest in dir lists, and of theirs in turn. A sub-realm that
-// depends on dev.steerspec.core gets the schemas of its own pin; one that
-// doesn't, those of its parent. Each gets its own kind. A sub-realm that
-// matches its parent in both shares the parent's linter. A name that isn't a
-// plain directory name, or a manifest that can't be loaded, is skipped: realm
-// validate reports it.
-func collectSubRealmLinters(dir string, parent *rulelint.Linter, parentOpts []schema.Option, parentKind string,
-	newLinter realmLinterFactory, out map[string]*rulelint.Linter, depth int,
-) {
+// sub-realm the manifest in dir lists, and of theirs in turn. A sub-realm
+// that pins dev.steerspec.core gets the schemas of its own pin; one that
+// doesn't, those of its parent. Each gets its own kind. A sub-realm whose pin
+// and kind match its parent's shares the parent's linter, so the same schemas
+// aren't fetched twice. A name that isn't a plain directory name, or a
+// manifest that can't be loaded, is skipped: realm validate reports it.
+func collectSubRealmLinters(dir string, parent realmLinting, newLinter realmLinterFactory, out map[string]*rulelint.Linter, depth int) {
 	if depth >= maxSubRealmDepth {
 		return
 	}
@@ -308,15 +336,17 @@ func collectSubRealmLinters(dir string, parent *rulelint.Linter, parentOpts []sc
 		if err != nil {
 			continue
 		}
-		opts, kind, l := parentOpts, m.Realm.Kind, parent
-		pinned := m.DependsOn(coreRealmID)
-		if pinned {
-			opts = schema.ForRealm(subDir)
+		sub := parent
+		sub.kind = m.Realm.Kind
+		if dep := corePin(m); dep != nil {
+			if key := dep.Version + " " + dep.Source; key != parent.pin {
+				sub.pin, sub.schemaOpts = key, schema.ForRealm(subDir)
+			}
 		}
-		if pinned || kind != parentKind {
-			l = newLinter(opts, kind)
+		if sub.pin != parent.pin || sub.kind != parent.kind {
+			sub.linter = newLinter(sub.schemaOpts, sub.kind)
 		}
-		out[subDir] = l
-		collectSubRealmLinters(subDir, l, opts, kind, newLinter, out, depth+1)
+		out[subDir] = sub.linter
+		collectSubRealmLinters(subDir, sub, newLinter, out, depth+1)
 	}
 }
