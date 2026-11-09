@@ -42,6 +42,21 @@ func realmDirOf(file, stop string) (string, error) {
 	}
 }
 
+// realmManifestOf returns the manifest of the Realm holding file, looking no
+// higher than stop: a sub-realm's own, since each Realm's kind is its own
+// manifest's (RLMMNFST-009). It is nil when there is no manifest.
+func realmManifestOf(file, stop string) (*entity.RealmMeta, error) {
+	dir, err := realmDirOf(file, stop)
+	if err != nil || dir == "" {
+		return nil, err
+	}
+	rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
+	if err != nil {
+		return nil, fmt.Errorf("reading the manifest of the realm in %s: %w", dir, err)
+	}
+	return &rf.Realm, nil
+}
+
 // realmContributorsOf returns the contributors of the Realm holding file
 // (CTRB-004), looking for its manifest no higher than stop. A sub-realm uses
 // its parent's (CTRB-006). There are none when no manifest is found.

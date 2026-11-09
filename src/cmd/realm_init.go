@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -46,6 +47,106 @@ type realmMeta struct {
 	ID      string `json:"id"`
 	Title   string `json:"title"`
 	Version string `json:"version"`
+	// The fields of a Standard Realm (STDRLM-001), in the order of the
+	// manager's entity.RealmMeta, omitted from a code Realm's manifest.
+	Kind        string              `json:"kind,omitempty"`
+	License     string              `json:"license,omitempty"`
+	Attribution *entity.Attribution `json:"attribution,omitempty"`
+	Edition     string              `json:"edition,omitempty"`
+	Profiles    []string            `json:"profiles,omitempty"`
+}
+
+// standardRealmFlags holds the flags of realm init that make a Standard Realm,
+// or give a code Realm a license and an attribution.
+type standardRealmFlags struct {
+	kind, edition, license          string
+	attributionText, attributionURL string
+	profiles                        []string
+}
+
+// attributionURLPattern is the attribution url pattern of realm.v1.schema.json
+// (RLMMNFST-011), `^https?://[^\s/?#]+[^\s]*$`.
+var attributionURLPattern = regexp.MustCompile(`^https?://[^\s/?#]+\S*$`)
+
+// apply checks the flags and sets their fields on m. A Standard Realm needs an
+// edition, a license and an attribution (STDRLM-002, STDRLM-003, STDRLM-015);
+// an edition and profiles belong to a Standard Realm only (STDRLM-002,
+// STDRLM-004), while any Realm may have a license and an attribution
+// (RLMMNFST-010, RLMMNFST-011).
+func (f *standardRealmFlags) apply(m *realmMeta) error {
+	for _, v := range []struct{ flag, value string }{
+		{"--kind", f.kind},
+		{"--edition", f.edition},
+		{"--license", f.license},
+		{"--attribution-text", f.attributionText},
+		{"--attribution-url", f.attributionURL},
+	} {
+		if err := rejectControlChars(v.flag, v.value); err != nil {
+			return err
+		}
+	}
+	standard := f.kind == entity.KindStandard
+	switch {
+	case f.kind != "" && !standard:
+		return fmt.Errorf("invalid --kind %q: the only kind is %q (RLMMNFST-008); leave it out for a code Realm", f.kind, entity.KindStandard)
+	case !standard && (f.edition != "" || len(f.profiles) > 0):
+		return fmt.Errorf("--edition and --profiles describe a Standard Realm: pass --kind %s", entity.KindStandard)
+	case (f.attributionText == "") != (f.attributionURL == ""):
+		return errors.New("--attribution-text and --attribution-url go together: an attribution has a text and a url (RLMMNFST-011)")
+	case f.attributionURL != "" && !attributionURLPattern.MatchString(f.attributionURL):
+		return fmt.Errorf("invalid --attribution-url %q: want an absolute http or https URL (RLMMNFST-011)", f.attributionURL)
+	}
+	if standard {
+		var missing []string
+		if strings.TrimSpace(f.edition) == "" {
+			missing = append(missing, "--edition (STDRLM-002)")
+		}
+		if strings.TrimSpace(f.license) == "" {
+			missing = append(missing, "--license (STDRLM-003)")
+		}
+		if f.attributionText == "" {
+			missing = append(missing, "--attribution-text and --attribution-url (STDRLM-015)")
+		}
+		if len(missing) > 0 {
+			return fmt.Errorf("a Standard Realm needs %s", strings.Join(missing, ", "))
+		}
+	}
+	if f.license != "" && strings.TrimSpace(f.license) != f.license {
+		return fmt.Errorf("invalid --license %q: want an SPDX license identifier such as CC-BY-SA-4.0 (RLMMNFST-010)", f.license)
+	}
+	seen := make(map[string]bool)
+	for _, p := range f.profiles {
+		if err := rejectControlChars("--profiles", p); err != nil {
+			return err
+		}
+		switch {
+		case strings.TrimSpace(p) == "" || strings.TrimSpace(p) != p:
+			return fmt.Errorf("invalid --profiles entry %q: a profile is a non-empty name without surrounding spaces (STDRLM-004)", p)
+		case seen[p]:
+			return fmt.Errorf("--profiles lists %q twice: profiles are unique (STDRLM-004)", p)
+		}
+		seen[p] = true
+	}
+	m.Kind, m.License, m.Edition = f.kind, f.license, f.edition
+	m.Profiles = f.profiles
+	if f.attributionText != "" {
+		m.Attribution = &entity.Attribution{Text: f.attributionText, URL: f.attributionURL}
+	}
+	return nil
+}
+
+// checkStandardRealmCore refuses to vendor, for a Standard Realm, the schemas
+// of a core release older than manifestMinCore: they have no kind.
+func checkStandardRealmCore(kind, tag string) error {
+	if kind != entity.KindStandard {
+		return nil
+	}
+	v, err := semver.StrictNewVersion(strings.TrimPrefix(tag, "v"))
+	if err != nil || !v.LessThan(manifestMinCore) {
+		return nil
+	}
+	return fmt.Errorf("a Standard Realm needs %s %s or later, whose schemas accept `kind`: the schemas would come from %s",
+		coreRealmID, manifestMinCore, tag)
 }
 
 // realmIDPattern is the realm ID grammar of realm.v1.schema.json (realm.id),
@@ -118,12 +219,24 @@ func newRealmInitCmd() *cobra.Command {
 		force   bool
 		deps    []string
 		core    string
+		std     standardRealmFlags
 	)
 
 	cmd := &cobra.Command{
-		Use:           "init",
-		Short:         "Scaffold a new Realm directory",
-		Long:          "Create a Realm directory with realm.json and vendored schemas for rule authoring.",
+		Use:   "init",
+		Short: "Scaffold a new Realm directory",
+		Long: "Create a Realm directory with realm.json and vendored schemas for rule authoring.\n\n" +
+			"--kind standard makes a Standard Realm, which transcribes an external standard, one rule per\n" +
+			"clause sentence (STDRLM-001). It needs the --edition of the standard (STDRLM-002), the SPDX\n" +
+			"--license of its text (STDRLM-003) and an attribution, --attribution-text and\n" +
+			"--attribution-url (STDRLM-015). --profiles lists, in order, the profiles its rules may\n" +
+			"declare, such as the levels of the standard (STDRLM-004). Any Realm may have a license and an\n" +
+			"attribution. A Standard Realm needs " + coreRealmID + " " + manifestMinCore.String() + " or later.\n\n" +
+			"Examples:\n" +
+			"  strspc realm init --id com.acme.myproject --title \"My Project\"\n" +
+			"  strspc realm init --id dev.steerspec.std.owasp.asvs.v5 --title \"OWASP ASVS\" --kind standard \\\n" +
+			"    --edition 5.0.0 --profiles L1,L2,L3 --license CC-BY-SA-4.0 \\\n" +
+			"    --attribution-text \"OWASP ASVS 5.0.0, by the OWASP Foundation\" --attribution-url https://owasp.org/",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -150,6 +263,10 @@ func newRealmInitCmd() *cobra.Command {
 			}
 			if !realmIDPattern.MatchString(realmID) {
 				return fmt.Errorf("invalid realm ID %q: must be %s (e.g. com.acme.myproject)", realmID, realmIDGrammar)
+			}
+			meta := realmMeta{ID: realmID, Title: title, Version: "0.1.0"}
+			if err := std.apply(&meta); err != nil {
+				return err
 			}
 
 			// Parse and validate dependencies before any filesystem/network operations.
@@ -179,6 +296,9 @@ func newRealmInitCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := checkStandardRealmCore(meta.Kind, tag); err != nil {
+				return err
+			}
 
 			// Create target directory.
 			if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -197,12 +317,8 @@ func newRealmInitCmd() *cobra.Command {
 
 			// Write realm.json.
 			realm := realmJSON{
-				Schema: "./_schema/realm.v1.schema.json",
-				Realm: realmMeta{
-					ID:      realmID,
-					Title:   title,
-					Version: "0.1.0",
-				},
+				Schema:            "./_schema/realm.v1.schema.json",
+				Realm:             meta,
 				Dependencies:      realmDeps,
 				RuleIdentifierFmt: nil,
 			}
@@ -225,8 +341,17 @@ func newRealmInitCmd() *cobra.Command {
 			writeln(w)
 			writeln(w, descStyle.Render("Next steps:"))
 			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Add entities: ")+cmdStyle.Render("strspc realm add MYENTITY --title \"My Entity\""))
-			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Validate: ")+cmdStyle.Render("strspc realm validate"))
-			writeln(w, cmdStyle.Render("  3.")+descStyle.Render(" Reference from config: ")+descStyle.Render("source: ./rules/ in .strspc/config.yaml"))
+			step := 2
+			if meta.Kind == entity.KindStandard {
+				add := "strspc rule add MYENTITY --body \"...\" --clause <clause>"
+				if len(meta.Profiles) > 0 {
+					add += " --profiles " + meta.Profiles[0]
+				}
+				writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Transcribe each clause: ")+cmdStyle.Render(add))
+				step++
+			}
+			writeln(w, cmdStyle.Render(fmt.Sprintf("  %d.", step))+descStyle.Render(" Validate: ")+cmdStyle.Render("strspc realm validate"))
+			writeln(w, cmdStyle.Render(fmt.Sprintf("  %d.", step+1))+descStyle.Render(" Reference from config: ")+descStyle.Render("source: ./rules/ in .strspc/config.yaml"))
 			writeln(w)
 
 			// Suggest linking to .strspc/config.yaml if it exists.
@@ -244,6 +369,12 @@ func newRealmInitCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing realm")
 	cmd.Flags().StringVar(&core, "core-version", "", "dev.steerspec.core release to vendor schemas from (default: the dev.steerspec.core dependency, else the latest release)")
 	cmd.Flags().StringArrayVar(&deps, "dependency", nil, "realm dependency (format: realm_id@version[=source])")
+	cmd.Flags().StringVar(&std.kind, "kind", "", "the Realm's kind: standard for a Standard Realm; leave out for a code Realm")
+	cmd.Flags().StringVar(&std.edition, "edition", "", "with --kind standard, the edition of the standard, such as 5.0.0")
+	cmd.Flags().StringSliceVar(&std.profiles, "profiles", nil, "with --kind standard, the profiles its rules may declare, in order, comma-separated, such as L1,L2,L3")
+	cmd.Flags().StringVar(&std.license, "license", "", "SPDX license identifier of the Realm's content, such as CC-BY-SA-4.0 (required with --kind standard)")
+	cmd.Flags().StringVar(&std.attributionText, "attribution-text", "", "who the Realm's content is credited to (required with --kind standard, with --attribution-url)")
+	cmd.Flags().StringVar(&std.attributionURL, "attribution-url", "", "absolute http or https URL of the content's source (required with --kind standard, with --attribution-text)")
 
 	return cmd
 }

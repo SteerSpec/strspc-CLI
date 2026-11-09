@@ -27,17 +27,21 @@ type ruleShowOptions struct {
 // shownRule is a rule as rule show prints it, with the realm and entity that
 // hold it.
 type shownRule struct {
-	Realm      string      `json:"realm"`
-	Entity     string      `json:"entity"`
-	ID         string      `json:"id"`
-	State      string      `json:"state"`
-	Revision   int         `json:"revision"`
-	Body       string      `json:"body"`
-	AddedBy    string      `json:"added_by"`
-	AddedAt    string      `json:"added_at"`
-	Supersedes *string     `json:"supersedes"`
-	Overrides  *string     `json:"overrides"`
-	Notes      []shownNote `json:"notes"`
+	Realm      string  `json:"realm"`
+	Entity     string  `json:"entity"`
+	ID         string  `json:"id"`
+	State      string  `json:"state"`
+	Revision   int     `json:"revision"`
+	Body       string  `json:"body"`
+	AddedBy    string  `json:"added_by"`
+	AddedAt    string  `json:"added_at"`
+	Supersedes *string `json:"supersedes"`
+	Overrides  *string `json:"overrides"`
+	// Clause and Profiles are those of a rule of a Standard Realm (RUL-015,
+	// RUL-016), absent for any other.
+	Clause   string      `json:"clause,omitempty"`
+	Profiles []string    `json:"profiles,omitempty"`
+	Notes    []shownNote `json:"notes"`
 }
 
 type shownNote struct {
@@ -250,7 +254,7 @@ func collectShownRules(ef *entity.File, realm string, rules map[string]*shownRul
 		sr := &shownRule{
 			Realm: realm, Entity: ef.Entity.ID, ID: r.ID, State: r.State, Revision: r.Revision,
 			Body: r.Body, AddedBy: r.AddedBy, AddedAt: r.AddedAt, Supersedes: r.Supersedes, Overrides: r.Overrides,
-			Notes: []shownNote{},
+			Clause: r.Clause, Profiles: r.Profiles, Notes: []shownNote{},
 		}
 		for _, n := range ef.Notes {
 			if n.RuleRef == r.ID {
@@ -298,6 +302,7 @@ func writeShownRules(w io.Writer, rules []*shownRule) {
 			where = r.Realm + " · " + r.Entity
 		}
 		writeln(w, fmt.Sprintf("%s [%s] %s", brandStyle.Render(printableText(r.ID)), printableText(r.State), descStyle.Render(printableText(where))))
+		writeStandardFields(w, r.Clause, r.Profiles)
 		writeln(w, indentLines(r.Body, "  "))
 		for _, n := range r.Notes {
 			head := fmt.Sprintf("  %s %s: ", printableText(n.ID), printableText(n.Type))

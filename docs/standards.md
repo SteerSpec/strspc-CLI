@@ -318,9 +318,10 @@ then.
 
 > **Mostly implemented.** Designed in
 > [strspc-rules#144](https://github.com/SteerSpec/strspc-rules/issues/144). The rules are Draft in core
-> 1.21.0. Linking a reference to a Standard Realm (`--realm`), excluding a clause (`realm note`), lint
-> of a note's clause against the linked realm, and coverage against its clause list all work today, as
-> above. The crosswalk between editions is not yet implemented.
+> 1.21.0. Authoring a Standard Realm ([Author a Standard Realm](author-rules.md#author-a-standard-realm)),
+> linking a reference to it (`--realm`), excluding a clause (`realm note`), lint of a note's clause
+> against the linked realm, and coverage against its clause list all work today, as above. The
+> crosswalk between editions is not yet implemented.
 
 A standard's publisher, or anyone its licence allows, publishes it as a SteerSpec realm with one rule
 per clause, for example OWASP ASVS 5.0.0 in a GitHub repository. A project declares it as a

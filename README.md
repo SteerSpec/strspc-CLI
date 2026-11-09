@@ -112,6 +112,7 @@ Add `./rules/` to `.strspc/config.yaml` to
 | Run SteerSpec in CI | [Continuous integration](docs/render-and-ci.md#continuous-integration) |
 | Map rules to an external standard | [Report coverage of a standard](docs/standards.md) |
 | Fail CI when standards coverage weakens | [Gate CI on coverage](docs/standards.md#gate-ci-on-coverage) |
+| Publish a standard as a Standard Realm | [Author a Standard Realm](docs/author-rules.md#author-a-standard-realm) |
 | Look up an environment variable or schema URL | [Reference](docs/reference.md) |
 | See what is not implemented yet | [Work in progress](docs/reference.md#work-in-progress) |
 | Build and contribute | [Development](docs/development.md) |
