@@ -32,6 +32,7 @@ func TestCommandsRejectPathEUID(t *testing.T) {
 		{"rule", "update", "../OUTSIDE-001", "--body", "MUST y."},
 		{"rule", "promote", "../OUTSIDE-001"},
 		{"rule", "retire", "../OUTSIDE-001"},
+		{"rule", "terminate", "../OUTSIDE-001"},
 		{"rule", "abandon", "../OUTSIDE-001"},
 		{"rule", "supersede", "../OUTSIDE-001", "--body", "MUST y.", "--added-by", "github:test"},
 		{"note", "add", "../OUTSIDE-001", "--type", "reference", "--body", "x", "--added-by", "github:test"},

@@ -38,17 +38,18 @@ strspc note add CFG-001 --type rationale --body "Why." --added-by github:alice
 
 `--added-by` takes `github:<login>`; an `@handle` or an email address is refused.
 
-Rule lifecycle is forward-only and no state may be skipped:
+Rule lifecycle is forward-only, and only a superseded Published rule may skip a state:
 
 | State | Meaning | Move on with |
 | ----- | ------- | ------------ |
 | D Draft | text may still change (`rule update`) | `rule promote` to P, or `rule abandon` |
-| P Published | text is final, code may still violate it | `rule promote` to I, which verifies the code first |
+| P Published | text is final, code may still violate it | `rule promote` to I, which verifies the code first, or `rule terminate` to T once superseded |
 | I Implemented | enforced in CI when listed in `fail_on` | `rule retire` to R |
-| R Retired | no longer applies | `rule retire` to T |
+| R Retired | no longer applies | `rule terminate` to T |
 
 Only promote a rule to Implemented once the code complies. A rule that has left Draft is immutable:
-use `strspc rule supersede` to replace it.
+use `strspc rule supersede` to replace it. A superseded Published rule skips I and R: once its
+successor is Published, `strspc rule terminate` ends it, in the same change or later (RULST-012).
 
 ## Validate
 

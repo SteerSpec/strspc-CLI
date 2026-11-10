@@ -16,7 +16,8 @@ flowchart LR
     D -->|rule promote| P
     P -->|rule promote, once verified| I
     I -->|rule retire| R
-    R -->|rule retire| T
+    R -->|rule terminate| T
+    P -->|rule terminate, once superseded| T
     D -->|rule abandon| A
 
     classDef draft fill:#161B22,stroke:#6E7681,color:#A0A8B1
@@ -29,7 +30,9 @@ flowchart LR
 
 Transitions are forward-only and no state may be skipped
 ([SPEC §3](https://github.com/SteerSpec/strspc-manager/blob/v1.47.1/docs/SPEC.md#3-rule-lifecycle)).
-Every change bumps the rule set version: minor when a rule is promoted or retired, patch otherwise.
+The one exception is a superseded Published rule, which goes straight to Terminated (RULST-012).
+Every change bumps the rule set version: minor when a rule is promoted, retired or
+terminated, patch otherwise.
 
 ```bash
 strspc rule add CFG --body "The CLI MUST write a config file." --added-by github:alice
@@ -37,6 +40,9 @@ strspc rule update CFG-001 --body "The CLI MUST write a YAML config file."     #
 strspc rule promote CFG-001                                                    # D → P
 strspc note add CFG-001 --type rationale --body "Why." --added-by github:alice
 strspc note update CFG-001/01 --body "Corrected."
+strspc rule supersede CFG-001 --body "The CLI MUST write a TOML config file." --added-by github:alice  # Draft CFG-002
+strspc rule promote CFG-002                                                    # D → P
+strspc rule terminate CFG-001                                                  # P → T (RULST-012)
 strspc entity add CFGIO --parent CFG --title "Config I/O"
 strspc rule add CFG --sub-entity CFGIO --body "Writes MUST be atomic." --added-by github:alice
 strspc entity rehash --all                                     # fix hashes after a bulk import
@@ -106,8 +112,12 @@ read, such as `entity standards list`, follow the link.
 
 **Superseding.** Rules that have left Draft are immutable, so `rule supersede` creates a Draft that
 replaces them. It leaves the original unchanged: when the new rule reaches Implemented, the old one
-must be Retired, or `strspc diff` warns (`RD006`). `rule retire` moves a rule from Implemented to
-Retired, so promote a Published rule first. A rule that's already Retired needs nothing.
+must be Retired, or Terminated if it never left Published; otherwise `strspc diff` warns (`RD006`), and
+`--strict` makes that an error. `rule retire` moves an Implemented rule to Retired. `rule terminate`
+moves a Published rule, never in force, to Terminated, in or after the change in which its successor
+enters Published (RULST-012); it's refused while no successor is Published or later. A rule that's
+already Retired needs nothing; `rule terminate` (or `rule retire`, kept for compatibility) moves it
+on to Terminated.
 
 **Notes.** Types are `rationale`, `example`, `counter_example`, `reference`, `applies_to`, `changelog`,
 `clarification`, `deprecation_notice`, `supersedes`, `extends`, `related`, `standard` and `structured`. A
