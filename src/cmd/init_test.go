@@ -159,7 +159,7 @@ func TestInitConfigIsValid(t *testing.T) {
 	}
 	// Spelled out rather than compared with defaultCoreSource so a typo or a
 	// stale tag in the constant fails here (the pin is the point of the default).
-	const wantSource = "github://SteerSpec/strspc-rules@v1.23.0/rules/core"
+	const wantSource = "github://SteerSpec/strspc-rules@v1.25.0/rules/core"
 	if entries[0].Source != wantSource {
 		t.Errorf("got source %q, want %q", entries[0].Source, wantSource)
 	}
