@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.41.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.40.0...v1.41.0) (2026-11-11)
+
+
+### Features
+
+* **rule:** add rule terminate for superseded Published rules (RULST-012) ([#324](https://github.com/SteerSpec/strspc-CLI/issues/324)) ([4bdf637](https://github.com/SteerSpec/strspc-CLI/commit/4bdf637fad091d84ef640ddc93a070ad8490f925))
+
+
+### Bug Fixes
+
+* **lint:** lint a Standard Realm's rules as a Standard Realm's ([#319](https://github.com/SteerSpec/strspc-CLI/issues/319)) ([f4fc516](https://github.com/SteerSpec/strspc-CLI/commit/f4fc5163cf17ce895d4bd485c7a46f7bc0e5d507))
+* **rule:** wrap rule retire and terminate errors with %w (CONV-004) ([#326](https://github.com/SteerSpec/strspc-CLI/issues/326)) ([6b29626](https://github.com/SteerSpec/strspc-CLI/commit/6b29626be4539547460985928af8e1f9dacf636c))
+
 ## [1.40.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.39.0...v1.40.0) (2026-11-09)
 
 
