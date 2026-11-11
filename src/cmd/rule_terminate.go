@@ -30,7 +30,7 @@ Examples:
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRuleTransition(cmd.OutOrStdout(), dir, args[0], jsonOut, entityops.TerminateRule)
+			return runRuleTransition(cmd.OutOrStdout(), dir, args[0], "terminating", jsonOut, entityops.TerminateRule)
 		},
 	}
 

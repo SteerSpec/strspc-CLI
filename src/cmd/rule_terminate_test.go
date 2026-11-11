@@ -3,6 +3,8 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -188,5 +190,30 @@ func TestRuleTerminateUnknownRule(t *testing.T) {
 
 	if _, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "terminate", "TST-009", "--dir", dir); err == nil {
 		t.Fatal("expected an error for an unknown rule")
+	}
+}
+
+func TestRuleTransitionWrapsCause(t *testing.T) {
+	cause := errors.New("cause")
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "R", "Retired rule", "github:alice"))
+
+	err := runRuleTransition(io.Discard, dir, "TST-001", "terminating", false,
+		func(*entity.File, string) error { return cause })
+	if !errors.Is(err, cause) {
+		t.Fatalf("error %v does not wrap the cause", err)
+	}
+	if got, want := err.Error(), "terminating TST-001: cause"; got != want {
+		t.Errorf("error = %q, want %q", got, want)
+	}
+
+	err = runRuleTransition(io.Discard, dir, "BAD", "terminating", false, nil)
+	if err == nil || !strings.HasPrefix(err.Error(), "terminating BAD: invalid rule ID") {
+		t.Errorf("error = %v, want a wrapped invalid rule ID", err)
+	}
+
+	err = runRuleTransition(io.Discard, dir, "NOPE-001", "terminating", false, nil)
+	if err == nil || !strings.HasPrefix(err.Error(), "terminating NOPE-001: ") {
+		t.Errorf("error = %v, want a wrapped entity lookup error", err)
 	}
 }
