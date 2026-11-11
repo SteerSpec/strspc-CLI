@@ -95,7 +95,8 @@ full data model.
 | `strspc rule add` | Add a Draft rule to an entity or sub-entity |
 | `strspc rule update` | Edit the body of a Draft rule |
 | `strspc rule promote` | Advance a rule D→P or P→I; P→I first verifies the code complies (`--skip-verify` to bypass) |
-| `strspc rule retire` | Move a rule I→R or R→T |
+| `strspc rule retire` | Move a rule I→R (R→T kept for compatibility) |
+| `strspc rule terminate` | Terminate a superseded Published rule (P→T, RULST-012) or a Retired rule (R→T) |
 | `strspc rule abandon` | Abandon a Draft rule (D→A) |
 | `strspc rule supersede` | Create a Draft rule that supersedes a P, I or R rule |
 | `strspc rule show` | Print rules by ID or entity, from the configured sources and their dependencies |

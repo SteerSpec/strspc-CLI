@@ -1,11 +1,8 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 
-	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/entityops"
 )
 
@@ -17,8 +14,12 @@ func newRuleRetireCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "retire <rule_id>",
-		Short: "Retire or terminate a rule",
-		Long: `Move a rule toward end-of-life: Implemented → Retired or Retired → Terminated.
+		Short: "Retire a rule (I→R; R→T kept for compatibility)",
+		Long: `Move an Implemented rule to Retired.
+
+A Retired rule given to retire moves on to Terminated, as before; use
+"strspc rule terminate" for that instead. A Published rule can't be retired:
+once a rule that supersedes it is Published, terminate it (RULST-012).
 
 Examples:
   strspc rule retire MYE-001
@@ -27,55 +28,7 @@ Examples:
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ruleID := args[0]
-
-			entityID, err := entityIDFromRuleID(ruleID)
-			if err != nil {
-				return err
-			}
-
-			target, err := resolveEntityTarget(dir, entityID)
-			if err != nil {
-				return err
-			}
-
-			var oldVersion, version string
-			var oldState, newState string
-
-			err = modifyEntity(target, func(f *entity.File) error {
-				oldVersion = f.RuleSet.Version
-				if r := findRule(f, ruleID); r != nil {
-					oldState = r.State
-				}
-				if retireErr := entityops.RetireRule(f, ruleID); retireErr != nil {
-					return retireErr
-				}
-				version = f.RuleSet.Version
-				if r := findRule(f, ruleID); r != nil {
-					newState = r.State
-				}
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-
-			w := cmd.OutOrStdout()
-
-			if jsonOut {
-				return writeJSONOutput(w, map[string]string{
-					"rule_id":     ruleID,
-					"new_state":   newState,
-					"old_state":   oldState,
-					"version":     version,
-					"old_version": oldVersion,
-				})
-			}
-
-			writeln(w, brandStyle.Render(fmt.Sprintf("%s rule %s: %s → %s", stateLabel(newState), ruleID, stateLabel(oldState), stateLabel(newState))))
-			writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", oldVersion, version)))
-
-			return nil
+			return runRuleTransition(cmd.OutOrStdout(), dir, args[0], jsonOut, entityops.RetireRule)
 		},
 	}
 

@@ -72,3 +72,14 @@ func TestRuleRetireInvalidState(t *testing.T) {
 		t.Fatal("expected error retiring Draft rule")
 	}
 }
+
+func TestRuleRetirePublishedPointsToTerminate(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "TST", makeRule("TST-001", "P", "Published", "github:alice"))
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "retire", "TST-001", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected error retiring a Published rule")
+	}
+	testutil.AssertContains(t, err.Error(), "RULST-012")
+}
