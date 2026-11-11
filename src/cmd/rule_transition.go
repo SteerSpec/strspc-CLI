@@ -13,16 +13,18 @@ type ruleTransitionFunc func(f *entity.File, ruleID string) error
 
 // runRuleTransition applies op to ruleID in the entity file under dir that
 // holds it, then reports the state change and the entity version change to
-// w, as text or as JSON. Nothing is written when op fails.
-func runRuleTransition(w io.Writer, dir, ruleID string, jsonOut bool, op ruleTransitionFunc) error {
+// w, as text or as JSON. Nothing is written when op fails. action names the
+// transition in errors ("retiring", "terminating"), each wrapped with %w
+// (CONV-004).
+func runRuleTransition(w io.Writer, dir, ruleID, action string, jsonOut bool, op ruleTransitionFunc) error {
 	entityID, err := entityIDFromRuleID(ruleID)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s %s: %w", action, ruleID, err)
 	}
 
 	target, err := resolveEntityTarget(dir, entityID)
 	if err != nil {
-		return err
+		return fmt.Errorf("%s %s: %w", action, ruleID, err)
 	}
 
 	var oldVersion, version string
@@ -34,7 +36,7 @@ func runRuleTransition(w io.Writer, dir, ruleID string, jsonOut bool, op ruleTra
 			oldState = r.State
 		}
 		if opErr := op(f, ruleID); opErr != nil {
-			return opErr
+			return opErr // modifyEntity returns it as is; wrapped with %w below
 		}
 		version = f.RuleSet.Version
 		if r := findRule(f, ruleID); r != nil {
@@ -43,7 +45,7 @@ func runRuleTransition(w io.Writer, dir, ruleID string, jsonOut bool, op ruleTra
 		return nil
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("%s %s: %w", action, ruleID, err)
 	}
 
 	if jsonOut {
