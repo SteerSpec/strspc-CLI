@@ -59,7 +59,7 @@
       "id": "REALM/004",
       "type": "exclusion",
       "ref": "owasp.asvs:V2.2.2",
-      "content": "strspc has no separate client: it validates its own input where it uses it (V2.2.1).",
+      "content": "strspc has no separate client or service layer: any input validation runs in the same process that uses the input (see V2.2.1).",
       "added_by": "github:pleberre",
       "added_at": "2026-11-12",
       "revision": 0
