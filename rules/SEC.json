@@ -1,0 +1,89 @@
+{
+  "$schema": "./_schema/entity.v1.schema.json",
+  "entity": {
+    "id": "SEC",
+    "title": "Security",
+    "description": "Security requirements on strspc and its CI, mapped to OWASP ASVS 5.0.0 L1."
+  },
+  "rule_set": {
+    "version": "0.1.8",
+    "timestamp": "2026-11-12T19:07:25Z",
+    "hash": "blake3:5ea496c953ca3dd7dba2770f48185174e173d6bdb585db1ce9497abce99e0786"
+  },
+  "rules": [
+    {
+      "id": "SEC-001",
+      "revision": 0,
+      "state": "D",
+      "body": "strspc MUST fetch a remote rule source over HTTPS only, never over plain HTTP.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-12",
+      "supersedes": null
+    },
+    {
+      "id": "SEC-002",
+      "revision": 0,
+      "state": "D",
+      "body": "strspc MUST run a subprocess as a fixed program with an argument list, never through a shell.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-12",
+      "supersedes": null
+    },
+    {
+      "id": "SEC-003",
+      "revision": 0,
+      "state": "D",
+      "body": "CI MUST fail when govulncheck reports a vulnerability reachable from the module's code.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-12",
+      "supersedes": null
+    },
+    {
+      "id": "SEC-004",
+      "revision": 0,
+      "state": "D",
+      "body": "strspc MUST validate a rule file and a config file against their schemas before using their content.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-12",
+      "supersedes": null
+    }
+  ],
+  "notes": [
+    {
+      "id": "SEC-001/01",
+      "rule_ref": "SEC-001",
+      "type": "standard",
+      "content": "owasp.asvs:V12.2.1",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-12",
+      "revision": 0
+    },
+    {
+      "id": "SEC-002/01",
+      "rule_ref": "SEC-002",
+      "type": "standard",
+      "content": "owasp.asvs:V1.2.5",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-12",
+      "revision": 0
+    },
+    {
+      "id": "SEC-003/01",
+      "rule_ref": "SEC-003",
+      "type": "standard",
+      "content": "owasp.asvs:V15.2.1",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-12",
+      "revision": 0
+    },
+    {
+      "id": "SEC-004/01",
+      "rule_ref": "SEC-004",
+      "type": "standard",
+      "content": "owasp.asvs:V2.2.1",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-12",
+      "revision": 0
+    }
+  ]
+}
