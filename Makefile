@@ -1,4 +1,4 @@
-.PHONY: build test cover lint fmt install-hooks clean strspc-lint
+.PHONY: build test cover lint fmt install-hooks clean strspc-lint vulncheck depcheck
 
 VERSION ?= dev
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -24,6 +24,18 @@ cover:
 
 lint:
 	golangci-lint run
+
+# vulncheck and depcheck enforce the dependency time frames in SECURITY.md;
+# the Security workflow runs them. GOVULNCHECK_VERSION and DEP_MAX_AGE_DAYS
+# are the single source of the version and the update time frame.
+GOVULNCHECK_VERSION ?= v1.9.0
+vulncheck:
+	go version
+	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+
+DEP_MAX_AGE_DAYS ?= 30
+depcheck:
+	scripts/dep-age-gate.sh $(DEP_MAX_AGE_DAYS)
 
 fmt:
 	golangci-lint fmt
