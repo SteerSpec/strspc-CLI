@@ -29,7 +29,7 @@ report=$(printf '%s\n' "$list" | jq -rs --argjson now "$now" --argjson max "$max
 	  else $direct[] | select(.Update != null)
 	    | ((.Update.Time | sub("\\.[0-9]+"; "") | fromdateiso8601) as $t
 	      | ((($now - $t) / 86400) | floor) as $age
-	      | "\(if $age > $max then "STALE" else "ok" end) \(.Path) \(.Version) -> \(.Update.Version), released \(.Update.Time[0:10]) (\($age) days ago)")
+	      | "\(if ($now - $t) > ($max * 86400) then "STALE" else "ok" end) \(.Path) \(.Version) -> \(.Update.Version), released \(.Update.Time[0:10]) (\($age) days ago)")
 	  end')
 
 current=$(printf '%s\n' "$list" | jq -rs '
