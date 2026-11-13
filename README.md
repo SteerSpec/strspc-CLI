@@ -141,9 +141,9 @@ The branch flow, the release steps and what to do when a commit is dropped from 
 
 Report a vulnerability privately: on this repository, go to **Security**, then **Report a
 vulnerability**, or open the [advisory form](https://github.com/SteerSpec/strspc-CLI/security/advisories/new).
-Do not open a public issue, discussion or pull request for a security problem. The
-[SteerSpec security policy](https://github.com/SteerSpec/.github/blob/v1.2.0/SECURITY.md) covers
-supported versions and what happens after a report.
+Do not open a public issue, discussion or pull request for a security problem.
+[SECURITY.md](SECURITY.md) covers supported versions, what happens after a report, and the time
+frames for updating strspc's dependencies.
 
 ## Community
 
