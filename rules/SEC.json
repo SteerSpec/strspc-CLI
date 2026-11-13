@@ -6,18 +6,18 @@
     "description": "Security requirements on strspc and its CI, mapped to OWASP ASVS 5.0.0 L1."
   },
   "rule_set": {
-    "version": "0.1.8",
-    "timestamp": "2026-11-12T19:07:25Z",
-    "hash": "blake3:5ea496c953ca3dd7dba2770f48185174e173d6bdb585db1ce9497abce99e0786"
+    "version": "0.1.10",
+    "timestamp": "2026-11-13T10:46:48Z",
+    "hash": "blake3:e27d8875bd20529e2c22e74e892874fd4b2c22172e1423f8c3c54be817a21433"
   },
   "rules": [
     {
       "id": "SEC-001",
       "revision": 0,
       "state": "D",
-      "body": "strspc MUST fetch a remote rule source over HTTPS only, never over plain HTTP.",
+      "body": "strspc MUST connect to an HTTP-based service over HTTPS only, unless the service is on a loopback address.",
       "added_by": "github:pleberre",
-      "added_at": "2026-11-12",
+      "added_at": "2026-11-13",
       "supersedes": null
     },
     {
@@ -26,16 +26,16 @@
       "state": "D",
       "body": "strspc MUST run a subprocess as a fixed program with an argument list, never through a shell.",
       "added_by": "github:pleberre",
-      "added_at": "2026-11-12",
+      "added_at": "2026-11-13",
       "supersedes": null
     },
     {
       "id": "SEC-003",
       "revision": 0,
       "state": "D",
-      "body": "CI MUST fail when govulncheck reports a vulnerability reachable from the module's code.",
+      "body": "CI MUST fail when govulncheck, run on every pull request and daily on develop, reports a vulnerability affecting the module's code.",
       "added_by": "github:pleberre",
-      "added_at": "2026-11-12",
+      "added_at": "2026-11-13",
       "supersedes": null
     },
     {
@@ -44,7 +44,16 @@
       "state": "D",
       "body": "strspc MUST validate a rule file and a config file against their schemas before using their content.",
       "added_by": "github:pleberre",
-      "added_at": "2026-11-12",
+      "added_at": "2026-11-13",
+      "supersedes": null
+    },
+    {
+      "id": "SEC-005",
+      "revision": 0,
+      "state": "D",
+      "body": "SECURITY.md MUST state the time frames for fixing a vulnerable dependency and for updating dependencies.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-13",
       "supersedes": null
     }
   ],
@@ -55,7 +64,7 @@
       "type": "standard",
       "content": "owasp.asvs:V12.2.1",
       "added_by": "github:pleberre",
-      "added_at": "2026-11-12",
+      "added_at": "2026-11-13",
       "revision": 0
     },
     {
@@ -64,7 +73,7 @@
       "type": "standard",
       "content": "owasp.asvs:V1.2.5",
       "added_by": "github:pleberre",
-      "added_at": "2026-11-12",
+      "added_at": "2026-11-13",
       "revision": 0
     },
     {
@@ -73,7 +82,7 @@
       "type": "standard",
       "content": "owasp.asvs:V15.2.1",
       "added_by": "github:pleberre",
-      "added_at": "2026-11-12",
+      "added_at": "2026-11-13",
       "revision": 0
     },
     {
@@ -82,7 +91,16 @@
       "type": "standard",
       "content": "owasp.asvs:V2.2.1",
       "added_by": "github:pleberre",
-      "added_at": "2026-11-12",
+      "added_at": "2026-11-13",
+      "revision": 0
+    },
+    {
+      "id": "SEC-005/01",
+      "rule_ref": "SEC-005",
+      "type": "standard",
+      "content": "owasp.asvs:V15.1.1",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-13",
       "revision": 0
     }
   ]
