@@ -6,9 +6,9 @@
     "description": "Security requirements on strspc and its CI, mapped to OWASP ASVS 5.0.0 L1."
   },
   "rule_set": {
-    "version": "0.1.10",
-    "timestamp": "2026-11-13T10:46:48Z",
-    "hash": "blake3:e27d8875bd20529e2c22e74e892874fd4b2c22172e1423f8c3c54be817a21433"
+    "version": "0.1.12",
+    "timestamp": "2026-11-13T10:52:31Z",
+    "hash": "blake3:a99d7c892ed83828bc533cd5d6472aa139a5e6262ce31f1f9a5ae7e9a74cbe54"
   },
   "rules": [
     {
@@ -33,7 +33,7 @@
       "id": "SEC-003",
       "revision": 0,
       "state": "D",
-      "body": "CI MUST fail when govulncheck, run on every pull request and daily on develop, reports a vulnerability affecting the module's code.",
+      "body": "CI MUST fail when a dependency has passed a time frame that SECURITY.md states.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-13",
       "supersedes": null
@@ -51,7 +51,7 @@
       "id": "SEC-005",
       "revision": 0,
       "state": "D",
-      "body": "SECURITY.md MUST state the time frames for fixing a vulnerable dependency and for updating dependencies.",
+      "body": "SECURITY.md MUST state risk-based time frames for fixing a vulnerable dependency and for updating dependencies in general.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-13",
       "supersedes": null
@@ -86,10 +86,28 @@
       "revision": 0
     },
     {
+      "id": "SEC-003/02",
+      "rule_ref": "SEC-003",
+      "type": "clarification",
+      "content": "govulncheck on every pull request and daily on develop enforces the time frame for vulnerable dependencies; a daily check of `go list -m -u -json` release times enforces the update time frame.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-13",
+      "revision": 0
+    },
+    {
       "id": "SEC-004/01",
       "rule_ref": "SEC-004",
       "type": "standard",
       "content": "owasp.asvs:V2.2.1",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-13",
+      "revision": 0
+    },
+    {
+      "id": "SEC-004/02",
+      "rule_ref": "SEC-004",
+      "type": "standard",
+      "content": "owasp.asvs:V2.2.2",
       "added_by": "github:pleberre",
       "added_at": "2026-11-13",
       "revision": 0
