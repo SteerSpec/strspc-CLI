@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.41.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.41.0...v1.41.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** build with Go 1.26.11 and update stale dependencies ([#329](https://github.com/SteerSpec/strspc-CLI/issues/329)) ([e404d56](https://github.com/SteerSpec/strspc-CLI/commit/e404d567f6497f2c61feb20e47856443f71d2372))
+* **deps:** update strspc-manager to v1.52.1 ([#333](https://github.com/SteerSpec/strspc-CLI/issues/333)) ([ce10040](https://github.com/SteerSpec/strspc-CLI/commit/ce10040bd4342ed524f36874a0164dc13cb9ba93))
+
 ## [1.41.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.40.0...v1.41.0) (2026-11-11)
 
 
