@@ -6,9 +6,9 @@
     "description": "Security requirements on strspc and its CI, mapped to OWASP ASVS 5.0.0 L1."
   },
   "rule_set": {
-    "version": "0.4.0",
-    "timestamp": "2026-11-13T19:36:57Z",
-    "hash": "blake3:46b42bb0a6700fcdef65e4b10992b29385b6287d9b37233b213a3f4f7ba5a18b"
+    "version": "0.7.0",
+    "timestamp": "2026-11-14T10:18:35Z",
+    "hash": "blake3:814cc9f00122d0f4489574ebb5e23c25fb67ba1b56a83e5bd3a9b88b4976321e"
   },
   "rules": [
     {
@@ -23,7 +23,7 @@
     {
       "id": "SEC-002",
       "revision": 0,
-      "state": "P",
+      "state": "I",
       "body": "strspc MUST run a subprocess as a fixed program with an argument list, never through a shell.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-13",
@@ -32,7 +32,7 @@
     {
       "id": "SEC-003",
       "revision": 0,
-      "state": "P",
+      "state": "I",
       "body": "CI MUST fail when a dependency has passed a time frame that SECURITY.md states.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-13",
@@ -50,7 +50,7 @@
     {
       "id": "SEC-005",
       "revision": 0,
-      "state": "P",
+      "state": "I",
       "body": "SECURITY.md MUST state risk-based time frames for fixing a vulnerable dependency and for updating dependencies in general.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-13",
