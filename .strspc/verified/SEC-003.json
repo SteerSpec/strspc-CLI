@@ -1,0 +1,67 @@
+{
+  "rule_id": "SEC-003",
+  "revision": 0,
+  "body_hash": "blake3:197295d2df16c6bb1e1a5bf4ece277abca9babeaadb581cc73661e6bc8e4bdbc",
+  "promoted_at": "2026-11-14T10:18:16Z",
+  "entity_version": "0.6.0",
+  "scope": "all tracked files",
+  "files": 213,
+  "files_hash": "2a082def0611f57540e875c44d8d3fdc5c22468a3b909535ab8a83b87f4b174a",
+  "provider": "claude",
+  "model": "claude-haiku-5-5",
+  "audit_prompt": "audit-a2+v8/effort=medium/split=100000,40,2/1",
+  "min_confidence": 0.8,
+  "verdict": "compliant",
+  "confidence": 0.8,
+  "explanation": "The security workflow runs govulncheck on every pull request and daily, and the dependency-age gate runs daily via make depcheck, which exits non-zero when a direct dependency's newest release is more than 30 days old, matching the time frames stated in SECURITY.md. CI therefore fails when those time frames are passed.",
+  "evidence": [
+    {
+      "file": ".github/workflows/security.yml",
+      "line": 11,
+      "excerpt": "pull_request:",
+      "line_confirmed": true
+    },
+    {
+      "file": ".github/workflows/security.yml",
+      "line": 13,
+      "excerpt": "schedule:",
+      "line_confirmed": true
+    },
+    {
+      "file": ".github/workflows/security.yml",
+      "line": 30,
+      "excerpt": "- run: make vulncheck",
+      "line_confirmed": true
+    },
+    {
+      "file": ".github/workflows/security.yml",
+      "line": 40,
+      "excerpt": "- run: make depcheck",
+      "line_confirmed": true
+    },
+    {
+      "file": "Makefile",
+      "line": 36,
+      "excerpt": "DEP_MAX_AGE_DAYS ?= 30",
+      "line_confirmed": true
+    },
+    {
+      "file": "scripts/dep-age-gate.sh",
+      "line": 23,
+      "excerpt": "list=$(go list -m -u -json all)",
+      "line_confirmed": true
+    },
+    {
+      "file": "scripts/dep-age-gate.sh",
+      "line": 55,
+      "excerpt": "exit 1",
+      "line_confirmed": false
+    },
+    {
+      "file": "SECURITY.md",
+      "line": 32,
+      "excerpt": "| A direct dependency has a newer release ... | Updated within **30 days** of its newest release |",
+      "line_confirmed": true
+    }
+  ]
+}

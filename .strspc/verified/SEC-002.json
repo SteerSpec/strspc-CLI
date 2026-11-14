@@ -1,0 +1,43 @@
+{
+  "rule_id": "SEC-002",
+  "revision": 0,
+  "body_hash": "blake3:67bd78da0c2e55167154cb57ad0ba74073a84d719c48e79d0e17169e3ff588e9",
+  "promoted_at": "2026-11-14T10:17:53Z",
+  "entity_version": "0.5.0",
+  "scope": "all tracked files",
+  "files": 213,
+  "files_hash": "2a082def0611f57540e875c44d8d3fdc5c22468a3b909535ab8a83b87f4b174a",
+  "provider": "claude",
+  "model": "claude-haiku-5-5",
+  "audit_prompt": "audit-a2+v8/effort=medium/split=100000,40,2/1",
+  "min_confidence": 0.8,
+  "verdict": "compliant",
+  "confidence": 0.85,
+  "explanation": "Every subprocess the findings show is started as a fixed program (git or gh) with an argument list, and none is invoked through a shell such as sh -c. The one shell script, in diff_test.go, is a generated fake gh used only by tests, not a shell invocation by the tool.",
+  "evidence": [
+    {
+      "file": "src/cmd/ci_init.go",
+      "line": 223,
+      "excerpt": "out, err := exec.Command(\"git\", \"-C\", dir, \"symbolic-ref\", \"--short\", \"refs/remotes/origin/HEAD\").Output()",
+      "line_confirmed": true
+    },
+    {
+      "file": "src/cmd/gitdiff.go",
+      "line": 456,
+      "excerpt": "cmd := exec.CommandContext(ctx, \"git\", args...)",
+      "line_confirmed": true
+    },
+    {
+      "file": "src/cmd/diff.go",
+      "line": 370,
+      "excerpt": "cmd := exec.Command(\"gh\", \"pr\", \"view\", strconv.Itoa(prNum), \"--json\", \"baseRefOid\", \"--jq\", \".baseRefOid\")",
+      "line_confirmed": false
+    },
+    {
+      "file": "src/cmd/history.go",
+      "line": 310,
+      "excerpt": "cmd := exec.CommandContext(ctx, \"git\", \"cat-file\", \"--batch\")",
+      "line_confirmed": true
+    }
+  ]
+}

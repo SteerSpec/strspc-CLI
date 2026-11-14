@@ -1,0 +1,40 @@
+name: Security
+
+# Enforces the dependency time frames in SECURITY.md (SEC-003). govulncheck
+# runs on every pull request and daily; the dependency-age gate runs daily
+# only, so a new upstream release doesn't fail unrelated pull requests.
+# Scheduled runs use the default branch, develop. This is a separate workflow
+# from CI so the daily run doesn't repeat the tests or spend the evaluator's
+# API key in the strspc check.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # go.mod's Go version is the one releases build with, so govulncheck
+      # checks the standard library the released binaries contain.
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make vulncheck
+
+  dependency-age:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - run: make depcheck
