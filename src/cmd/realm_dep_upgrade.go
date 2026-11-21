@@ -52,10 +52,14 @@ type depUpgrade struct {
 }
 
 // getGitHubAPI sends a GET for path below githubAPIBase, with token as the
-// bearer token unless it is empty. The caller closes the body.
+// bearer token unless it is empty. The URL must be https, or http to a
+// loopback host (SEC-001). The caller closes the body.
 func getGitHubAPI(ctx context.Context, client *http.Client, path, accept, token string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(githubAPIBase, "/")+path, http.NoBody)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkHTTPS(req.URL); err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", accept)
@@ -87,7 +91,7 @@ func decodeReleaseTag(resp *http.Response, ref remote.Ref) (string, error) {
 }
 
 func fetchLatestReleaseTag(ctx context.Context, ref remote.Ref, token string) (string, error) {
-	resp, err := getGitHubAPI(ctx, &http.Client{Timeout: 30 * time.Second}, releasesLatestPath(ref), "application/vnd.github+json", token)
+	resp, err := getGitHubAPI(ctx, newHTTPSOnlyClient(30*time.Second), releasesLatestPath(ref), "application/vnd.github+json", token)
 	if err != nil {
 		return "", err
 	}

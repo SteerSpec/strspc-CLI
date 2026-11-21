@@ -956,12 +956,19 @@ const anthropicHostSuffix = "anthropic.com"
 // untrusted input (a PR can edit .strspc/config.yaml), and the API key is
 // sent to whatever host the endpoint names, so a config endpoint is
 // accepted only on an Anthropic host; anything else needs an explicit
-// opt-in from outside the repo: the environment variable or the flag.
+// opt-in from outside the repo: the environment variable or the flag. An
+// opted-in endpoint must still be https, or http to a loopback host (SEC-001).
 func resolveEndpoint(fromConfig, fromFlag, fromEnv string) (string, error) {
 	if e := strings.TrimSpace(fromEnv); e != "" {
+		if err := validateHTTPS(e); err != nil {
+			return "", fmt.Errorf("%s: %w", envEvaluatorEndpoint, err)
+		}
 		return e, nil
 	}
 	if e := strings.TrimSpace(fromFlag); e != "" {
+		if err := validateHTTPS(e); err != nil {
+			return "", fmt.Errorf("--endpoint: %w", err)
+		}
 		return e, nil
 	}
 	cfg := strings.TrimSpace(fromConfig)

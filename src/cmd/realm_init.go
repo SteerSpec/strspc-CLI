@@ -385,7 +385,7 @@ func newRealmInitCmd() *cobra.Command {
 	return cmd
 }
 
-var schemaHTTPClient = &http.Client{Timeout: 30 * time.Second}
+var schemaHTTPClient = newHTTPSOnlyClient(30 * time.Second)
 
 // coreTag turns a core version ("1.17.1" or "v1.17.1") into its release tag.
 func coreTag(version string) (string, error) {
@@ -485,7 +485,11 @@ func fetchSchema(schemaDir, tag, local string) error {
 	url := schemaBaseURL + "/" + tag + "/" + schemaPath + "/" + local
 	outPath := filepath.Join(schemaDir, local)
 
-	resp, err := schemaHTTPClient.Get(url) //nolint:gosec // tag is validated SemVer; host is a constant
+	err := validateHTTPS(url)
+	var resp *http.Response
+	if err == nil {
+		resp, err = schemaHTTPClient.Get(url) //nolint:gosec // tag is validated SemVer; host is a constant
+	}
 	if err != nil {
 		return fmt.Errorf("fetching schema %s@%s: %w", local, tag, err)
 	}
