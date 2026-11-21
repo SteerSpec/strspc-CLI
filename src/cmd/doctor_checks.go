@@ -265,7 +265,8 @@ func doctorProviderCheck(env *doctorEnv, cfg *strspcConfig, project *doctorProje
 	}
 	endpoint, err := resolveEndpoint(cfg.Evaluator.Endpoint, "", env.getenv(envEvaluatorEndpoint))
 	if err != nil {
-		return doctorOutcome(g, "provider", "", doctorFail, err.Error(), "remove evaluator.endpoint, or set "+envEvaluatorEndpoint)
+		return doctorOutcome(g, "provider", "", doctorFail, err.Error(), "use an https endpoint (http only to a loopback host): fix "+envEvaluatorEndpoint+
+			", or remove evaluator.endpoint")
 	}
 	_, err = providers.New(name, providers.Options{
 		APIKey:     "doctor-placeholder", // only the configuration is checked

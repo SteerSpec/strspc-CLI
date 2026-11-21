@@ -24,7 +24,7 @@ strspc check --format github                 # ::error/::warning annotations + $
 | `--diff-file <path>` | Read a unified diff from a file, with repository-relative paths as `git diff` prints them |
 | `--format human\|json\|github` | Output style; `github` emits annotations and appends a table to `$GITHUB_STEP_SUMMARY` |
 | `--provider`, `--model` | Override `evaluator.provider` and `evaluator.model` |
-| `--endpoint <url>` | Provider endpoint; needed to opt in to a non-Anthropic host |
+| `--endpoint <url>` | Provider endpoint; needed to opt in to a non-Anthropic host. `https://`, or `http://` to a loopback host |
 | `--static-only` | Skip AI evaluation (also implied by `evaluator.provider: null`) |
 | `--no-cache` | Don't read or write `.strspc/cache.db` |
 | `--verbose` | Print resolution, diff, cache and token-usage details to stderr |
@@ -99,3 +99,6 @@ validation is skipped and `--verbose` says so.
 endpoint from the config only when it's an `https://` URL on `anthropic.com`. Any other endpoint must
 be opted in from outside the repository, with `STRSPC_EVALUATOR_ENDPOINT=<url>` (highest precedence) or
 `--endpoint <url>`. Without that, it exits 2 with a message naming the host.
+An opted-in endpoint must still be an `https://` URL, or `http://` to a loopback host (`localhost`,
+`127.0.0.0/8` or `::1`), so the key never crosses the network in clear text. A plain-http endpoint
+anywhere else exits 2.

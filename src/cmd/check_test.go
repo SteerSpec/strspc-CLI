@@ -683,6 +683,62 @@ func TestCheckEndpointFlagOptsIn(t *testing.T) {
 	}
 }
 
+func TestCheckEndpointPlainHTTPRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name, env string
+		args      []string
+		source    string
+	}{
+		{"flag", "", []string{"--endpoint", "http://proxy.example/v1"}, "--endpoint"},
+		{"env", "http://proxy.example/v1", nil, envEvaluatorEndpoint},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, diff := setupCheckProject(t, "claude", []string{"I"})
+			t.Setenv(envEvaluatorEndpoint, tc.env)
+			called := false
+			orig := newEvalProvider
+			newEvalProvider = func(string, providers.Options) (ruleeval.Provider, error) {
+				called = true
+				return &stubProvider{}, nil
+			}
+			t.Cleanup(func() { newEvalProvider = orig })
+
+			args := append([]string{dir, "--diff-file", diff, "--no-cache"}, tc.args...)
+			_, err := runCheckCmd(t, args...)
+			assertExit(t, err, exitConfig)
+			testutil.AssertContains(t, err.Error(), tc.source)
+			testutil.AssertContains(t, err.Error(), "HTTPS is required unless the host is loopback")
+			if called {
+				t.Error("provider must not be constructed with a plain-http endpoint")
+			}
+		})
+	}
+}
+
+func TestCheckEndpointLoopbackHTTPAllowed(t *testing.T) {
+	for _, tc := range []struct {
+		name, env string
+		args      []string
+		want      string
+	}{
+		{"flag", "", []string{"--endpoint", "http://localhost:8080"}, "http://localhost:8080"},
+		{"env", "http://127.0.0.1:8080", nil, "http://127.0.0.1:8080"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, diff := setupCheckProject(t, "claude", []string{"I"})
+			t.Setenv(envEvaluatorEndpoint, tc.env)
+			opts := stubEvalProvider(t, &stubProvider{}, nil)
+
+			args := append([]string{dir, "--diff-file", diff, "--no-cache"}, tc.args...)
+			_, err := runCheckCmd(t, args...)
+			assertExit(t, err, exitOK)
+			if opts.Endpoint != tc.want {
+				t.Errorf("endpoint passed to provider = %q, want %q", opts.Endpoint, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolveEndpoint(t *testing.T) {
 	cases := []struct {
 		cfg, flag, env, want string
@@ -697,6 +753,15 @@ func TestResolveEndpoint(t *testing.T) {
 		{"https://other.example", "", "", "", true},
 		{"https://other.example", "https://flag", "", "https://flag", false},
 		{"https://other.example", "https://flag", "https://env", "https://env", false},
+		// SEC-001: an opted-in endpoint is https, or http to a loopback host.
+		{"", "http://proxy.example", "", "", true},
+		{"", "", "http://proxy.example", "", true},
+		{"", "https://flag", "http://proxy.example", "", true}, // the env value is used, so it's checked
+		{"", "http://localhost:8080", "", "http://localhost:8080", false},
+		{"", "", "http://127.0.0.1:8080/v1", "http://127.0.0.1:8080/v1", false},
+		{"", "", "http://[::1]:8080", "http://[::1]:8080", false},
+		{"", "ftp://proxy.example", "", "", true},
+		{"", "", "proxy.example", "", true},
 	}
 	for _, c := range cases {
 		got, err := resolveEndpoint(c.cfg, c.flag, c.env)

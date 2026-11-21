@@ -92,7 +92,7 @@ var newDoctorEnv = func(ctx context.Context, cwd string) *doctorEnv {
 		now:          time.Now,
 		userCacheDir: os.UserCacheDir,
 		httpClient:   offlineHTTPClient(),
-		onlineClient: &http.Client{Timeout: 30 * time.Second},
+		onlineClient: newHTTPSOnlyClient(30 * time.Second),
 	}
 }
 

@@ -24,7 +24,7 @@ through the GitHub tarball API and cached under `.strspc/cache/`.
 | Variable | Used for |
 | -------- | -------- |
 | `ANTHROPIC_API_KEY` | The Claude evaluator |
-| `STRSPC_EVALUATOR_ENDPOINT` | Opt in to a non-Anthropic endpoint |
+| `STRSPC_EVALUATOR_ENDPOINT` | Opt in to a non-Anthropic endpoint: `https://`, or `http://` to a loopback host |
 | `STRSPC_ADDED_BY` | Default for `--added-by` in `rule add`, `note add` and `rule supersede` |
 | `GITHUB_TOKEN`, then `GH_TOKEN` | Private `github://` sources and higher rate limits |
 | `STRSPC_TOKEN_OWNERS` | Comma-separated owners who may also receive the GitHub token |
