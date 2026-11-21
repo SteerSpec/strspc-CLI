@@ -171,7 +171,8 @@ Examples:
 			}
 
 			res := addedByResult{DryRun: dryRun}
-			err = entity.WalkEntityFiles(dir, func(path string, _ []byte, ef *entity.File, parseErr error) error {
+			validator := newSchemaValidator(cmd.Context())
+			err = entity.WalkEntityFiles(dir, func(path string, data []byte, ef *entity.File, parseErr error) error {
 				// The walk has already read through a link; writing back
 				// through it could change a file outside --dir.
 				if link, err := isLinkPath(path); err != nil {
@@ -186,6 +187,10 @@ Examples:
 				if entityops.ValidateEUID(ef.Entity.ID) != nil {
 					res.Skipped = append(res.Skipped, path)
 					return nil
+				}
+				// SEC-004: the file is checked against its schema before it is changed.
+				if err := validator.validateEntityFile(path, data); err != nil {
+					return err
 				}
 				fileMap := m
 				if githubHandles {

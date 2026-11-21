@@ -107,7 +107,7 @@ func TestEntityRehashAll(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "_schema", "x.json"), []byte(`{"type":"object"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(`{"realm":{"id":"x","title":"x","version":"0.1.0"}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(`{"$schema": "./_schema/realm.v1.schema.json", "realm":{"id":"x","title":"x","version":"0.1.0"}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

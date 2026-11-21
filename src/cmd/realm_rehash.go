@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -80,6 +81,10 @@ func rehashRealmTree(root *os.Root, top, rel string, res *realmRehashResult, vis
 	data, err := root.ReadFile(manifest)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", path, err)
+	}
+	// SEC-004: the manifest is checked against its schema before it is changed.
+	if err := newSchemaValidator(context.TODO()).validateRealmManifest(path, data); err != nil {
+		return err
 	}
 	rf, err := entity.ParseRealm(data)
 	if err != nil {

@@ -180,7 +180,9 @@ func TestRealmRehashRejectsSubRealmOutsideDir(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error for sub-realm ../elsewhere")
 	}
-	testutil.AssertContains(t, err.Error(), `"../elsewhere"`)
+	// The schema check (SEC-004) refuses the name before rehash follows it.
+	testutil.AssertContains(t, err.Error(), "does not match the realm/v1.json schema")
+	testutil.AssertContains(t, err.Error(), "/sub_realms")
 }
 
 // TestRealmRehashSkipsLink lists a realm.json that is a symbolic link and
@@ -328,7 +330,8 @@ func TestRealmRehashRejectsSubRealmFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error for a sub-realm that is a file")
 	}
-	testutil.AssertContains(t, err.Error(), "is not a directory")
+	// notes.txt isn't a sub-realm name the schema accepts (SEC-004).
+	testutil.AssertContains(t, err.Error(), "does not match the realm/v1.json schema")
 }
 
 // TestReplaceFileInRefusesSwappedLink swaps a directory for a link leading
@@ -389,10 +392,14 @@ func TestRealmRehashVisitsEachDirOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res := runRealmRehash(t, dir)
-	if len(res.Updated) != 2 || res.Unchanged != 0 {
-		t.Errorf("result = %+v, want the realm and its sub-realm updated once each", res)
+	// A repeated sub_realms entry is refused by the schema check (SEC-004)
+	// before rehash enters any directory; rehash's own visited set still
+	// guards a directory reached twice through a link.
+	_, err = testutil.ExecuteCommand(NewRootCmd(), "realm", "rehash", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected a repeated sub_realms entry to be refused")
 	}
+	testutil.AssertContains(t, err.Error(), "does not match the realm/v1.json schema")
 }
 
 // TestRealmRehashMissingDir reports a --dir that doesn't exist as a missing

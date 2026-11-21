@@ -36,7 +36,7 @@ func withStandardNotes(body string, pairs ...[2]string) string {
 func writeStandardsManifest(t *testing.T, dir, id, standards string, deps ...string) {
 	t.Helper()
 	writeEntityFile(t, dir, "realm.json", fmt.Sprintf(
-		`{"realm": {"id": %q, "title": "t", "version": "1.0.0", %s}, "dependencies": [%s]}`,
+		`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": %q, "title": "t", "version": "1.0.0", %s}, "dependencies": [%s]}`,
 		id, standards, strings.Join(deps, ","),
 	))
 }
@@ -234,11 +234,11 @@ func TestStandardsCoverageSources(t *testing.T) {
 		dir := setupCoverageProject(t, "null", "./rules/")
 		rules := filepath.Join(dir, "rules")
 		writeEntityFile(t, rules, "realm.json", fmt.Sprintf(
-			`{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0", %s}, "dependencies": [%s], "sub_realms": ["sub"]}`,
+			`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "t", "version": "1.0.0", %s}, "dependencies": [%s], "sub_realms": ["sub"]}`,
 			coverageAppStandards, `{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}`,
 		))
 		sub := filepath.Join(rules, "sub")
-		writeEntityFile(t, sub, "realm.json", `{"realm": {"id": "dev.app.sub", "title": "t", "version": "1.0.0"}, "dependencies": []}`)
+		writeEntityFile(t, sub, "realm.json", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app.sub", "title": "t", "version": "1.0.0"}, "dependencies": []}`)
 		writeInheritFile(t, sub, "SUB", withStandardNotes(
 			inheritEntityJSON("SUB", "", "", inheritRule{id: "SUB-001", state: "I"}),
 			[2]string{"SUB-001", "owasp.asvs:3.1.1"},

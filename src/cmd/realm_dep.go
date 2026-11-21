@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -70,7 +71,15 @@ func loadAndWriteRealm(realmPath string, mutate func([]entity.RealmDep) ([]entit
 // recomputed over what is written (RLMMNFST-014); one without keeps none.
 // Nothing is written when mutate fails.
 func loadModifyWriteRealm(realmPath string, mutate func(*entity.RealmFile) error) error {
-	rf, err := entity.LoadRealm(realmPath)
+	data, err := os.ReadFile(realmPath)
+	if err != nil {
+		return fmt.Errorf("loading realm.json: %w", err)
+	}
+	// SEC-004: the manifest is checked against its schema before it is changed.
+	if err := newSchemaValidator(context.TODO()).validateRealmManifest(realmPath, data); err != nil {
+		return err
+	}
+	rf, err := entity.ParseRealm(data)
 	if err != nil {
 		return fmt.Errorf("loading realm.json: %w", err)
 	}

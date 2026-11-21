@@ -55,10 +55,10 @@ func writeSchemaProject(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	writeRefsFile(t, dir, ".strspc/config.yaml", "rules:\n  - source: ./rules/\n    scope: local\n  - source: github://o/r@v1.0.0/rules\n    scope: remote\n")
-	writeRefsFile(t, dir, "rules/realm.json", `{"realm":{"id":"dev.app","title":"t","version":"1.0.0"},`+
+	writeRefsFile(t, dir, "rules/realm.json", `{"$schema": "./_schema/realm.v1.schema.json", "realm":{"id":"dev.app","title":"t","version":"1.0.0"},`+
 		`"dependencies":[{"realm_id":"dev.steerspec.core","version":"1.2.3","source":"github://SteerSpec/strspc-rules@v1.2.3/rules/core"}],`+
 		`"sub_realms":["sub"]}`)
-	writeRefsFile(t, dir, "rules/sub/realm.json", `{"realm":{"id":"dev.app.sub","title":"t","version":"1.0.0"},`+
+	writeRefsFile(t, dir, "rules/sub/realm.json", `{"$schema": "./_schema/realm.v1.schema.json", "realm":{"id":"dev.app.sub","title":"t","version":"1.0.0"},`+
 		`"dependencies":[{"realm_id":"dev.steerspec.core","version":"1.3.0","source":"github://SteerSpec/strspc-rules@v1.3.0/rules/core"}]}`)
 	return dir
 }
@@ -98,7 +98,7 @@ func TestSchemaFetchProject(t *testing.T) {
 func TestSchemaFetchFlags(t *testing.T) {
 	_, cache := serveSchemaCache(t)
 	realm := t.TempDir()
-	writeRefsFile(t, realm, "realm.json", `{"realm":{"id":"dev.x","title":"t","version":"1.0.0"},`+
+	writeRefsFile(t, realm, "realm.json", `{"$schema": "./_schema/realm.v1.schema.json", "realm":{"id":"dev.x","title":"t","version":"1.0.0"},`+
 		`"dependencies":[{"realm_id":"dev.steerspec.core","version":"2.0.0","source":"github://SteerSpec/strspc-rules@v2.0.0/rules/core"}]}`)
 
 	// No .strspc/config.yaml: only the latest schemas, --dir and --core-version.

@@ -115,7 +115,7 @@ func TestRealmDepRemoveKeepsOthers(t *testing.T) {
 // A manifest with no dependencies key lists [] in JSON, not null.
 func TestRealmDepListJSONWithoutDependenciesKey(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(`{"realm": {"id": "dev.x", "title": "x", "version": "0.1.0"}}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.x", "title": "x", "version": "0.1.0"}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "list", "--dir", dir, "--json")

@@ -94,6 +94,20 @@ name such as `implemented` (accepted, but the schema wants the code), and `effor
 (accepted by the Claude provider, but not by the schema). When the schema can't be fetched, this
 validation is skipped and `--verbose` says so.
 
+**Rule files.** Once the sources are resolved, and before anything is evaluated, the check validates
+what it reads against the entity and realm schemas. That covers three things:
+
+- every entity file of each source;
+- the `realm.json` of each source realm and of its sub-realms;
+- the whole tree of each realm a source depends on, where inherited and extended rules come from.
+
+`strspc rule verify`, and so `strspc rule promote` to Implemented, run the same validation. Each realm
+is checked against the schemas of the core release it pins, and core against its own release, as
+`strspc lint` does. A file that doesn't match exits 2, naming the file and the first violations;
+`strspc lint` lists them all. A schema that isn't in the [schema cache](reference.md#schema-cache)
+and can't be fetched also exits 2: run `strspc schema fetch` once while online to check offline
+afterwards.
+
 **Endpoint safety.** `.strspc/config.yaml` is repository content, so a pull request could point
 `evaluator.endpoint` at a host that would receive your `ANTHROPIC_API_KEY`. The check accepts an
 endpoint from the config only when it's an `https://` URL on `anthropic.com`. Any other endpoint must

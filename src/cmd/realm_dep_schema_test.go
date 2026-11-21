@@ -138,7 +138,7 @@ func TestRealmDepUpgradeSyncsSubRealmSchemas(t *testing.T) {
 
 	t.Run("inherits the core pin", func(t *testing.T) {
 		dir := setupSchemaSyncTest(t, nil, schemas, core)
-		addSubRealm(t, dir, "auth", `{"realm": {"id": "dev.steerspec.test.auth"}}`, schemas)
+		addSubRealm(t, dir, "auth", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.steerspec.test.auth"}}`, schemas)
 		out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
 		if err != nil {
 			t.Fatalf("upgrade failed: %v\n%s", err, out)
@@ -156,7 +156,7 @@ func TestRealmDepUpgradeSyncsSubRealmSchemas(t *testing.T) {
 			return res
 		}
 		dir := setupSchemaSyncTest(t, failing, schemas, core)
-		addSubRealm(t, dir, "auth", `{"realm": {"id": "dev.steerspec.test.auth"}}`, schemas)
+		addSubRealm(t, dir, "auth", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.steerspec.test.auth"}}`, schemas)
 		if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err == nil {
 			t.Fatal("expected error when the upgrade breaks the realm")
 		}

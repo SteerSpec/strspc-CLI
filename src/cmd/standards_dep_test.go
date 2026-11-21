@@ -59,8 +59,11 @@ func TestStandardsLinkIgnoresBadSubRealm(t *testing.T) {
 	// On Unix the entry is a directory name; give it a manifest declaring
 	// the realm, which validate still never reads.
 	if runtime.GOOS != "windows" {
-		setupSubRealm(t, dir, bad, "dev.steerspec.test")
-		addDep(t, filepath.Join(dir, bad), testStdRealm, "5.0.0")
+		// Written directly: its ID, derived from the bad name, is one the realm
+		// schema refuses, so the gated writers (SEC-004) won't touch it.
+		writeRefsFile(t, filepath.Join(dir, bad), "realm.json", `{"$schema": "./_schema/realm.v1.schema.json", `+
+			`"realm": {"id": "dev.steerspec.test.foo\\bar", "title": "t", "version": "0.1.0"}, `+
+			`"dependencies": [{"realm_id": "`+testStdRealm+`", "version": "5.0.0"}]}`)
 	}
 	if err := checkStandardRealmDeclared(dir, testStdRealm); err == nil {
 		t.Error("counted a dependency declared under a sub_realms entry validate skips")

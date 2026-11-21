@@ -263,7 +263,8 @@ func TestRealmStandardsUpdateSubRealms(t *testing.T) {
 	testutil.AssertNotContains(t, out, "BBB-001/01")
 }
 
-// An entity whose version isn't SemVer can't be bumped, and is left as it was.
+// An entity whose version isn't SemVer is refused by the schema check (SEC-004),
+// and is left as it was.
 func TestEntityStandardsUpdateUnbumpableVersion(t *testing.T) {
 	dir := t.TempDir()
 	setupStandardsTree(t, dir, false)
@@ -273,7 +274,7 @@ func TestEntityStandardsUpdateUnbumpableVersion(t *testing.T) {
 	if err == nil {
 		t.Fatal("want an error for an entity version that isn't SemVer")
 	}
-	testutil.AssertContains(t, err.Error(), "bumping version")
+	testutil.AssertContains(t, err.Error(), "does not match the entity/v1.json schema")
 	if after, _ := os.ReadFile(filepath.Join(dir, "MYE.json")); !bytes.Equal(before, after) {
 		t.Error("entity file changed on error")
 	}

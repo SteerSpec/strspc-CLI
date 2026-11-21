@@ -28,7 +28,7 @@ func TestRefsJSONWriteFailure(t *testing.T) {
 func TestRefsInvalidRealmRuleIdentifierFormat(t *testing.T) {
 	dir := setupRefsProject(t)
 	writeRefsFile(t, dir, "rules/realm.json",
-		`{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},
+		`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},
 		  "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}],
 		  "rule_identifier_format": {"brackets": "<<,>>"}}`)
 	writeRefsFile(t, dir, "README.md", "See APP-001.\n")

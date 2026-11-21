@@ -364,15 +364,16 @@ func TestEntityStandardsRemoveErrors(t *testing.T) {
 	}
 }
 
-// An entity whose version isn't SemVer can't be bumped, and is left as it was.
+// An entity whose version isn't SemVer is refused by the schema check (SEC-004),
+// and is left as it was.
 func TestEntityStandardsAddUnbumpableVersion(t *testing.T) {
 	dir := t.TempDir()
 	setupEntityFile(t, dir, "MYE")
 	editEntityFile(t, dir, "MYE", func(f *entity.File) { f.RuleSet.Version = "one" })
 	before, _ := os.ReadFile(filepath.Join(dir, "MYE.json"))
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "standards", "add", "MYE", "--id", "owasp.asvs", "--relation", "implements", "--dir", dir)
-	if err == nil || !strings.Contains(err.Error(), "bumping version") {
-		t.Fatalf("error = %v, want bumping version", err)
+	if err == nil || !strings.Contains(err.Error(), "does not match the entity/v1.json schema") {
+		t.Fatalf("error = %v, want a schema refusal", err)
 	}
 	if after, _ := os.ReadFile(filepath.Join(dir, "MYE.json")); !bytes.Equal(before, after) {
 		t.Error("entity file changed on error")

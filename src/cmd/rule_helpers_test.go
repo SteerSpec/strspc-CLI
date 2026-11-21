@@ -66,7 +66,7 @@ func TestLoadModifySaveEntityErrors(t *testing.T) {
 
 	writeFile(t, dir, "BAD.json", "{")
 	err = loadModifySaveEntity(filepath.Join(dir, "BAD.json"), noop)
-	if err == nil || !strings.Contains(err.Error(), "loading entity file") {
+	if err == nil || !strings.Contains(err.Error(), "is not valid JSON") {
 		t.Errorf("malformed file: got %v", err)
 	}
 
@@ -156,8 +156,8 @@ func TestModifyEntityErrors(t *testing.T) {
 		t.Fatal(readErr)
 	}
 	err = modifyEntity(entityTarget{path: bad, subID: "SUB"}, noop)
-	if err == nil || !strings.Contains(err.Error(), "bumping version of ENT") {
-		t.Errorf("bad parent version: got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "does not match the entity/v1.json schema") {
+		t.Errorf("bad parent version: got %v (want the schema check to refuse it, SEC-004)", err)
 	}
 	after, readErr := os.ReadFile(bad)
 	if readErr != nil {

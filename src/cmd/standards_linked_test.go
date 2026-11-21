@@ -67,7 +67,7 @@ func setupLinkedCoverageProject(t *testing.T, relation string, notes ...entity.R
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeEntityFile(t, rules, "realm.json", fmt.Sprintf(`{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0",
+	writeEntityFile(t, rules, "realm.json", fmt.Sprintf(`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "t", "version": "1.0.0",
   "standards": [{"id": "owasp.asvs", "relation": %q, "version": "5.0.0", "realm": %q, "profile": "L1"}]},
   "dependencies": [{"realm_id": %q, "version": "1.0.0", "source": "../std/"}], "notes": %s}`,
 		relation, linkedStdRealm, linkedStdRealm, notesJSON))
@@ -240,7 +240,7 @@ func TestStandardsCoverageLinkedSubRealm(t *testing.T) {
 	rf.SubRealms = []string{"pay"}
 	writeJSONFile(t, filepath.Join(rules, "realm.json"), rf)
 	pay := filepath.Join(rules, "pay")
-	writeEntityFile(t, pay, "realm.json", fmt.Sprintf(`{"realm": {"id": "dev.app.pay", "title": "p", "version": "1.0.0",
+	writeEntityFile(t, pay, "realm.json", fmt.Sprintf(`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app.pay", "title": "p", "version": "1.0.0",
   "standards": [{"id": "owasp.asvs", "relation": "implements", "version": "5.0.0", "realm": %q, "profile": "L1"}]},
   "dependencies": [], "notes": [%s]}`, linkedStdRealm, mustJSON(t, linkedExclusion(1, "V1", "No sessions here."))))
 	writeInheritFile(t, pay, "PAY", withStandardNotes(inheritEntityJSON("PAY", "", "",

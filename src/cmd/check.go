@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -192,6 +193,9 @@ func runCheck(ctx context.Context, out, errOut io.Writer, cwd string, o *checkOp
 		return r.fail(code, err)
 	}
 	if err := r.resolveRules(); err != nil {
+		return r.fail(exitConfig, err)
+	}
+	if err := r.validateRuleSchemas(); err != nil {
 		return r.fail(exitConfig, err)
 	}
 	if !r.static {
@@ -397,6 +401,59 @@ func (r *checkRun) resolveSources() error {
 	}
 	r.resolved = resolved
 	r.verbosef("sources: %d resolved, %d entity file(s)", len(r.entries), len(resolved))
+	return nil
+}
+
+// validateRuleSchemas checks what the evaluation reads against its schemas
+// before any of it is used (SEC-004). check and rule verify call it after
+// resolving; the reporting commands that share resolveSources don't: every resolved entity file, the
+// manifests of each source realm and its sub-realms, and the whole tree of
+// each realm a source depends on, since inherited and extended rules are read
+// from there.
+func (r *checkRun) validateRuleSchemas() error {
+	v := newSchemaValidator(r.ctx)
+	for _, rf := range r.resolved {
+		data, err := os.ReadFile(rf.Path)
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", rf.Path, err)
+		}
+		if err := v.validateEntityFile(rf.Path, data); err != nil {
+			return err
+		}
+	}
+	sources := make([]string, 0, len(r.realmTrees))
+	for s := range r.realmTrees {
+		sources = append(sources, s)
+	}
+	slices.Sort(sources)
+	for _, s := range sources {
+		t := r.realmTrees[s]
+		manifests := []string{filepath.Join(t.dir, "realm.json")}
+		var deps []string
+		if t.resolved != nil {
+			for _, sub := range t.resolved.SubRealms {
+				manifests = append(manifests, filepath.Join(sub.Dir, "realm.json"))
+			}
+			for _, d := range t.resolved.Dependencies {
+				deps = append(deps, d.Dir)
+			}
+		}
+		for _, m := range manifests {
+			data, err := os.ReadFile(m)
+			if err != nil {
+				return fmt.Errorf("reading %s: %w", m, err)
+			}
+			if err := v.validateRealmManifest(m, data); err != nil {
+				return err
+			}
+		}
+		for _, d := range deps {
+			if err := v.validateRealmTree(d); err != nil {
+				return err
+			}
+		}
+	}
+	r.verbosef("schemas: %d file(s) validated", len(v.done))
 	return nil
 }
 

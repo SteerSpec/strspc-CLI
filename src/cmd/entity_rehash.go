@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -55,6 +56,10 @@ func (e *notEntityError) Unwrap() error { return e.err }
 func rehashEntity(path string, data []byte, ef *entity.File) (*rehashChange, error) {
 	if err := entityops.ValidateEUID(ef.Entity.ID); err != nil {
 		return nil, &notEntityError{path: path, err: err}
+	}
+	// SEC-004: the file is checked against its schema before it is changed.
+	if err := newSchemaValidator(context.TODO()).validateEntityFile(path, data); err != nil {
+		return nil, err
 	}
 	subsChanged, err := rehashSubEntities(ef)
 	if err != nil {

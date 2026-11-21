@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -108,9 +109,17 @@ func loadModifySaveEntity(entityPath string, mutate func(*entity.File) error) er
 	} else if link {
 		return linkedEntityError(entityPath)
 	}
-	f, err := entity.Load(entityPath)
+	data, err := os.ReadFile(entityPath)
 	if err != nil {
 		return fmt.Errorf("loading entity file: %w", err)
+	}
+	// SEC-004: the file is checked against its schema before it is changed.
+	if err := newSchemaValidator(context.TODO()).validateEntityFile(entityPath, data); err != nil {
+		return err
+	}
+	f, err := entity.Parse(data)
+	if err != nil {
+		return fmt.Errorf("loading entity file %s: %w", entityPath, err)
 	}
 
 	if err := mutate(f); err != nil {
