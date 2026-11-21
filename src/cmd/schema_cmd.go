@@ -123,7 +123,9 @@ func newSchemaClearCmd() *cobra.Command {
 		Use:   "clear",
 		Short: "Delete the cached schemas",
 		Long: "Delete every schema in the cache. The next command that validates downloads the schemas it\n" +
-			"needs again, and fails offline until it can: run `strspc schema fetch` while online.",
+			"needs again, and fails offline until it can: run `strspc schema fetch` while online. Only the\n" +
+			"default location, or a directory `schema fetch` or `schema update` has used, is cleared; any\n" +
+			"other $" + envSchemaCache + " exits 2.",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -169,7 +171,9 @@ func schemaFetchTargets(cwd string, dirs, versions []string) ([]schemaTarget, er
 		realms = append(realms, d)
 	}
 	for _, dir := range realms {
-		versionsOfRealmTree(dir, addVersion)
+		if err := versionsOfRealmTree(dir, addVersion); err != nil {
+			return nil, err
+		}
 	}
 	for _, v := range versions {
 		v = strings.TrimPrefix(strings.TrimSpace(v), "v")
@@ -206,26 +210,28 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 }
 
 // versionsOfRealmTree calls add with the core version the realm in dir pins,
-// and those of its sub-realms. A manifest that can't be read is skipped:
-// reporting it is realm validate's job.
-func versionsOfRealmTree(dir string, add func(string)) {
-	visit := func(rf *entity.RealmFile) {
+// and those of its sub-realms, as deep as realm validate follows them
+// (maxSubRealmDepth). The realm in dir must be readable; a sub-realm that
+// isn't is skipped, as validate skips it (RM009).
+func versionsOfRealmTree(dir string, add func(string)) error {
+	root, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
+	if err != nil {
+		return fmt.Errorf("reading the realm in %s: %w", dir, err)
+	}
+	var walk func(string, *entity.RealmFile, int)
+	walk = func(d string, rf *entity.RealmFile, depth int) {
 		if dep := corePin(rf); dep != nil && schemaVersion.MatchString(dep.Version) {
 			add(dep.Version)
 		}
-	}
-	var walk func(string, int)
-	walk = func(d string, depth int) {
-		rf, err := entity.LoadRealm(filepath.Join(d, "realm.json"))
-		if err != nil || depth > 16 {
+		if depth >= maxSubRealmDepth {
 			return
 		}
-		visit(rf)
 		for _, sub := range subRealmsOf(d, rf) {
-			walk(sub.dir, depth+1)
+			walk(sub.dir, sub.rf, depth+1)
 		}
 	}
-	walk(dir, 0)
+	walk(dir, root, 0)
+	return nil
 }
 
 // fetchSchemaTargets downloads each target's schemas into the cache. With
@@ -237,13 +243,13 @@ func fetchSchemaTargets(cmd *cobra.Command, targets []schemaTarget, refresh bool
 	if err != nil {
 		return withExitCode(exitConfig, err)
 	}
+	if err := prepareSchemaCache(cacheDir); err != nil {
+		return withExitCode(exitConfig, err)
+	}
 	writeln(w, "Schema cache: "+cacheDir)
 
 	staging := ""
 	if refresh {
-		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-			return fmt.Errorf("creating the schema cache: %w", err)
-		}
 		staging, err = os.MkdirTemp(cacheDir, ".update-")
 		if err != nil {
 			return fmt.Errorf("creating a staging directory: %w", err)
@@ -272,7 +278,7 @@ func fetchSchemaTargets(cmd *cobra.Command, targets []schemaTarget, refresh bool
 		}
 	}
 	if failed > 0 {
-		return fmt.Errorf("%d schema(s) could not be fetched; the cached copies, if any, are unchanged", failed)
+		return fmt.Errorf("%d schema(s) could not be fetched; for each of them, the cached copy, if any, was kept", failed)
 	}
 	return nil
 }
@@ -285,10 +291,51 @@ func moveIntoCache(staging, cacheDir, p string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return fmt.Errorf("updating the cache: %w", err)
 	}
+	if err := os.Rename(src, dst); err == nil {
+		return nil
+	}
+	// Windows refuses to rename onto an existing file, and no platform
+	// renames a file onto a directory: remove what is there, then retry.
+	if err := os.RemoveAll(dst); err != nil {
+		return fmt.Errorf("updating the cache: %w", err)
+	}
 	if err := os.Rename(src, dst); err != nil {
 		return fmt.Errorf("updating the cache: %w", err)
 	}
 	return nil
+}
+
+// schemaCacheMarker marks a directory `schema fetch` or `schema update` has
+// used as the schema cache, so that `schema clear` deletes only in a real
+// schema cache.
+const schemaCacheMarker = ".strspc-schema-cache"
+
+// prepareSchemaCache creates the cache directory if needed, checks that files
+// can be written in it, and marks it as a schema cache. The manager's fetcher
+// treats a failed cache write as best-effort, so without this a fetch into an
+// unusable cache would report success with nothing cached.
+func prepareSchemaCache(cacheDir string) error {
+	if fi, err := os.Stat(cacheDir); err == nil && !fi.IsDir() {
+		return fmt.Errorf("schema cache %s is not a directory (check %s)", cacheDir, envSchemaCache)
+	}
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return fmt.Errorf("creating the schema cache %s: %w", cacheDir, err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheDir, schemaCacheMarker), []byte("strspc schema cache\n"), 0o644); err != nil {
+		return fmt.Errorf("schema cache %s can't be written: %w", cacheDir, err)
+	}
+	return nil
+}
+
+// clearableSchemaCache reports whether `schema clear` may delete in cacheDir:
+// the default location, which strspc owns, or a directory that carries the
+// schema cache marker.
+func clearableSchemaCache(cacheDir string) bool {
+	if def, err := schemaCacheDirFrom(func(string) string { return "" }, os.UserCacheDir); err == nil && def == cacheDir {
+		return true
+	}
+	_, err := os.Lstat(filepath.Join(cacheDir, schemaCacheMarker))
+	return err == nil
 }
 
 // clearSchemaCache removes the schema fetcher's entries from the cache.
@@ -296,6 +343,14 @@ func clearSchemaCache(w io.Writer) error {
 	cacheDir, err := schemaCacheDir()
 	if err != nil {
 		return withExitCode(exitConfig, err)
+	}
+	if _, err := os.Stat(cacheDir); errors.Is(err, fs.ErrNotExist) {
+		writeln(w, "No schema cached in "+cacheDir)
+		return nil
+	}
+	if !clearableSchemaCache(cacheDir) {
+		return withExitCode(exitConfig, fmt.Errorf("%s is not marked as a strspc schema cache (no %s): "+
+			"check %s, or delete the directory yourself", cacheDir, schemaCacheMarker, envSchemaCache))
 	}
 	removed := 0
 	names := slices.Clone(schemaCacheEntries)
