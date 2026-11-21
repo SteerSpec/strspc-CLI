@@ -65,16 +65,16 @@ func TestDoctorConfigUnreadable(t *testing.T) {
 }
 
 func TestDoctorConfigSchemaEdgeCases(t *testing.T) {
-	fakeDoctorHost(t)
+	h := fakeDoctorHost(t)
 	dir := writeDoctorProject(t, "evaluator:\n  provider: null\nfail_on: [I]\n")
 
-	writeRefsFile(t, dir, ".strspc/cache/schemas/config/v1.json", "{not json")
+	writeRefsFile(t, h.cacheDir, "strspc/schemas/config/v1.json", "{not json")
 	report, _ := runDoctorJSON(t, dir)
 	c := assertDoctorStatus(t, report, "config.schema", "", doctorSkip)
 	testutil.AssertContains(t, c.Message, "parsing")
 
 	// Two violations at two locations.
-	writeRefsFile(t, dir, ".strspc/cache/schemas/config/v1.json", `{"type":"object","properties":{"evaluator":{"type":"string"},"fail_on":{"type":"string"}}}`)
+	writeRefsFile(t, h.cacheDir, "strspc/schemas/config/v1.json", `{"type":"object","properties":{"evaluator":{"type":"string"},"fail_on":{"type":"string"}}}`)
 	report, _ = runDoctorJSON(t, dir)
 	c = assertDoctorStatus(t, report, "config.schema", "", doctorWarn)
 	testutil.AssertContains(t, c.Message, "(and 1 more)")

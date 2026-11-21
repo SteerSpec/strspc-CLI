@@ -195,17 +195,14 @@ func doctorConfigChecks(env *doctorEnv) ([]doctorResult, *doctorProject) {
 }
 
 // doctorConfigSchemaCheck validates the config against the cached config.v1
-// schema, the one `strspc check` caches in .strspc/cache/schemas.
+// schema in the shared schema cache.
 func doctorConfigSchemaCheck(env *doctorEnv, raw []byte) doctorResult {
 	const g = "config"
-	fetcher := schema.New(
-		schema.WithCacheDir(filepath.Join(env.cwd, ".strspc", "cache", "schemas")),
-		schema.WithClient(env.httpClient),
-	)
+	fetcher := schema.New(append(schemaCacheOptionsFrom(env.getenv, env.userCacheDir), schema.WithClient(env.httpClient))...)
 	compiled, err := compileConfigSchema(env.ctx, fetcher)
 	if err != nil {
 		if errors.Is(err, errDoctorOffline) {
-			return doctorOutcome(g, "schema", "", doctorSkip, "the config.v1 schema is not cached", "strspc check caches it")
+			return doctorOutcome(g, "schema", "", doctorSkip, "the config.v1 schema is not cached", "strspc schema fetch")
 		}
 		return doctorOutcome(g, "schema", "", doctorSkip, err.Error(), "")
 	}

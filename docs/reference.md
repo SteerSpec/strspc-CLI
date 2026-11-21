@@ -19,12 +19,33 @@ through the GitHub tarball API and cached under `.strspc/cache/`.
 `strspc sync` fetches and verifies the sources ahead of a check. It takes `--force`, `--json` and
 `--verbose`.
 
+## Schema cache
+
+Rule files, realm manifests and `.strspc/config.yaml` are validated against JSON schemas published on
+steerspec.dev. Every command keeps them in one cache, shared by all projects:
+`$STRSPC_SCHEMA_CACHE`, or `strspc/schemas` under the user cache directory (`~/Library/Caches` on
+macOS, `$XDG_CACHE_HOME` or `~/.cache` on Linux, `%LocalAppData%` on Windows). A cached schema is
+used offline. A core release's schemas never change and are kept for good, below `versions/`; a
+latest schema is refreshed after an hour, when the network can be reached.
+
+| Command | Does |
+| ------- | ---- |
+| `strspc schema` | List the cached schemas, with their core release and when they were fetched |
+| `strspc schema fetch [path]` | Download the latest config, entity and realm schemas, and those of the core release each local realm in the project pins (with its sub-realms). `--dir <realm>` and `--core-version <X.Y.Z>` add more |
+| `strspc schema update` | Download the latest schemas again; a copy is replaced only once its download succeeds |
+| `strspc schema clear` | Delete the cached schemas |
+
+Run `strspc schema fetch` once while online to validate offline afterwards, for example before a
+pre-commit hook runs `strspc check`. In CI, cache the directory or set `STRSPC_SCHEMA_CACHE` to a
+path the workflow caches.
+
 ## Environment variables
 
 | Variable | Used for |
 | -------- | -------- |
 | `ANTHROPIC_API_KEY` | The Claude evaluator |
 | `STRSPC_EVALUATOR_ENDPOINT` | Opt in to a non-Anthropic endpoint: `https://`, or `http://` to a loopback host |
+| `STRSPC_SCHEMA_CACHE` | Directory of the [schema cache](#schema-cache) |
 | `STRSPC_ADDED_BY` | Default for `--added-by` in `rule add`, `note add` and `rule supersede` |
 | `GITHUB_TOKEN`, then `GH_TOKEN` | Private `github://` sources and higher rate limits |
 | `STRSPC_TOKEN_OWNERS` | Comma-separated owners who may also receive the GitHub token |

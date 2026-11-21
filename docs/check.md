@@ -88,7 +88,7 @@ still for that rule alone.
 
 **Configuration.** Before resolving any source, the check exits 2 on an empty `rules:` list, an unknown
 lifecycle state in `fail_on` or `evaluate_on`, or an unknown `evaluator.provider`. It then validates the
-config against the published `config.v1` schema, cached under `.strspc/cache/schemas/`. Each mismatch
+config against the published `config.v1` schema, kept in the [schema cache](reference.md#schema-cache). Each mismatch
 is warning `CHK002` and never fails the check on its own. Examples are an unknown key, a long state
 name such as `implemented` (accepted, but the schema wants the code), and `effort: xhigh` or `max`
 (accepted by the Claude provider, but not by the schema). When the schema can't be fetched, this
