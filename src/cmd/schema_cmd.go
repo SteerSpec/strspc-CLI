@@ -254,7 +254,7 @@ func fetchSchemaTargets(cmd *cobra.Command, targets []schemaTarget, refresh bool
 	if refresh {
 		staging, err = os.MkdirTemp(cacheDir, ".update-")
 		if err != nil {
-			return fmt.Errorf("creating a staging directory: %w", err)
+			return withExitCode(exitConfig, fmt.Errorf("creating a staging directory: %w", err))
 		}
 		defer func() { _ = os.RemoveAll(staging) }()
 	}
@@ -347,10 +347,11 @@ func checkSchemaCacheDir(cacheDir string) error {
 	return nil
 }
 
-// schemaCacheFile matches the cache entries the schema fetcher writes: a
-// schema of a family, latest or below versions/X.Y.Z/, and its temporary
-// files.
-var schemaCacheFile = regexp.MustCompile(`^(versions/\d+\.\d+\.\d+/)?(config|entity|realm)/(\w+\.json|\.schema-cache-[^/]+)$`)
+// schemaCacheFile matches exactly the cache entries strspc's fetches write:
+// the latest config, entity and realm v1 schemas, a release's entity and
+// realm v1 schemas below versions/X.Y.Z/, and the fetcher's temporary files
+// next to them.
+var schemaCacheFile = regexp.MustCompile(`^((config|entity|realm)|versions/\d+\.\d+\.\d+/(entity|realm))/(v1\.json|\.schema-cache-[^/]+)$`)
 
 // schemaCacheMarker marks a directory `schema fetch` or `schema update` has
 // used as the schema cache, so that `schema clear` deletes only in a real
@@ -368,8 +369,40 @@ func prepareSchemaCache(cacheDir string) error {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return fmt.Errorf("creating the schema cache %s: %w", cacheDir, err)
 	}
-	if err := os.WriteFile(filepath.Join(cacheDir, schemaCacheMarker), []byte("strspc schema cache\n"), 0o644); err != nil {
+	// Prove that new entries can be created, as the fetcher needs to.
+	probe, err := os.CreateTemp(cacheDir, ".probe-")
+	if err != nil {
 		return fmt.Errorf("schema cache %s can't be written: %w", cacheDir, err)
+	}
+	_ = probe.Close()
+	_ = os.Remove(probe.Name())
+	return markSchemaCache(cacheDir)
+}
+
+// markSchemaCache writes the marker without following a link: an existing
+// marker must be a regular file, and a new one is created exclusively, which
+// fails on a symbolic link.
+func markSchemaCache(cacheDir string) error {
+	marker := filepath.Join(cacheDir, schemaCacheMarker)
+	fi, err := os.Lstat(marker)
+	switch {
+	case err == nil && fi.Mode().IsRegular():
+		return nil
+	case err == nil:
+		return fmt.Errorf("schema cache %s: %s is not a regular file", cacheDir, schemaCacheMarker)
+	case !errors.Is(err, fs.ErrNotExist):
+		return fmt.Errorf("schema cache %s: %w", cacheDir, err)
+	}
+	f, err := os.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return fmt.Errorf("marking the schema cache %s: %w", cacheDir, err)
+	}
+	_, werr := f.WriteString("strspc schema cache\n")
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		return fmt.Errorf("marking the schema cache %s: %w", cacheDir, werr)
 	}
 	return nil
 }
@@ -381,8 +414,8 @@ func clearableSchemaCache(cacheDir string) bool {
 	if def, err := schemaCacheDirFrom(func(string) string { return "" }, os.UserCacheDir); err == nil && def == cacheDir {
 		return true
 	}
-	_, err := os.Lstat(filepath.Join(cacheDir, schemaCacheMarker))
-	return err == nil
+	fi, err := os.Lstat(filepath.Join(cacheDir, schemaCacheMarker))
+	return err == nil && fi.Mode().IsRegular()
 }
 
 // clearSchemaCache removes the schema fetcher's entries from the cache.

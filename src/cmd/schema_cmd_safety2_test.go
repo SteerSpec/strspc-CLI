@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
@@ -14,6 +15,8 @@ func TestSchemaClearKeepsUnownedFiles(t *testing.T) {
 	assertExit(t, err, exitOK)
 	// The cache was marked by fetch, but these files aren't schemas.
 	writeRefsFile(t, cache, "config/settings.json.bak", "keep")
+	writeRefsFile(t, cache, "config/settings.json", "keep")
+	writeRefsFile(t, cache, "versions/1.2.3/config/v1.json", "keep")
 	writeRefsFile(t, cache, "versions/notes.txt", "keep")
 
 	_, err = testutil.ExecuteCommand(NewRootCmd(), "schema", "clear")
@@ -23,7 +26,7 @@ func TestSchemaClearKeepsUnownedFiles(t *testing.T) {
 			t.Errorf("%s survived clear", p)
 		}
 	}
-	for _, p := range []string{"config/settings.json.bak", "versions/notes.txt"} {
+	for _, p := range []string{"config/settings.json.bak", "config/settings.json", "versions/1.2.3/config/v1.json", "versions/notes.txt"} {
 		if _, err := os.Stat(filepath.Join(cache, filepath.FromSlash(p))); err != nil {
 			t.Errorf("clear removed %s, which isn't a schema: %v", p, err)
 		}
@@ -72,5 +75,45 @@ func TestSchemaFlagErrors(t *testing.T) {
 	} {
 		_, err := testutil.ExecuteCommand(NewRootCmd(), args...)
 		assertExit(t, err, exitConfig)
+	}
+}
+
+func TestSchemaMarkerSymlinkRefused(t *testing.T) {
+	serveSchemaCache(t)
+	cache := t.TempDir()
+	t.Setenv(envSchemaCache, cache)
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.Symlink(target, filepath.Join(cache, schemaCacheMarker)); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", t.TempDir())
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, err.Error(), "is not a regular file")
+	if _, err := os.Lstat(target); err == nil {
+		t.Error("the marker was written through a symbolic link")
+	}
+	if clearableSchemaCache(cache) {
+		t.Error("a symlinked marker authorizes clear")
+	}
+}
+
+func TestSchemaFetchUnwritableCache(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("a read-only directory still accepts new files here")
+	}
+	serveSchemaCache(t)
+	cache := t.TempDir()
+	t.Setenv(envSchemaCache, cache)
+	writeRefsFile(t, cache, schemaCacheMarker, "strspc schema cache\n")
+	if err := os.Chmod(cache, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(cache, 0o755) })
+
+	for _, args := range [][]string{{"schema", "fetch", t.TempDir()}, {"schema", "update"}} {
+		_, err := testutil.ExecuteCommand(NewRootCmd(), args...)
+		assertExit(t, err, exitConfig)
+		testutil.AssertContains(t, err.Error(), "can't be written")
 	}
 }
