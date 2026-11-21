@@ -31,8 +31,7 @@ var releaseSchemaPaths = []string{schema.EntityV1Path, schema.RealmV1Path}
 
 // schemaCacheEntries are the top-level names the schema fetcher writes in the
 // cache: one directory per latest schema family, and versions/ for releases.
-// `schema clear` removes only these, so a misdirected STRSPC_SCHEMA_CACHE
-// can't delete anything else.
+// `schema clear` deletes only the schema files below them (schemaCacheFile).
 var schemaCacheEntries = []string{"config", "entity", "realm", "versions"}
 
 // schemaVersion is a core release version, as a realm pins it.
@@ -68,6 +67,9 @@ func newSchemaCmd() *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newSchemaFetchCmd(), newSchemaUpdateCmd(), newSchemaClearCmd())
+	for _, c := range append([]*cobra.Command{cmd}, cmd.Commands()...) {
+		c.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return withExitCode(exitConfig, err) })
+	}
 	return cmd
 }
 
@@ -288,6 +290,9 @@ func fetchSchemaTargets(cmd *cobra.Command, targets []schemaTarget, refresh bool
 func moveIntoCache(staging, cacheDir, p string) error {
 	src := filepath.Join(staging, filepath.FromSlash(p))
 	dst := filepath.Join(cacheDir, filepath.FromSlash(p))
+	if err := refuseSymlinkedParents(cacheDir, p); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return fmt.Errorf("updating the cache: %w", err)
 	}
@@ -305,6 +310,48 @@ func moveIntoCache(staging, cacheDir, p string) error {
 	return nil
 }
 
+// refuseSymlinkedParents reports an error when a directory between cacheDir
+// and the cache entry p is a symbolic link, which a rename would follow out
+// of the cache. The manager's fetcher refuses such entries the same way.
+func refuseSymlinkedParents(cacheDir, p string) error {
+	dir := cacheDir
+	parts := strings.Split(p, "/")
+	for _, part := range parts[:len(parts)-1] {
+		dir = filepath.Join(dir, part)
+		fi, err := os.Lstat(dir)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("updating the cache: %w", err)
+		}
+		if fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir() {
+			return fmt.Errorf("updating the cache: %s is not a plain directory of the schema cache", dir)
+		}
+	}
+	return nil
+}
+
+// checkSchemaCacheDir reports an error when cacheDir exists but isn't a
+// directory. A cache that doesn't exist yet is fine.
+func checkSchemaCacheDir(cacheDir string) error {
+	fi, err := os.Stat(cacheDir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return fmt.Errorf("schema cache %s: %w", cacheDir, err)
+	case !fi.IsDir():
+		return fmt.Errorf("schema cache %s is not a directory (check %s)", cacheDir, envSchemaCache)
+	}
+	return nil
+}
+
+// schemaCacheFile matches the cache entries the schema fetcher writes: a
+// schema of a family, latest or below versions/X.Y.Z/, and its temporary
+// files.
+var schemaCacheFile = regexp.MustCompile(`^(versions/\d+\.\d+\.\d+/)?(config|entity|realm)/(\w+\.json|\.schema-cache-[^/]+)$`)
+
 // schemaCacheMarker marks a directory `schema fetch` or `schema update` has
 // used as the schema cache, so that `schema clear` deletes only in a real
 // schema cache.
@@ -315,8 +362,8 @@ const schemaCacheMarker = ".strspc-schema-cache"
 // treats a failed cache write as best-effort, so without this a fetch into an
 // unusable cache would report success with nothing cached.
 func prepareSchemaCache(cacheDir string) error {
-	if fi, err := os.Stat(cacheDir); err == nil && !fi.IsDir() {
-		return fmt.Errorf("schema cache %s is not a directory (check %s)", cacheDir, envSchemaCache)
+	if err := checkSchemaCacheDir(cacheDir); err != nil {
+		return err
 	}
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return fmt.Errorf("creating the schema cache %s: %w", cacheDir, err)
@@ -344,6 +391,9 @@ func clearSchemaCache(w io.Writer) error {
 	if err != nil {
 		return withExitCode(exitConfig, err)
 	}
+	if err := checkSchemaCacheDir(cacheDir); err != nil {
+		return withExitCode(exitConfig, err)
+	}
 	if _, err := os.Stat(cacheDir); errors.Is(err, fs.ErrNotExist) {
 		writeln(w, "No schema cached in "+cacheDir)
 		return nil
@@ -352,22 +402,9 @@ func clearSchemaCache(w io.Writer) error {
 		return withExitCode(exitConfig, fmt.Errorf("%s is not marked as a strspc schema cache (no %s): "+
 			"check %s, or delete the directory yourself", cacheDir, schemaCacheMarker, envSchemaCache))
 	}
-	removed := 0
-	names := slices.Clone(schemaCacheEntries)
-	if stale, err := filepath.Glob(filepath.Join(cacheDir, ".update-*")); err == nil {
-		for _, s := range stale {
-			names = append(names, filepath.Base(s))
-		}
-	}
-	for _, name := range names {
-		p := filepath.Join(cacheDir, name)
-		if _, err := os.Lstat(p); err != nil {
-			continue
-		}
-		if err := os.RemoveAll(p); err != nil {
-			return fmt.Errorf("clearing the schema cache: %w", err)
-		}
-		removed++
+	removed, err := removeSchemaFiles(cacheDir)
+	if err != nil {
+		return fmt.Errorf("clearing the schema cache: %w", err)
 	}
 	if removed == 0 {
 		writeln(w, "No schema cached in "+cacheDir)
@@ -377,11 +414,64 @@ func clearSchemaCache(w io.Writer) error {
 	return nil
 }
 
+// removeSchemaFiles deletes the schema files and staging directories in
+// cacheDir, then the directories that leaves empty, and returns how many
+// entries it removed. Anything else, and symbolic links, are left alone.
+func removeSchemaFiles(cacheDir string) (int, error) {
+	removed := 0
+	stale, _ := filepath.Glob(filepath.Join(cacheDir, ".update-*"))
+	for _, s := range stale {
+		if fi, err := os.Lstat(s); err == nil && fi.IsDir() {
+			if err := os.RemoveAll(s); err != nil {
+				return removed, err
+			}
+			removed++
+		}
+	}
+	var dirs []string
+	for _, name := range schemaCacheEntries {
+		root := filepath.Join(cacheDir, name)
+		if fi, err := os.Lstat(root); err != nil || !fi.IsDir() {
+			continue
+		}
+		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				dirs = append(dirs, p)
+				return nil
+			}
+			rel, err := filepath.Rel(cacheDir, p)
+			if err != nil || !d.Type().IsRegular() || !schemaCacheFile.MatchString(filepath.ToSlash(rel)) {
+				return nil //nolint:nilerr // not a schema file: left alone
+			}
+			if err := os.Remove(p); err != nil {
+				return err
+			}
+			removed++
+			return nil
+		})
+		if err != nil {
+			return removed, err
+		}
+	}
+	// Deepest first, so a parent is empty once its children are gone.
+	sort.Slice(dirs, func(i, j int) bool { return len(dirs[i]) > len(dirs[j]) })
+	for _, d := range dirs {
+		_ = os.Remove(d) // fails, as it should, on a directory still holding other files
+	}
+	return removed, nil
+}
+
 // listSchemaCache prints each cached schema with its core release and when it
 // was fetched.
 func listSchemaCache(w io.Writer, now time.Time) error {
 	cacheDir, err := schemaCacheDir()
 	if err != nil {
+		return withExitCode(exitConfig, err)
+	}
+	if err := checkSchemaCacheDir(cacheDir); err != nil {
 		return withExitCode(exitConfig, err)
 	}
 	writeln(w, "Schema cache: "+cacheDir)
