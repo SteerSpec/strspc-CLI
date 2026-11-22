@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/url"
 	"os"
@@ -406,10 +407,11 @@ func (r *checkRun) resolveSources() error {
 
 // validateRuleSchemas checks what the evaluation reads against its schemas
 // before any of it is used (SEC-004). check and rule verify call it after
-// resolving; the reporting commands that share resolveSources don't: every resolved entity file, the
-// manifests of each source realm and its sub-realms, and the whole tree of
-// each realm a source depends on, since inherited and extended rules are read
-// from there.
+// resolving; the reporting commands that share resolveSources don't. It
+// validates every resolved entity file and the manifest governing it, the
+// manifests of each source realm and its sub-realms, and the tree of each
+// realm they depend on, directly or through an inherited or extended rule.
+// What the resolvers returned must then equal what was validated.
 func (r *checkRun) validateRuleSchemas() error {
 	v := newSchemaValidator(r.ctx)
 	for _, rf := range r.resolved {
@@ -421,40 +423,60 @@ func (r *checkRun) validateRuleSchemas() error {
 			return err
 		}
 	}
-	sources := make([]string, 0, len(r.realmTrees))
-	for s := range r.realmTrees {
-		sources = append(sources, s)
+	// A nested realm.json picks the schema of the files below it, whether or
+	// not the realm above lists it.
+	for _, dir := range slices.Sorted(maps.Keys(v.governing)) {
+		if err := v.validateManifestIn(dir); err != nil {
+			return err
+		}
 	}
-	slices.Sort(sources)
-	for _, s := range sources {
+	var deps []depRealm
+	for _, s := range slices.Sorted(maps.Keys(r.realmTrees)) {
 		t := r.realmTrees[s]
-		manifests := []string{filepath.Join(t.dir, "realm.json")}
-		var deps []string
-		if t.resolved != nil {
-			for _, sub := range t.resolved.SubRealms {
-				manifests = append(manifests, filepath.Join(sub.Dir, "realm.json"))
-			}
-			for _, d := range t.resolved.Dependencies {
-				deps = append(deps, d.Dir)
-			}
+		if err := v.validateManifestIn(t.dir); err != nil {
+			return err
 		}
-		for _, m := range manifests {
-			data, err := os.ReadFile(m)
-			if err != nil {
-				return fmt.Errorf("reading %s: %w", m, err)
+		if err := v.checkManifest(t.dir, t.manifest, true); err != nil {
+			return err
+		}
+		if t.resolved == nil {
+			continue
+		}
+		for _, sub := range t.resolved.SubRealms {
+			if err := v.validateManifestIn(sub.Dir); err != nil {
+				return err
 			}
-			if err := v.validateRealmManifest(m, data); err != nil {
+			if err := v.checkManifest(sub.Dir, sub.Realm, false); err != nil {
 				return err
 			}
 		}
-		for _, d := range deps {
-			if err := v.validateRealmTree(d); err != nil {
-				return err
-			}
-		}
+		deps = append(deps, sourceDependencies(s, t)...)
+	}
+	if err := r.validateDependencies(v, deps); err != nil {
+		return err
+	}
+	if err := r.checkConsumed(v); err != nil {
+		return err
 	}
 	r.verbosef("schemas: %d file(s) validated", len(v.done))
 	return nil
+}
+
+// realmResolver returns a resolver that fetches through the run's cache, for
+// a realm fetched from origin, or a local one when origin is nil.
+func (r *checkRun) realmResolver(cacheDir string, origin *remote.Ref) *realmresolve.RealmResolver {
+	opts := []realmresolve.Option{
+		realmresolve.WithCacheDir(cacheDir),
+		realmresolve.WithRemoteFetcher(r.fetcher),
+		realmresolve.WithCacheTTL(r.ttl),
+	}
+	if origin != nil {
+		// The cache holds only the fetched subtree; the origin lets
+		// realmresolve rebase relative dependencies (`../core/`, also those of
+		// sub-realms) onto the repository at the same ref.
+		opts = append(opts, realmresolve.WithOrigin(*origin))
+	}
+	return realmresolve.New(opts...)
 }
 
 // resolveRealmDeps validates realm.json dependencies of every source that
@@ -493,20 +515,13 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 			continue
 		}
 		r.sourceRealms[e.Source] = rf.Realm.ID
-		rrOpts := []realmresolve.Option{
-			realmresolve.WithCacheDir(cacheDir),
-			realmresolve.WithRemoteFetcher(r.fetcher),
-			realmresolve.WithCacheTTL(r.ttl),
-		}
+		var origin *remote.Ref
 		if strings.HasPrefix(e.Source, remote.Scheme) {
-			// The cache holds only this source's subtree; the origin lets
-			// realmresolve rebase relative dependencies (`../core/`, also
-			// those of sub-realms) onto the repository at the same ref.
 			if ref, err := remote.ParseGitHub(e.Source); err == nil {
-				rrOpts = append(rrOpts, realmresolve.WithOrigin(ref))
+				origin = &ref
 			}
 		}
-		rr := realmresolve.New(rrOpts...)
+		rr := r.realmResolver(cacheDir, origin)
 		out, res := rr.Resolve(r.ctx, rf, dir)
 		diags = append(diags, res.Diagnostics...)
 		r.realmTrees[e.Source] = &realmTree{dir: dir, manifest: rf, resolved: out}

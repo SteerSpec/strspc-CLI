@@ -95,15 +95,22 @@ name such as `implemented` (accepted, but the schema wants the code), and `effor
 validation is skipped and `--verbose` says so.
 
 **Rule files.** Once the sources are resolved, and before anything is evaluated, the check validates
-what it reads against the entity and realm schemas. That covers three things:
+what it reads against the entity and realm schemas. That covers four things:
 
-- every entity file of each source;
+- every entity file of each source, and the nearest `realm.json` above it, listed as a sub-realm or not;
 - the `realm.json` of each source realm and of its sub-realms;
-- the whole tree of each realm a source depends on, where inherited and extended rules come from.
+- the whole tree of each realm a source or one of its sub-realms depends on, where a listed sub-realm
+  without a readable `realm.json` is an error;
+- the whole tree of each further dependency that an `inherits` or an `extends` note in those trees
+  names.
+
+The rules evaluated must then be the ones validated: if a file changes during the run, the check
+exits 2 and asks you to run it again.
 
 `strspc rule verify`, and so `strspc rule promote` to Implemented, run the same validation. Each realm
-is checked against the schemas of the core release it pins, and core against its own release, as
-`strspc lint` does. A file that doesn't match exits 2, naming the file and the first violations;
+is checked against the schemas of the core release it pins, and core against its own release. A
+sub-realm that pins none takes those of the realm that lists it, and a pin that isn't a release
+selects the latest schemas. A file that doesn't match exits 2, naming the file and the first violations;
 `strspc lint` lists them all. A schema that isn't in the [schema cache](reference.md#schema-cache)
 and can't be fetched also exits 2: run `strspc schema fetch` once while online to check offline
 afterwards.

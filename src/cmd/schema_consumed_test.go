@@ -1,0 +1,183 @@
+package cmd
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/inherit"
+	"github.com/SteerSpec/strspc-manager/src/remote"
+)
+
+// setupTransitiveProject makes dev.lib depend on dev.base, which holds BASE.
+func setupTransitiveProject(t *testing.T) (dir, diff string) {
+	t.Helper()
+	dir, diff = setupInheritProject(t, "null", "./rules/")
+	base := filepath.Join(dir, "base")
+	writeRealmManifest(t, base, "dev.base")
+	writeInheritEntity(t, base, "BASE", "", inheritRule{id: "BASE-001", state: "I"})
+	writeRealmManifest(t, filepath.Join(dir, "lib"), "dev.lib",
+		`{"realm_id": "dev.base", "version": "1.0.0", "source": "../base/"}`)
+	return dir, diff
+}
+
+func TestCheckValidatesTransitiveDependencies(t *testing.T) {
+	for name, link := range map[string]func(t *testing.T, dir string){
+		"inherits": func(t *testing.T, dir string) {
+			writeInheritEntity(t, filepath.Join(dir, "lib"), "ACCT", "dev.base:BASE", inheritRule{id: "ACCT-002", state: "I"})
+		},
+		"extends": func(t *testing.T, dir string) {
+			body := inheritEntityJSON("ACCT", "", "", inheritRule{id: "ACCT-002", state: "I"})
+			writeInheritFile(t, filepath.Join(dir, "lib"), "ACCT", withNote(body, "ACCT-002", "extends", "Builds on dev.base:BASE-001."))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, diff := setupTransitiveProject(t)
+			link(t, dir)
+			writeInheritEntity(t, filepath.Join(dir, "rules"), "APP", "dev.lib:ACCT", inheritRule{id: "APP-001", state: "I"})
+
+			_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+			assertExit(t, err, exitOK)
+
+			breakEntity(t, filepath.Join(dir, "base"), "BASE.json")
+			_, err = runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+			assertExit(t, err, exitConfig)
+			testutil.AssertContains(t, err.Error(), "BASE.json does not match the entity/v1.json schema")
+		})
+	}
+}
+
+func TestCheckValidatesSubRealmsOwnDependency(t *testing.T) {
+	dir, diff := setupInheritProject(t, "null", "./rules/")
+	rules := filepath.Join(dir, "rules")
+	writeRefsFile(t, rules, "realm.json",
+		`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "a", "version": "1.0.0"}, "sub_realms": ["child"]}`)
+	writeRealmManifest(t, filepath.Join(rules, "child"), "dev.app.child",
+		`{"realm_id": "dev.lib", "version": "1.0.0", "source": "../../lib/"}`)
+	breakEntity(t, filepath.Join(dir, "lib"), "ACCT.json")
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, err.Error(), "ACCT.json does not match the entity/v1.json schema")
+}
+
+func TestCheckRefusesDependencyChildManifest(t *testing.T) {
+	for name, c := range map[string]struct{ child, want string }{
+		"malformed": {"{", "is not valid JSON"},
+		"missing":   {"", "reading"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, diff := setupInheritProject(t, "null", "./rules/")
+			lib := filepath.Join(dir, "lib")
+			writeRefsFile(t, lib, "realm.json",
+				`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.lib", "title": "l", "version": "1.0.0"}, "sub_realms": ["sub"]}`)
+			if c.child != "" {
+				writeRefsFile(t, filepath.Join(lib, "sub"), "realm.json", c.child)
+			}
+
+			_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+			assertExit(t, err, exitConfig)
+			testutil.AssertContains(t, err.Error(), c.want)
+		})
+	}
+}
+
+func TestCheckValidatesUnlistedNestedManifest(t *testing.T) {
+	dir, diff := setupInheritProject(t, "null", "./rules/")
+	nested := filepath.Join(dir, "rules", "nested")
+	writeInheritEntity(t, nested, "NEST", "", inheritRule{id: "NEST-001", state: "I"})
+	writeRefsFile(t, nested, "realm.json", `{"realm": {"id": "dev.other", "version": "x"}}`)
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, err.Error(), "realm.json does not match the realm/v1.json schema")
+}
+
+// Each file differs when resolved from when it is validated.
+func TestCheckRefusesContentChangedAfterResolution(t *testing.T) {
+	cases := map[string]struct {
+		file     string
+		old, new string
+	}{
+		"source entity":       {"rules/APP.json", "Rule APP-001.", "Rule swapped."},
+		"inherited entity":    {"lib/ACCT.json", "Rule ACCT-002.", "Rule swapped."},
+		"source manifest":     {"rules/realm.json", `"title": "t"`, `"title": "swapped"`},
+		"dependency manifest": {"lib/realm.json", `"title": "t"`, `"title": "swapped"`},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir, _ := setupInheritProject(t, "null", "./rules/")
+			writeInheritEntity(t, filepath.Join(dir, "rules"), "APP", "dev.lib:ACCT", inheritRule{id: "APP-001", state: "I"})
+			r := &checkRun{ctx: context.Background(), out: &bytes.Buffer{}, errOut: &bytes.Buffer{}, cwd: dir}
+			if err := r.loadConfig(); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.resolveRules(); err != nil {
+				t.Fatal(err)
+			}
+			p := filepath.Join(dir, filepath.FromSlash(c.file))
+			data, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			changed := bytes.Replace(data, []byte(c.old), []byte(c.new), 1)
+			if bytes.Equal(changed, data) {
+				t.Fatalf("%s has no %s to change", p, c.old)
+			}
+			if err := os.WriteFile(p, changed, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := r.validateRuleSchemas(); !errors.Is(err, errNotValidated) {
+				t.Errorf("error = %v, want errNotValidated", err)
+			}
+		})
+	}
+}
+
+func TestCheckConsumedRefusesUnknownExtendedRule(t *testing.T) {
+	for _, id := range []string{"dev.base:BASE-001", "malformed"} {
+		r := &checkRun{extended: map[string]map[string][]inherit.Extended{
+			"./rules/": {"dev.app:APP-001": {{ID: id, Body: "Never validated."}}},
+		}}
+		if err := r.checkConsumed(newSchemaValidator(context.Background())); !errors.Is(err, errNotValidated) {
+			t.Errorf("%s: error = %v, want errNotValidated", id, err)
+		}
+	}
+}
+
+func TestDependencyOrigin(t *testing.T) {
+	origin, err := remote.ParseGitHub("github://acme/rules@v1.2.3/rules/cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := remote.ParseGitHub("github://acme/core@v2.0.0/rules/core")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sibling := origin
+	sibling.Path = "rules/core"
+	top := origin
+	top.Path = ""
+
+	for source, want := range map[string]*remote.Ref{
+		"../core/":                             &sibling,
+		"../..":                                &top,
+		"../../../up":                          nil,
+		"":                                     nil,
+		"github://acme/core@v2.0.0/rules/core": &other,
+		"github://":                            nil,
+	} {
+		got := dependencyOrigin(&origin, source)
+		if (got == nil) != (want == nil) || (got != nil && got.String() != want.String()) {
+			t.Errorf("dependencyOrigin(%q) = %v, want %v", source, got, want)
+		}
+	}
+	if got := dependencyOrigin(nil, "../core/"); got != nil {
+		t.Errorf("a local realm got the origin %v", got)
+	}
+}

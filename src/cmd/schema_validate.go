@@ -47,6 +47,8 @@ type schemaValidator struct {
 	options   map[string][]schema.Option   // by realm directory
 	labels    map[string]string            // by realm directory
 	done      map[string]bool              // validated paths
+	entities  map[string][]*entity.File    // parsed from validated bytes, by EUID
+	governing map[string]bool              // realm directories that chose a validated entity's schema
 }
 
 func newSchemaValidator(ctx context.Context) *schemaValidator {
@@ -60,6 +62,8 @@ func newSchemaValidator(ctx context.Context) *schemaValidator {
 		options:   map[string][]schema.Option{},
 		labels:    map[string]string{},
 		done:      map[string]bool{},
+		entities:  map[string][]*entity.File{},
+		governing: map[string]bool{},
 	}
 }
 
@@ -204,6 +208,14 @@ func (v *schemaValidator) validateEntityFile(path string, data []byte) error {
 	if err := v.validate(path, data, dir, schema.EntityV1Path); err != nil {
 		return err
 	}
+	ef, err := entity.Parse(data)
+	if err != nil {
+		return fmt.Errorf("parsing %s: %w", path, err)
+	}
+	v.index(ef)
+	if dir != "" {
+		v.governing[dir] = true
+	}
 	v.done[path] = true
 	return nil
 }
@@ -229,6 +241,16 @@ func (v *schemaValidator) validateRealmManifest(path string, data []byte) error 
 	}
 	v.done[path] = true
 	return nil
+}
+
+// validateManifestIn checks the realm.json in dir.
+func (v *schemaValidator) validateManifestIn(dir string) error {
+	path := filepath.Join(dir, "realm.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", path, err)
+	}
+	return v.validateRealmManifest(path, data)
 }
 
 // validateRealmTree checks the realm manifest in dir, every entity file of the
@@ -259,11 +281,16 @@ func (v *schemaValidator) validateRealmTreeAt(dir string, depth int) error {
 	if err != nil {
 		return err
 	}
-	if depth >= maxSubRealmDepth {
-		return nil
+	if depth >= maxSubRealmDepth && len(rf.SubRealms) > 0 {
+		return fmt.Errorf("can't validate %s: sub-realms are nested more than %d deep", manifest, maxSubRealmDepth)
 	}
-	for _, sub := range subRealmsOf(dir, rf) {
-		if err := v.validateRealmTreeAt(sub.dir, depth+1); err != nil {
+	// Not subRealmsOf: it leaves out a sub-realm that can't be loaded, which
+	// must fail here, as the walk above skips that sub-realm's directory.
+	for _, name := range rf.SubRealms {
+		if !isSubRealmName(name) {
+			return fmt.Errorf("%s lists sub-realm %q, which is not the name of a directory next to it", manifest, name)
+		}
+		if err := v.validateRealmTreeAt(filepath.Join(dir, name), depth+1); err != nil {
 			return err
 		}
 	}
