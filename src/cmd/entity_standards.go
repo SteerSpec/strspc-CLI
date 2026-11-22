@@ -82,7 +82,7 @@ Examples:
 				return err
 			}
 			change := entityStandardChange{Entity: args[0], Path: target.path, Standard: ref}
-			err = modifyEntity(target, func(f *entity.File) error {
+			err = modifyEntity(cmd.Context(), target, func(f *entity.File) error {
 				refs, err := addStandardRef(f.Entity.Standards, &ref)
 				if err != nil {
 					return err
@@ -136,7 +136,7 @@ Example:
 			}
 			scopes := slices.Concat(containing, rulelint.RealmStandardScopes(dir, target.path))
 			change := entityStandardChange{Entity: args[0], Path: target.path}
-			err = modifyEntity(target, func(f *entity.File) error {
+			err = modifyEntity(cmd.Context(), target, func(f *entity.File) error {
 				refs, removed, err := removeStandardRef(f.Entity.Standards, id)
 				if err != nil {
 					return err

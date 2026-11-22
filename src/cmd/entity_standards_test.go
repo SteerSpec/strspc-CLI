@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -216,7 +217,7 @@ func TestEntityStandardsRemoveGuard(t *testing.T) {
 	t.Run("allowed when the Realm declares it too", func(t *testing.T) {
 		dir := setup(t, entity.NoteTypeStandard)
 		writeRealmManifest(t, dir, "dev.app")
-		if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+		if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 			rf.Realm.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}
 			return nil
 		}); err != nil {
@@ -277,7 +278,7 @@ func TestEntityStandardsRemoveGuardSubRealm(t *testing.T) {
 		writeRealmManifest(t, dir, "dev.app")
 		sub := filepath.Join(dir, "sync")
 		writeRealmManifest(t, sub, "dev.app.sync")
-		if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+		if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 			rf.SubRealms = []string{"sync"}
 			if declareOnParent {
 				rf.Realm.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}

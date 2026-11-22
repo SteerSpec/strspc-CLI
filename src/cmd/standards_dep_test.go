@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -17,7 +18,7 @@ const undeclaredStdRealm = "dev.steerspec.std.other.v1"
 // addDep declares realmID@version in the realm.json at dir.
 func addDep(t *testing.T, dir, realmID, version string) {
 	t.Helper()
-	if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+	if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 		rf.Dependencies = append(rf.Dependencies, entity.RealmDep{RealmID: realmID, Version: version})
 		return nil
 	}); err != nil {
@@ -50,7 +51,7 @@ func TestStandardsLinkIgnoresBadSubRealm(t *testing.T) {
 	setupValidRealm(t, dir)
 	pinCoreFrom(t, dir, manifestMinCore.String(), "")
 	bad := `foo\bar`
-	if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+	if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 		rf.SubRealms = []string{bad}
 		return nil
 	}); err != nil {
@@ -241,7 +242,7 @@ func TestRealmDepRemoveTree(t *testing.T) {
 	withSibling := func(t *testing.T, dir string) string {
 		t.Helper()
 		setupSubRealm(t, dir, "billing", "dev.steerspec.test")
-		if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+		if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 			rf.SubRealms = append(rf.SubRealms, "billing")
 			return nil
 		}); err != nil {
@@ -251,7 +252,7 @@ func TestRealmDepRemoveTree(t *testing.T) {
 	}
 	linkManifest := func(t *testing.T, dir string) {
 		t.Helper()
-		if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+		if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 			rf.Realm.Standards = append(rf.Realm.Standards, entity.StandardRef{
 				ID: "owasp.asvs", Relation: entity.RelationImplements, Version: "5.0.0", Realm: testStdRealm,
 			})
@@ -296,7 +297,7 @@ func TestRealmDepRemoveTree(t *testing.T) {
 		dir := t.TempDir()
 		setupLinkRealm(t, dir)
 		linkManifest(t, dir)
-		if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+		if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 			rf.SubRealms = []string{"."}
 			return nil
 		}); err != nil {
@@ -314,7 +315,7 @@ func TestRealmDepRemoveTree(t *testing.T) {
 	t.Run("not declared here", func(t *testing.T) {
 		dir := t.TempDir()
 		setupLinkRealm(t, dir)
-		if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+		if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 			rf.Realm.Standards = append(rf.Realm.Standards, entity.StandardRef{
 				ID: "iso.27001", Relation: entity.RelationImplements, Version: "1.0.0", Realm: undeclaredStdRealm,
 			})
@@ -334,7 +335,7 @@ func TestRealmDepRemoveTree(t *testing.T) {
 		top, mid := setup(t)
 		setupSubRealm(t, mid, "leaf", "dev.steerspec.test.auth")
 		leaf := filepath.Join(mid, "leaf")
-		if err := loadModifyWriteRealm(filepath.Join(mid, "realm.json"), func(rf *entity.RealmFile) error {
+		if err := loadModifyWriteRealm(context.Background(), filepath.Join(mid, "realm.json"), func(rf *entity.RealmFile) error {
 			rf.SubRealms = []string{"leaf"}
 			return nil
 		}); err != nil {

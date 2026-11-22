@@ -103,19 +103,28 @@ func (r *checkRun) validateDependencies(v *schemaValidator, queue []depRealm) er
 		if err := v.checkManifest(d.realm.Dir, d.realm.Realm, nil); err != nil {
 			return fmt.Errorf("checking a dependency: %w", err)
 		}
+		var needed []entity.RealmDep
 		for _, decl := range d.realm.Realm.Dependencies {
-			if !refersTo(d.realm.Entities, decl.RealmID) {
-				continue
+			if refersTo(d.realm.Entities, decl.RealmID) {
+				needed = append(needed, decl)
 			}
-			only := *d.realm.Realm
-			only.Dependencies, only.SubRealms = []entity.RealmDep{decl}, nil
-			out, _ := r.realmResolver(cacheDir, d.origin).Resolve(r.ctx, &only, d.realm.Dir)
-			if err := r.ctx.Err(); err != nil {
-				return fmt.Errorf("resolving further dependencies: %w", err)
+		}
+		if len(needed) == 0 {
+			continue
+		}
+		// All at once: each Resolve walks the whole realm.
+		only := *d.realm.Realm
+		only.Dependencies, only.SubRealms = needed, nil
+		out, _ := r.realmResolver(cacheDir, d.origin).Resolve(r.ctx, &only, d.realm.Dir)
+		if err := r.ctx.Err(); err != nil {
+			return fmt.Errorf("resolving further dependencies: %w", err)
+		}
+		for _, next := range out.Dependencies {
+			var src string
+			if i := slices.IndexFunc(needed, func(x entity.RealmDep) bool { return x.RealmID == next.Realm.Realm.ID }); i >= 0 {
+				src = needed[i].Source
 			}
-			for _, next := range out.Dependencies {
-				queue = append(queue, depRealm{next, dependencyOrigin(d.origin, decl.Source)})
-			}
+			queue = append(queue, depRealm{next, dependencyOrigin(d.origin, src)})
 		}
 	}
 	return nil

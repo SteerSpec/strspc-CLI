@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,13 +60,13 @@ func TestLoadModifySaveEntityErrors(t *testing.T) {
 	dir := t.TempDir()
 	noop := func(*entity.File) error { return nil }
 
-	err := loadModifySaveEntity(filepath.Join(dir, "MISSING.json"), noop)
+	err := loadModifySaveEntity(context.Background(), filepath.Join(dir, "MISSING.json"), noop)
 	if err == nil || !strings.Contains(err.Error(), "loading entity file") {
 		t.Errorf("missing file: got %v", err)
 	}
 
 	writeFile(t, dir, "BAD.json", "{")
-	err = loadModifySaveEntity(filepath.Join(dir, "BAD.json"), noop)
+	err = loadModifySaveEntity(context.Background(), filepath.Join(dir, "BAD.json"), noop)
 	if err == nil || !strings.Contains(err.Error(), "is not valid JSON") {
 		t.Errorf("malformed file: got %v", err)
 	}
@@ -75,7 +76,7 @@ func TestLoadModifySaveEntityErrors(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("cannot create a symlink here: %v", err)
 	}
-	err = loadModifySaveEntity(link, noop)
+	err = loadModifySaveEntity(context.Background(), link, noop)
 	if err == nil || !strings.Contains(err.Error(), "is a symbolic link") {
 		t.Errorf("linked file: got %v", err)
 	}
@@ -144,7 +145,7 @@ func TestModifyEntityErrors(t *testing.T) {
 	p := writeHelperEntity(t, dir, "ENT.json", "0.1.0")
 	noop := func(*entity.File) error { return nil }
 
-	err := modifyEntity(entityTarget{path: p, subID: "GONE"}, noop)
+	err := modifyEntity(context.Background(), entityTarget{path: p, subID: "GONE"}, noop)
 	if err == nil || !strings.Contains(err.Error(), `sub-entity "GONE" not found`) {
 		t.Errorf("unknown sub-entity: got %v", err)
 	}
@@ -155,7 +156,7 @@ func TestModifyEntityErrors(t *testing.T) {
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	err = modifyEntity(entityTarget{path: bad, subID: "SUB"}, noop)
+	err = modifyEntity(context.Background(), entityTarget{path: bad, subID: "SUB"}, noop)
 	if err == nil || !strings.Contains(err.Error(), "does not match the entity/v1.json schema") {
 		t.Errorf("bad parent version: got %v (want the schema check to refuse it, SEC-004)", err)
 	}

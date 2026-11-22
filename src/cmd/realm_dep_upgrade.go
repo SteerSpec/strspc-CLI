@@ -251,7 +251,7 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("reading realm.json: %w", err)
 			}
-			err = loadAndWriteRealm(realmPath, func(cur []entity.RealmDep) ([]entity.RealmDep, error) {
+			err = loadAndWriteRealm(cmd.Context(), realmPath, func(cur []entity.RealmDep) ([]entity.RealmDep, error) {
 				for _, up := range ups {
 					for i := range cur {
 						if cur[i].RealmID == up.realmID {

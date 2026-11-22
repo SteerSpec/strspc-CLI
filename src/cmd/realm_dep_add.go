@@ -42,7 +42,7 @@ func newRealmDepAddCmd() *cobra.Command {
 				return checkErr
 			}
 
-			err = loadAndWriteRealm(realmPath, func(deps []entity.RealmDep) ([]entity.RealmDep, error) {
+			err = loadAndWriteRealm(cmd.Context(), realmPath, func(deps []entity.RealmDep) ([]entity.RealmDep, error) {
 				for _, d := range deps {
 					if d.RealmID == dep.RealmID {
 						return nil, fmt.Errorf("dependency %q already exists (version %q)", dep.RealmID, d.Version)

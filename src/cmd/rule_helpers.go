@@ -103,7 +103,7 @@ func entityIDFromRuleID(ruleID string) (string, error) {
 // symbolic link is refused before it is loaded: its target may lie outside
 // --dir. The write replaces the file by rename, so a link swapped in after the
 // check is replaced, not written through.
-func loadModifySaveEntity(entityPath string, mutate func(*entity.File) error) error {
+func loadModifySaveEntity(ctx context.Context, entityPath string, mutate func(*entity.File) error) error {
 	if link, err := isLinkPath(entityPath); err != nil {
 		return fmt.Errorf("loading entity file: %w", err)
 	} else if link {
@@ -114,7 +114,7 @@ func loadModifySaveEntity(entityPath string, mutate func(*entity.File) error) er
 		return fmt.Errorf("loading entity file: %w", err)
 	}
 	// SEC-004: the file is checked against its schema before it is changed.
-	if err := newSchemaValidator(context.TODO()).validateEntityFile(entityPath, data); err != nil {
+	if err := newSchemaValidator(ctx).validateEntityFile(entityPath, data); err != nil {
 		return fmt.Errorf("validating before writing: %w", err)
 	}
 	f, err := entity.Parse(data)
@@ -124,6 +124,9 @@ func loadModifySaveEntity(entityPath string, mutate func(*entity.File) error) er
 
 	if err := mutate(f); err != nil {
 		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("interrupted before writing %s: %w", entityPath, err)
 	}
 
 	return replaceEntityFile(entityPath, f)
@@ -352,8 +355,8 @@ func resolveSubEntityOf(dir, parentID, subID string) (entityTarget, error) {
 // modifyEntity loads the target's file, applies mutate to the target entity
 // (the file itself or a nested sub-entity), refreshes the parent's rule_set
 // metadata when a sub-entity changed, and writes the file back.
-func modifyEntity(t entityTarget, mutate func(target *entity.File) error) error {
-	return loadModifySaveEntity(t.path, func(f *entity.File) error {
+func modifyEntity(ctx context.Context, t entityTarget, mutate func(target *entity.File) error) error {
+	return loadModifySaveEntity(ctx, t.path, func(f *entity.File) error {
 		target := f
 		var ancestors []*entity.File // innermost first, excluding target
 		if t.subID != "" {

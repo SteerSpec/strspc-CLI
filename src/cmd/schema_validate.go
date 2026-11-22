@@ -174,6 +174,9 @@ func (v *schemaValidator) compile(dir, schemaPath string) (*jsonschema.Schema, s
 // validate checks data, the content of path, against schemaPath of the realm
 // in dir.
 func (v *schemaValidator) validate(path string, data []byte, dir, schemaPath string) error {
+	if err := v.ctx.Err(); err != nil { // a cached schema wouldn't notice
+		return fmt.Errorf("interrupted before validating %s: %w", path, err)
+	}
 	compiled, label, err := v.compile(dir, schemaPath)
 	if err != nil {
 		return fmt.Errorf("can't validate %s: %w", path, err)

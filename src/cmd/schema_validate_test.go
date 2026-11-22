@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/schema"
 )
 
@@ -298,5 +299,32 @@ func TestSchemaValidatorRefusesOtherBytesForAValidatedPath(t *testing.T) {
 	}
 	if err := v.validateRealmManifest(m, []byte("{")); !errors.Is(err, errNotValidated) {
 		t.Errorf("manifest: error = %v, want errNotValidated", err)
+	}
+}
+
+func TestWritersStopWhenInterrupted(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "ENT")
+	p := filepath.Join(dir, "ENT.json")
+	before, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Interrupted after validation, before the write.
+	err = loadModifySaveEntity(ctx, p, func(f *entity.File) error {
+		f.Entity.Title = "changed"
+		cancel()
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("before the write: error = %v, want context.Canceled", err)
+	}
+	if after, _ := os.ReadFile(p); !bytes.Equal(before, after) {
+		t.Error("the entity file was written after the interruption")
+	}
+	// Interrupted before validation, with the schema in the cache.
+	if err := newSchemaValidator(ctx).validateEntityFile(p, before); !errors.Is(err, context.Canceled) {
+		t.Errorf("before validating: error = %v, want context.Canceled", err)
 	}
 }

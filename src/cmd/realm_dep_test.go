@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -140,7 +141,7 @@ func readRealmDeps(t *testing.T, dir string) []entity.RealmDep {
 // checks in realm dep add.
 func writeRealmDeps(t *testing.T, dir string, deps ...entity.RealmDep) {
 	t.Helper()
-	err := loadAndWriteRealm(filepath.Join(dir, "realm.json"), func([]entity.RealmDep) ([]entity.RealmDep, error) {
+	err := loadAndWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func([]entity.RealmDep) ([]entity.RealmDep, error) {
 		return deps, nil
 	})
 	if err != nil {

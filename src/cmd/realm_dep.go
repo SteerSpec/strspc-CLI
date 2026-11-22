@@ -55,8 +55,8 @@ func printableRealmID(id string) string {
 
 // loadAndWriteRealm is a helper that loads realm.json, applies a mutation
 // to its dependencies, and writes it back.
-func loadAndWriteRealm(realmPath string, mutate func([]entity.RealmDep) ([]entity.RealmDep, error)) error {
-	return loadModifyWriteRealm(realmPath, func(rf *entity.RealmFile) error {
+func loadAndWriteRealm(ctx context.Context, realmPath string, mutate func([]entity.RealmDep) ([]entity.RealmDep, error)) error {
+	return loadModifyWriteRealm(ctx, realmPath, func(rf *entity.RealmFile) error {
 		deps, err := mutate(rf.Dependencies)
 		if err != nil {
 			return err
@@ -70,13 +70,13 @@ func loadAndWriteRealm(realmPath string, mutate func([]entity.RealmDep) ([]entit
 // writes it back in the layout realm init uses. A manifest with a hash gets it
 // recomputed over what is written (RLMMNFST-014); one without keeps none.
 // Nothing is written when mutate fails.
-func loadModifyWriteRealm(realmPath string, mutate func(*entity.RealmFile) error) error {
+func loadModifyWriteRealm(ctx context.Context, realmPath string, mutate func(*entity.RealmFile) error) error {
 	data, err := os.ReadFile(realmPath)
 	if err != nil {
 		return fmt.Errorf("loading realm.json: %w", err)
 	}
 	// SEC-004: the manifest is checked against its schema before it is changed.
-	if err := newSchemaValidator(context.TODO()).validateRealmManifest(realmPath, data); err != nil {
+	if err := newSchemaValidator(ctx).validateRealmManifest(realmPath, data); err != nil {
 		return fmt.Errorf("validating before writing: %w", err)
 	}
 	rf, err := entity.ParseRealm(data)
@@ -86,6 +86,9 @@ func loadModifyWriteRealm(realmPath string, mutate func(*entity.RealmFile) error
 
 	if err := mutate(rf); err != nil {
 		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("interrupted before writing %s: %w", realmPath, err)
 	}
 	return replaceRealmManifest(realmPath, rf, rf.Hash != "")
 }

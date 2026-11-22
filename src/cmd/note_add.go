@@ -65,7 +65,7 @@ Examples:
 			}
 
 			var noteID, oldVersion, version string
-			err = modifyEntity(target, func(f *entity.File) error {
+			err = modifyEntity(cmd.Context(), target, func(f *entity.File) error {
 				oldVersion = f.RuleSet.Version
 				var addErr error
 				noteID, addErr = entityops.AddNote(f, ruleID, noteType, body, addedBy)

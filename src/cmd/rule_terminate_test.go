@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -198,7 +199,7 @@ func TestRuleTransitionWrapsCause(t *testing.T) {
 	dir := t.TempDir()
 	setupEntityFile(t, dir, "TST", makeRule("TST-001", "R", "Retired rule", "github:alice"))
 
-	err := runRuleTransition(io.Discard, dir, "TST-001", "terminating", false,
+	err := runRuleTransition(context.Background(), io.Discard, dir, "TST-001", "terminating", false,
 		func(*entity.File, string) error { return cause })
 	if !errors.Is(err, cause) {
 		t.Fatalf("error %v does not wrap the cause", err)
@@ -207,12 +208,12 @@ func TestRuleTransitionWrapsCause(t *testing.T) {
 		t.Errorf("error = %q, want %q", got, want)
 	}
 
-	err = runRuleTransition(io.Discard, dir, "BAD", "terminating", false, nil)
+	err = runRuleTransition(context.Background(), io.Discard, dir, "BAD", "terminating", false, nil)
 	if err == nil || !strings.HasPrefix(err.Error(), "terminating BAD: invalid rule ID") {
 		t.Errorf("error = %v, want a wrapped invalid rule ID", err)
 	}
 
-	err = runRuleTransition(io.Discard, dir, "NOPE-001", "terminating", false, nil)
+	err = runRuleTransition(context.Background(), io.Discard, dir, "NOPE-001", "terminating", false, nil)
 	if err == nil || !strings.HasPrefix(err.Error(), "terminating NOPE-001: ") {
 		t.Errorf("error = %v, want a wrapped entity lookup error", err)
 	}

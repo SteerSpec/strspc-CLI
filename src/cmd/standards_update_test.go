@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -81,7 +82,7 @@ func TestEntityStandardsUpdateVersion(t *testing.T) {
 func TestEntityStandardsUpdateVersionOuterDeclaration(t *testing.T) {
 	dir := t.TempDir()
 	setupValidRealm(t, dir)
-	if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+	if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 		rf.Realm.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}
 		return nil
 	}); err != nil {
@@ -172,7 +173,7 @@ func TestEntityStandardsUpdateValidation(t *testing.T) {
 func TestRealmStandardsUpdate(t *testing.T) {
 	dir := t.TempDir()
 	setupValidRealm(t, dir)
-	if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+	if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 		rf.Realm.Standards = []entity.StandardRef{asvs4}
 		return nil
 	}); err != nil {
@@ -234,14 +235,14 @@ func TestRealmStandardsUpdateSubRealms(t *testing.T) {
 	setupValidRealm(t, dir)
 	setupSubRealm(t, dir, "auth", "dev.steerspec.test")
 	setupSubRealm(t, dir, "billing", "dev.steerspec.test")
-	if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+	if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 		rf.Realm.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}
 		rf.SubRealms = []string{"auth", "billing"}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := loadModifyWriteRealm(filepath.Join(dir, "billing", "realm.json"), func(rf *entity.RealmFile) error {
+	if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "billing", "realm.json"), func(rf *entity.RealmFile) error {
 		rf.Realm.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}}
 		return nil
 	}); err != nil {
