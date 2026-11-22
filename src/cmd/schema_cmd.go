@@ -43,9 +43,10 @@ const schemaLatestTTL = time.Hour
 
 // schemaTarget is a set of schemas fetched with the same options.
 type schemaTarget struct {
-	label string // "latest" or "dev.steerspec.core X.Y.Z"
-	opts  []schema.Option
-	paths []string
+	label   string // "latest" or "dev.steerspec.core X.Y.Z"
+	version string // the core release, or "" for the latest schemas
+	opts    []schema.Option
+	paths   []string
 }
 
 func newSchemaCmd() *cobra.Command {
@@ -156,9 +157,10 @@ func schemaFetchTargets(cwd string, dirs, versions []string) ([]schemaTarget, er
 		}
 		seen[v] = true
 		targets = append(targets, schemaTarget{
-			label: coreRealmID + " " + v,
-			opts:  []schema.Option{schema.WithCoreVersion(v)},
-			paths: releaseSchemaPaths,
+			label:   coreRealmID + " " + v,
+			version: v,
+			opts:    []schema.Option{schema.WithCoreVersion(v)},
+			paths:   releaseSchemaPaths,
 		})
 	}
 
@@ -268,8 +270,11 @@ func fetchSchemaTargets(cmd *cobra.Command, targets []schemaTarget, refresh bool
 		fetcher := newSchemaFetcher(opts...)
 		for _, p := range t.paths {
 			_, err := fetcher.Fetch(cmd.Context(), p)
-			if err == nil && refresh {
+			switch {
+			case err == nil && refresh:
 				err = moveIntoCache(staging, cacheDir, p)
+			case err == nil:
+				err = checkCached(cacheDir, t.version, p)
 			}
 			if err != nil {
 				failed++
@@ -308,6 +313,24 @@ func moveIntoCache(staging, cacheDir, p string) error {
 		return fmt.Errorf("updating the cache: %w", err)
 	}
 	return nil
+}
+
+// checkCached reports an error when the schema p of the core release version
+// ("" for the latest schemas) isn't a regular file in the cache after a fetch.
+// The manager's fetcher ignores a failed cache write, for instance into a
+// read-only subdirectory, so a fetch alone doesn't prove the schema is cached.
+// A release the server doesn't have is served, and cached, as the latest copy.
+func checkCached(cacheDir, version, p string) error {
+	keys := []string{p}
+	if version != "" {
+		keys = []string{"versions/" + version + "/" + p, p}
+	}
+	for _, k := range keys {
+		if fi, err := os.Lstat(filepath.Join(cacheDir, filepath.FromSlash(k))); err == nil && fi.Mode().IsRegular() {
+			return nil
+		}
+	}
+	return fmt.Errorf("downloaded, but it couldn't be written to the cache as %s", keys[0])
 }
 
 // refuseSymlinkedParents reports an error when a directory between cacheDir
@@ -351,6 +374,10 @@ func checkSchemaCacheDir(cacheDir string) error {
 // the latest config, entity and realm v1 schemas, a release's entity and
 // realm v1 schemas below versions/X.Y.Z/, and the fetcher's temporary files
 // next to them.
+// schemaStagingDir matches the staging directories `schema update` creates
+// with os.MkdirTemp(cacheDir, ".update-").
+var schemaStagingDir = regexp.MustCompile(`^\.update-\d+$`)
+
 var schemaCacheFile = regexp.MustCompile(`^((config|entity|realm)|versions/\d+\.\d+\.\d+/(entity|realm))/(v1\.json|\.schema-cache-[^/]+)$`)
 
 // schemaCacheMarker marks a directory `schema fetch` or `schema update` has
@@ -454,6 +481,9 @@ func removeSchemaFiles(cacheDir string) (int, error) {
 	removed := 0
 	stale, _ := filepath.Glob(filepath.Join(cacheDir, ".update-*"))
 	for _, s := range stale {
+		if !schemaStagingDir.MatchString(filepath.Base(s)) {
+			continue
+		}
 		if fi, err := os.Lstat(s); err == nil && fi.IsDir() {
 			if err := os.RemoveAll(s); err != nil {
 				return removed, err
