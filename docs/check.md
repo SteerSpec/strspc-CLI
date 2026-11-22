@@ -107,7 +107,7 @@ what it reads against the entity and realm schemas. That covers four things:
 
 The rules evaluated must then be the ones validated, source by source and realm by realm: if a file
 changes during the run, the check exits 2 and asks you to run it again. To notice what a change left out as
-well, the check resolves each source realm again: a change to what is inherited, or to whether a rule
+well, the check resolves each source realm again, from the cache only: a change to what is inherited, or to whether a rule
 named by an `extends` note is live (not Abandoned, Terminated or superseded), counts. It also exits 2 when one
 source reaches two versions of a realm that differ in an entity it inherits or extends (or of which one
 lacks it), or in whether an extended rule is live, as it can't then tell which was evaluated; two sources

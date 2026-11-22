@@ -470,8 +470,9 @@ func (r *checkRun) validateRuleSchemas() error {
 }
 
 // realmResolver returns a resolver that fetches through the run's cache, for
-// a realm fetched from origin, or a local one when origin is nil.
-func (r *checkRun) realmResolver(cacheDir string, origin *remote.Ref) *realmresolve.RealmResolver {
+// a realm fetched from origin, or a local one when origin is nil. The extra
+// options come last, so they win.
+func (r *checkRun) realmResolver(cacheDir string, origin *remote.Ref, extra ...realmresolve.Option) *realmresolve.RealmResolver {
 	opts := []realmresolve.Option{
 		realmresolve.WithCacheDir(cacheDir),
 		realmresolve.WithRemoteFetcher(r.fetcher),
@@ -483,7 +484,7 @@ func (r *checkRun) realmResolver(cacheDir string, origin *remote.Ref) *realmreso
 		// sub-realms) onto the repository at the same ref.
 		opts = append(opts, realmresolve.WithOrigin(*origin))
 	}
-	return realmresolve.New(opts...)
+	return realmresolve.New(append(opts, extra...)...)
 }
 
 // resolveRealmDeps validates realm.json dependencies of every source that

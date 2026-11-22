@@ -1,12 +1,17 @@
 package cmd
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 )
@@ -72,5 +77,48 @@ func TestCheckValidatesTransitiveGitHubDependencies(t *testing.T) {
 			assertExit(t, err, exitConfig)
 			testutil.AssertContains(t, err.Error(), "BASE.json does not match the entity/v1.json schema")
 		})
+	}
+}
+
+type countingTransport struct{ requests int }
+
+func (c *countingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	c.requests++
+	return nil, errors.New("no network in this test")
+}
+
+// Resolving again reads what the first resolution fetched, also when @latest
+// has gone stale since: it neither waits for GitHub nor moves to another tag.
+func TestCheckResolvesAgainWithoutTheNetwork(t *testing.T) {
+	dir, _ := setupInheritProject(t, "null", "./rules/")
+	app := filepath.Join(dir, "rules")
+	writeRealmManifest(t, app, "dev.app",
+		`{"realm_id": "dev.lib", "version": "1.0.0", "source": "github://acme/rules@latest/rules/lib"}`)
+	writeInheritEntity(t, app, "APP", "dev.lib:ACCT", inheritRule{id: "APP-001", state: "I"})
+	lib := cachedRemoteDir(dir, "rules/lib")
+	writeRealmManifest(t, lib, "dev.lib")
+	writeInheritEntity(t, lib, "ACCT", "", inheritRule{id: "ACCT-001", state: "I"})
+	meta := filepath.Join(dir, ".strspc", "cache", "github", "acme", "rules", ".meta")
+	pointer := func(at time.Time) {
+		writeRefsFile(t, meta, "latest.json", fmt.Sprintf(`{"tag": "v1.0.0", "resolved_at": %q}`, at.Format(time.RFC3339)))
+	}
+
+	pointer(time.Now())
+	r := &checkRun{ctx: context.Background(), out: &bytes.Buffer{}, errOut: &bytes.Buffer{}, cwd: dir}
+	if err := r.loadConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.resolveRules(); err != nil {
+		t.Fatal(err)
+	}
+	pointer(time.Now().Add(-30 * 24 * time.Hour))
+	network := &countingTransport{}
+	r.fetcher.Client = &http.Client{Transport: network}
+
+	if err := r.validateRuleSchemas(); err != nil {
+		t.Fatal(err)
+	}
+	if network.requests != 0 {
+		t.Errorf("made %d request(s), want none", network.requests)
 	}
 }

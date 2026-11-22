@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"path"
 	"path/filepath"
 	"reflect"
@@ -140,6 +141,9 @@ func (r *checkRun) validateDependencies(v *schemaValidator, source string, queue
 // targets that will be used. checkConsumed compares what was resolved; this
 // also covers what resolution left out, and what it derived from the manifests
 // it loaded on demand, such as the sub-realm IDs an override can be named by.
+//
+// It reads only what is cached: @latest stays on the tag the run resolved,
+// however old, and nothing is downloaded after validation.
 func (r *checkRun) checkResolutionCurrent() error {
 	cacheDir := filepath.Join(r.cwd, ".strspc", "cache")
 	for _, source := range slices.Sorted(maps.Keys(r.realmTrees)) {
@@ -147,8 +151,11 @@ func (r *checkRun) checkResolutionCurrent() error {
 		if t.resolved == nil {
 			continue
 		}
+		cached := *r.fetcher
+		cached.TTL, cached.Force, cached.Client = math.MaxInt64, false, offlineHTTPClient()
 		// The diagnostics were reported by the first resolution.
-		now, _ := r.realmResolver(cacheDir, dependencyOrigin(nil, source)).Resolve(r.ctx, t.manifest, t.dir)
+		rr := r.realmResolver(cacheDir, dependencyOrigin(nil, source), realmresolve.WithRemoteFetcher(&cached))
+		now, _ := rr.Resolve(r.ctx, t.manifest, t.dir)
 		if err := r.ctx.Err(); err != nil {
 			return fmt.Errorf("resolving %s again: %w", source, err)
 		}
