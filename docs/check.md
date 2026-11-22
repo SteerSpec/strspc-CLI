@@ -105,8 +105,10 @@ what it reads against the entity and realm schemas. That covers four things:
 - the whole tree of each further dependency that an `inherits` or an `extends` note in those trees
   names.
 
-The rules evaluated must then be the ones validated, realm by realm: if a file changes during the run,
-the check exits 2 and asks you to run it again. A file with a key twice in one object, in any case, is
+The rules evaluated must then be the ones validated, source by source and realm by realm: if a file
+changes during the run, the check exits 2 and asks you to run it again. It also exits 2 when one source
+reaches two versions of a realm that differ in an entity it inherits or extends, as it can't then tell
+which was evaluated; two sources may use different versions. A file with a key twice in one object, in any case, is
 refused as well, as the schema and the parser would read it differently.
 
 `strspc rule verify`, and so `strspc rule promote` to Implemented, run the same validation. Each realm

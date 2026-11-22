@@ -23,6 +23,9 @@ import (
 
 // errNotValidated reports content that is about to be evaluated and doesn't
 // match anything that passed schema validation.
+var errDifferingCopies = errors.New("has copies that differ in realms of the same ID, " +
+	"so the one evaluated can't be matched to the one validated; use one version of that realm in the source")
+
 var errNotValidated = errors.New("is not what was validated against its schema; " +
 	"if a rule file changed during the run, run it again")
 
@@ -87,7 +90,7 @@ func dependencyOrigin(origin *remote.Ref, source string) *remote.Ref {
 // names: the resolver loads those on demand and doesn't report where from.
 // One that can't be resolved is left to checkConsumed, which refuses whatever
 // was read from it.
-func (r *checkRun) validateDependencies(v *schemaValidator, queue []depRealm) error {
+func (r *checkRun) validateDependencies(v *schemaValidator, source string, queue []depRealm) error {
 	cacheDir := filepath.Join(r.cwd, ".strspc", "cache")
 	seen := map[string]bool{}
 	for len(queue) > 0 {
@@ -107,7 +110,7 @@ func (r *checkRun) validateDependencies(v *schemaValidator, queue []depRealm) er
 		if walked {
 			continue
 		}
-		if err := v.indexRealm(d.realm.Dir, d.realm.Realm); err != nil {
+		if err := v.indexRealm(source, d.realm.Dir, d.realm.Realm); err != nil {
 			return fmt.Errorf("indexing a dependency: %w", err)
 		}
 		var needed []entity.RealmDep
@@ -184,15 +187,20 @@ func (v *schemaValidator) validateGoverning() error {
 	return nil
 }
 
-// realmEntity names an entity as a reference does: by a name of the realm
-// tree that holds it, and its EUID. Content is compared within one realm, so
-// an unchanged copy in another can't vouch for what changed in this one.
-type realmEntity struct{ realm, euid string }
+// realmEntity names an entity as a reference in the resolution of one source
+// does: by a name of the realm tree that holds it, and its EUID. Content is
+// compared within that, so an unchanged copy in another source's dependencies
+// or in another realm can't vouch for what changed in this one.
+//
+// One source can still reach two directories with the same realm ID, two
+// versions of a realm. The resolver doesn't say which it read, so what is
+// used must then equal both, and is refused when they differ.
+type realmEntity struct{ source, realm, euid string }
 
 // indexRealm records the validated entities below dir as those of the realm
 // tree rf roots. realmresolve takes a reference qualified with the root's ID
 // or with that of a sub-realm it lists to mean any entity of the tree.
-func (v *schemaValidator) indexRealm(dir string, rf *entity.RealmFile) error {
+func (v *schemaValidator) indexRealm(source, dir string, rf *entity.RealmFile) error {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return fmt.Errorf("resolving %s: %w", dir, err)
@@ -204,7 +212,7 @@ func (v *schemaValidator) indexRealm(dir string, rf *entity.RealmFile) error {
 	var add func(*entity.File)
 	add = func(f *entity.File) {
 		for _, n := range names {
-			k := realmEntity{n, f.Entity.ID}
+			k := realmEntity{source, n, f.Entity.ID}
 			v.entities[k] = append(v.entities[k], f)
 		}
 		for i := range f.SubEntities {
@@ -233,20 +241,26 @@ func (r *checkRun) checkConsumed(v *schemaValidator) error {
 			return fmt.Errorf("%s: entity %s %w", rf.Path, rf.File.Entity.ID, errNotValidated)
 		}
 	}
-	for _, c := range r.chains {
-		for _, hop := range append([]inherit.Hop{c.Entity}, c.Ancestors...) {
-			if err := v.checkEntity(hop.RealmID, hop.Entity); err != nil {
-				return fmt.Errorf("checking an inheritance chain: %w", err)
+	// By source, not from r.chains, which merges the sources by EUID.
+	for source, t := range r.realmTrees {
+		if t.resolved == nil {
+			continue
+		}
+		for _, c := range t.resolved.Inheritance {
+			for _, hop := range append([]inherit.Hop{c.Entity}, c.Ancestors...) {
+				if err := v.checkEntity(source, hop.RealmID, hop.Entity); err != nil {
+					return fmt.Errorf("checking an inheritance chain: %w", err)
+				}
 			}
 		}
 	}
-	for _, bySource := range r.extended {
+	for source, bySource := range r.extended {
 		for key, targets := range bySource {
 			// The realm of the note, which an unqualified reference is in.
 			from, _, _ := strings.Cut(key, ":")
 			for _, t := range targets {
-				if !v.hasRule(from, t) {
-					return fmt.Errorf("rule %s, named by an extends note, %w", t.ID, errNotValidated)
+				if err := v.checkRule(source, from, t); err != nil {
+					return fmt.Errorf("checking an extends note: %w", err)
 				}
 			}
 		}
@@ -254,34 +268,50 @@ func (r *checkRun) checkConsumed(v *schemaValidator) error {
 	return nil
 }
 
-func (v *schemaValidator) checkEntity(realm string, f *entity.File) error {
-	same := func(ok *entity.File) bool { return reflect.DeepEqual(ok, f) }
-	if slices.ContainsFunc(v.entities[realmEntity{realm, f.Entity.ID}], same) {
-		return nil
+func (v *schemaValidator) checkEntity(source, realm string, f *entity.File) error {
+	copies := v.entities[realmEntity{source, realm, f.Entity.ID}]
+	matched := 0
+	for _, ok := range copies {
+		if reflect.DeepEqual(ok, f) {
+			matched++
+		}
 	}
-	return fmt.Errorf("entity %s of %s %w", f.Entity.ID, realm, errNotValidated)
+	switch {
+	case matched == 0:
+		return fmt.Errorf("entity %s of %s %w", f.Entity.ID, realm, errNotValidated)
+	case matched < len(copies):
+		return fmt.Errorf("entity %s of %s %w", f.Entity.ID, realm, errDifferingCopies)
+	}
+	return nil
 }
 
-// hasRule reports whether t, named by a note in the realm from, is a
-// validated rule of the realm the note means.
-func (v *schemaValidator) hasRule(from string, t inherit.Extended) bool {
+// checkRule reports an error unless t, named by a note in the realm from, is
+// the validated rule of the realm the note means.
+func (v *schemaValidator) checkRule(source, from string, t inherit.Extended) error {
 	realm, id := from, t.ID
 	if q, rest, qualified := strings.Cut(t.ID, ":"); qualified {
 		realm, id = q, rest
 	}
 	i := strings.LastIndex(id, "-")
 	if i < 0 {
-		return false
+		return fmt.Errorf("rule %s, named by an extends note, %w", t.ID, errNotValidated)
 	}
-	for _, f := range v.entities[realmEntity{realm, id[:i]}] {
-		for j := range f.Rules {
-			rule := &f.Rules[j]
-			if rule.ID == id && rule.Revision == t.Revision && rule.Body == t.Body {
-				return true
-			}
+	copies := v.entities[realmEntity{source, realm, id[:i]}]
+	matched := 0
+	for _, f := range copies {
+		if slices.ContainsFunc(f.Rules, func(rule entity.Rule) bool {
+			return rule.ID == id && rule.Revision == t.Revision && rule.Body == t.Body
+		}) {
+			matched++
 		}
 	}
-	return false
+	switch {
+	case matched == 0:
+		return fmt.Errorf("rule %s, named by an extends note, %w", t.ID, errNotValidated)
+	case matched < len(copies):
+		return fmt.Errorf("rule %s, named by an extends note, %w", t.ID, errDifferingCopies)
+	}
+	return nil
 }
 
 // checkManifest reports an error when used, the resolver's manifest of the

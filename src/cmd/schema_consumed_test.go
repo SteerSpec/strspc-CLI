@@ -311,7 +311,7 @@ func TestValidateDependenciesComparesEverySnapshot(t *testing.T) {
 	stale.Realm.Title = "as another source read it"
 
 	r := &checkRun{ctx: context.Background(), cwd: t.TempDir()}
-	err = r.validateDependencies(newSchemaValidator(r.ctx), []depRealm{
+	err = r.validateDependencies(newSchemaValidator(r.ctx), "./rules/", []depRealm{
 		{realm: &realmresolve.ResolvedRealm{Dir: dir, Realm: same}},
 		{realm: &realmresolve.ResolvedRealm{Dir: dir, Realm: &stale}},
 	})

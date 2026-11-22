@@ -423,7 +423,7 @@ func (r *checkRun) validateRuleSchemas() error {
 			return fmt.Errorf("validating a rule file: %w", err)
 		}
 	}
-	var deps []depRealm
+	deps := map[string][]depRealm{} // by source
 	for _, s := range slices.Sorted(maps.Keys(r.realmTrees)) {
 		t := r.realmTrees[s]
 		if err := v.validateManifestIn(t.dir); err != nil {
@@ -432,7 +432,7 @@ func (r *checkRun) validateRuleSchemas() error {
 		if err := v.checkManifest(t.dir, t.manifest, nil); err != nil {
 			return fmt.Errorf("checking a source realm: %w", err)
 		}
-		if err := v.indexRealm(t.dir, t.manifest); err != nil {
+		if err := v.indexRealm(s, t.dir, t.manifest); err != nil {
 			return fmt.Errorf("indexing a source realm: %w", err)
 		}
 		if t.resolved == nil {
@@ -446,10 +446,12 @@ func (r *checkRun) validateRuleSchemas() error {
 				return fmt.Errorf("checking a sub-realm: %w", err)
 			}
 		}
-		deps = append(deps, sourceDependencies(s, t)...)
+		deps[s] = sourceDependencies(s, t)
 	}
-	if err := r.validateDependencies(v, deps); err != nil {
-		return fmt.Errorf("validating dependencies: %w", err)
+	for _, s := range slices.Sorted(maps.Keys(deps)) {
+		if err := r.validateDependencies(v, s, deps[s]); err != nil {
+			return fmt.Errorf("validating the dependencies of %s: %w", s, err)
+		}
 	}
 	// Last: the validations above all add to the manifests that chose a schema.
 	if err := v.validateGoverning(); err != nil {

@@ -107,3 +107,77 @@ func TestSchemaValidatorRefusesAmbiguousKeys(t *testing.T) {
 		})
 	}
 }
+
+// setupSameIDCopy writes a second dev.lib in copy/, reached from another
+// source or, through dev.mid, from the same one.
+func setupSameIDCopy(t *testing.T, where string) (dir, diff string) {
+	t.Helper()
+	sources := []string{"./rules/"}
+	if where == "another source" {
+		sources = append(sources, "./rules2/")
+	}
+	dir, diff = setupInheritProject(t, "null", sources...)
+	rules := filepath.Join(dir, "rules")
+	writeInheritEntity(t, rules, "APP", "dev.lib:ACCT", inheritRule{id: "APP-001", state: "I"})
+
+	from := `{"realm_id": "dev.lib", "version": "2.0.0", "source": "../copy/"}`
+	if where == "another source" {
+		writeRealmManifest(t, filepath.Join(dir, "rules2"), "dev.two", from)
+		writeInheritEntity(t, filepath.Join(dir, "rules2"), "TWO", "dev.lib:ACCT", inheritRule{id: "TWO-001", state: "I"})
+	} else {
+		writeRealmManifest(t, rules, "dev.app",
+			`{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}`,
+			`{"realm_id": "dev.mid", "version": "1.0.0", "source": "../mid/"}`)
+		writeRealmManifest(t, filepath.Join(dir, "mid"), "dev.mid", from)
+		writeInheritEntity(t, filepath.Join(dir, "mid"), "MID", "dev.lib:ACCT", inheritRule{id: "MID-001", state: "I"})
+		writeInheritEntity(t, rules, "APPMID", "dev.mid:MID", inheritRule{id: "APPMID-001", state: "I"})
+	}
+	writeRefsFile(t, filepath.Join(dir, "copy"), "realm.json",
+		`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.lib", "title": "t", "version": "2.0.0"}}`)
+	data, err := os.ReadFile(filepath.Join(dir, "lib", "ACCT.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeInheritFile(t, filepath.Join(dir, "copy"), "ACCT", string(data))
+	return dir, diff
+}
+
+// A copy that declares the same realm ID mustn't vouch either.
+func TestCheckConsumedTellsSameIDRealmsApart(t *testing.T) {
+	for _, where := range []string{"another source", "the same source"} {
+		t.Run(where, func(t *testing.T) {
+			dir, diff := setupSameIDCopy(t, where)
+			_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+			assertExit(t, err, exitOK) // identical copies are fine
+
+			r := &checkRun{ctx: context.Background(), out: &bytes.Buffer{}, errOut: &bytes.Buffer{}, cwd: dir}
+			if err := r.loadConfig(); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.resolveRules(); err != nil {
+				t.Fatal(err)
+			}
+			p := filepath.Join(dir, "lib", "ACCT.json")
+			data, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			changed := bytes.Replace(data, []byte("Rule ACCT-002."), []byte("Rule changed."), 1)
+			if err := os.WriteFile(p, changed, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := r.validateRuleSchemas(); !errors.Is(err, errNotValidated) && !errors.Is(err, errDifferingCopies) {
+				t.Errorf("error = %v, want a refusal", err)
+			}
+		})
+	}
+}
+
+// Two sources may use two versions of one realm.
+func TestCheckConsumedAcceptsVersionsBySource(t *testing.T) {
+	dir, diff := setupSameIDCopy(t, "another source")
+	writeInheritEntity(t, filepath.Join(dir, "copy"), "ACCT", "", inheritRule{id: "ACCT-003", state: "I"})
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitOK)
+}
