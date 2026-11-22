@@ -110,8 +110,10 @@ changes during the run, the check exits 2 and asks you to run it again. To notic
 well, the check resolves each source realm again, from the cache only: a change to what is inherited, or to whether a rule
 named by an `extends` note is live (not Abandoned, Terminated or superseded), counts. It also exits 2 when one
 source reaches two versions of a realm that differ in an entity it inherits or extends (or of which one
-lacks it), or in whether an extended rule is live, as it can't then tell which was evaluated; two sources
-may use different versions. A file with a key twice in one object, in any case, is
+lacks it), or in whether a rule named by an `extends` note is live, in either direction: live in the version
+the note's realm declares and not in the other, or the reverse. It can't then tell which was evaluated, so
+it refuses on every run until the source uses one version, for instance after a rule is Terminated in a new
+release that a dependency doesn't use yet. Two sources may use different versions. A file with a key twice in one object, in any case, is
 refused as well, as the schema and the parser would read it differently.
 
 `strspc rule verify`, and so `strspc rule promote` to Implemented, run the same validation. Each realm

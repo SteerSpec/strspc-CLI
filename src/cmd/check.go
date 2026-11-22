@@ -461,7 +461,10 @@ func (r *checkRun) validateRuleSchemas() error {
 	if err := r.checkConsumed(v); err != nil {
 		return fmt.Errorf("checking what will be evaluated: %w", err)
 	}
-	// After checkConsumed, whose errors say which entity or rule it is.
+	if err := r.checkExtendsCopies(v); err != nil {
+		return fmt.Errorf("checking the copies of extended rules: %w", err)
+	}
+	// After those two, whose errors say which entity or rule it is.
 	if err := r.checkResolutionCurrent(); err != nil {
 		return fmt.Errorf("checking that the resolution is current: %w", err)
 	}

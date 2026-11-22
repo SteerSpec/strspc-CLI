@@ -226,8 +226,10 @@ type realmName struct{ source, realm string }
 
 // realmCopy is what was validated of one directory of a realm.
 type realmCopy struct {
-	entities   map[string][]*entity.File // by EUID
-	superseded map[string]bool           // the IDs of the rules superseded in it
+	root         string // the realm ID of the directory
+	dependencies []entity.RealmDep
+	entities     map[string][]*entity.File // by EUID
+	superseded   map[string]bool           // the IDs of the rules superseded in it
 }
 
 // live reports whether rule is in force in the copy (RUL-011), judged as
@@ -246,7 +248,12 @@ func (v *schemaValidator) indexRealm(source, dir string, rf *entity.RealmFile) e
 	if err != nil {
 		return fmt.Errorf("resolving %s: %w", dir, err)
 	}
-	tree := realmCopy{entities: map[string][]*entity.File{}, superseded: map[string]bool{}}
+	tree := realmCopy{
+		root:         rf.Realm.ID,
+		dependencies: rf.Dependencies,
+		entities:     map[string][]*entity.File{},
+		superseded:   map[string]bool{},
+	}
 	var add func(*entity.File)
 	add = func(f *entity.File) {
 		tree.entities[f.Entity.ID] = append(tree.entities[f.Entity.ID], f)
