@@ -238,3 +238,32 @@ func TestSchemaFetchAbsoluteSource(t *testing.T) {
 	cachedSchema(t, cache, "versions/1.2.3/entity/v1.json")
 	cachedSchema(t, cache, "versions/1.3.0/entity/v1.json")
 }
+
+func TestNetworkOrDeviceVolume(t *testing.T) {
+	for vol, want := range map[string]bool{
+		"": false, "C:": false, "z:": false,
+		`\\host\share`: true, `//host/share`: true, `\\?\UNC\host\share`: true,
+		`\??\UNC\host\share`: true, `\\.\pipe`: true, `\\`: true,
+	} {
+		if got := networkOrDeviceVolume(vol); got != want {
+			t.Errorf("networkOrDeviceVolume(%q) = %v, want %v", vol, got, want)
+		}
+	}
+}
+
+func TestSchemaFetchRefusesNetworkSource(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("only Windows has UNC and device paths")
+	}
+	serveSchemaCache(t)
+	for _, src := range []string{
+		`\\host.invalid\share\rules`, `//host.invalid/share/rules`,
+		`\\?\UNC\host.invalid\share\rules`, `\??\UNC\host.invalid\share\rules`,
+	} {
+		project := t.TempDir()
+		writeRefsFile(t, project, ".strspc/config.yaml", "rules:\n  - source: '"+src+"'\n    scope: local\n")
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", project)
+		assertExit(t, err, exitConfig)
+		testutil.AssertContains(t, err.Error(), "network or device path")
+	}
+}

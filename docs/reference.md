@@ -39,6 +39,9 @@ Run `strspc schema fetch` once while online to validate offline afterwards, for 
 pre-commit hook runs `strspc check`. In CI, cache the directory or set `STRSPC_SCHEMA_CACHE` to a
 path the workflow caches.
 
+On Windows, `schema fetch` refuses a source in `.strspc/config.yaml` that is a network or device path
+(`\\host\share`). Pass a share you trust with `--dir`.
+
 `schema fetch` and `schema update` mark the cache with a `.strspc-schema-cache` file. `schema clear`
 runs only on the default location or a marked directory. It deletes only the schema files strspc
 writes (`config/v1.json`, `entity/v1.json`, `realm/v1.json`, the same two below `versions/X.Y.Z/`,

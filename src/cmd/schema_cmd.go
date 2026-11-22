@@ -216,6 +216,11 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 			continue
 		}
 		dir := r.Source
+		// Before any file system call, as the config is repository content.
+		// --dir is typed by the user, so it isn't limited.
+		if networkOrDeviceVolume(filepath.VolumeName(dir)) {
+			return nil, fmt.Errorf("source %q is a network or device path, which schema fetch doesn't read from a config: pass it with --dir if you trust it", dir)
+		}
 		if !filepath.IsAbs(dir) { // as check resolves a source
 			dir = filepath.Join(cwd, dir)
 		}
@@ -229,6 +234,13 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 		}
 	}
 	return dirs, nil
+}
+
+// networkOrDeviceVolume reports whether vol, as filepath.VolumeName returns
+// it, is anything but a drive letter: a UNC share or a device path, in any of
+// the spellings Windows takes, \??\ included. It is always "" elsewhere.
+func networkOrDeviceVolume(vol string) bool {
+	return vol != "" && (len(vol) != 2 || vol[1] != ':')
 }
 
 // versionsOfRealmTree calls add with the core version the realm in dir pins,
