@@ -129,7 +129,7 @@ func TestSchemaFetchReportsSchemaNotCached(t *testing.T) {
 	if err == nil {
 		t.Fatal("fetch succeeded although config/v1.json couldn't be cached")
 	}
-	testutil.AssertContains(t, out, "couldn't be written to the cache as config/v1.json")
+	testutil.AssertContains(t, out, "not in the cache as config/v1.json: it couldn't be written")
 	testutil.AssertContains(t, out, "ok      latest                     entity/v1.json")
 }
 
@@ -265,5 +265,39 @@ func TestSchemaFetchRefusesNetworkSource(t *testing.T) {
 		_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", project)
 		assertExit(t, err, exitConfig)
 		testutil.AssertContains(t, err.Error(), "network or device path")
+	}
+}
+
+func TestSchemaUpdateKeepsCopyWhenStagingIsEmpty(t *testing.T) {
+	cache := t.TempDir()
+	writeRefsFile(t, cache, "config/v1.json", "the last usable copy")
+	// The fetcher ignores a failed write, so staging can lack the file.
+	staging := filepath.Join(cache, ".update-1")
+	if err := os.Mkdir(staging, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := moveIntoCache(staging, cache, "config/v1.json"); err == nil {
+		t.Error("moving a file that was never staged succeeded")
+	}
+	if got := cachedSchema(t, cache, "config/v1.json"); got != "the last usable copy" {
+		t.Errorf("cached copy = %q, want it kept", got)
+	}
+}
+
+func TestSchemaClearStaysInCacheWithPatternInPath(t *testing.T) {
+	parent := t.TempDir()
+	cache := filepath.Join(parent, "cache[1]")
+	writeRefsFile(t, cache, ".update-7/config/v1.json", "{}")
+	// cache[1], read as a pattern, matches this directory.
+	writeRefsFile(t, parent, "cache1/.update-7/config/v1.json", "keep")
+
+	if _, err := removeSchemaFiles(cache); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(parent, "cache1", ".update-7", "config", "v1.json")); err != nil {
+		t.Errorf("clear deleted outside the cache: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cache, ".update-7")); err == nil {
+		t.Error("clear left its own staging directory")
 	}
 }
