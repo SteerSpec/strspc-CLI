@@ -100,7 +100,7 @@ func (r *checkRun) validateDependencies(v *schemaValidator, queue []depRealm) er
 		if err := v.validateRealmTree(d.realm.Dir); err != nil {
 			return fmt.Errorf("validating a dependency: %w", err)
 		}
-		if err := v.checkManifest(d.realm.Dir, d.realm.Realm, true); err != nil {
+		if err := v.checkManifest(d.realm.Dir, d.realm.Realm, nil); err != nil {
 			return fmt.Errorf("checking a dependency: %w", err)
 		}
 		for _, decl := range d.realm.Realm.Dependencies {
@@ -160,7 +160,7 @@ func (v *schemaValidator) validateGoverning() error {
 			if chose == nil {
 				return fmt.Errorf("%s %w", filepath.Join(dir, "realm.json"), errNotValidated)
 			}
-			if err := v.checkManifest(dir, chose, true); err != nil {
+			if err := v.checkManifest(dir, chose, nil); err != nil {
 				return fmt.Errorf("checking a governing manifest: %w", err)
 			}
 		}
@@ -229,21 +229,34 @@ func (v *schemaValidator) hasRule(t inherit.Extended) bool {
 }
 
 // checkManifest reports an error when used, the resolver's manifest of the
-// realm in dir, doesn't equal the validated one. withDeps is false for a
-// sub-realm, whose dependencies the resolver merges with its parent's.
-func (v *schemaValidator) checkManifest(dir string, used *entity.RealmFile, withDeps bool) error {
+// realm in dir, doesn't equal the validated one. For a sub-realm, parent is
+// the realm listing it: the resolver replaces a sub-realm's dependencies with
+// the effective list, so that is what the validated one must come to.
+func (v *schemaValidator) checkManifest(dir string, used, parent *entity.RealmFile) error {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return fmt.Errorf("can't validate %s: %w", dir, err)
 	}
 	if ok := v.manifests[abs]; ok != nil {
-		a, b := *ok, *used
-		if !withDeps {
-			a.Dependencies, b.Dependencies = nil, nil
+		want := *ok
+		if parent != nil {
+			want.Dependencies = effectiveDeps(parent.Dependencies, ok.Dependencies)
 		}
-		if reflect.DeepEqual(a, b) {
+		if reflect.DeepEqual(want, *used) {
 			return nil
 		}
 	}
 	return fmt.Errorf("%s %w", filepath.Join(dir, "realm.json"), errNotValidated)
+}
+
+// effectiveDeps is the dependency list realmresolve gives a sub-realm: those
+// of its parent that it doesn't declare itself, then its own.
+func effectiveDeps(parent, own []entity.RealmDep) []entity.RealmDep {
+	out := make([]entity.RealmDep, 0, len(parent)+len(own))
+	for _, d := range parent {
+		if !slices.ContainsFunc(own, func(o entity.RealmDep) bool { return o.RealmID == d.RealmID }) {
+			out = append(out, d)
+		}
+	}
+	return append(out, own...)
 }

@@ -429,7 +429,7 @@ func (r *checkRun) validateRuleSchemas() error {
 		if err := v.validateManifestIn(t.dir); err != nil {
 			return fmt.Errorf("validating a source realm: %w", err)
 		}
-		if err := v.checkManifest(t.dir, t.manifest, true); err != nil {
+		if err := v.checkManifest(t.dir, t.manifest, nil); err != nil {
 			return fmt.Errorf("checking a source realm: %w", err)
 		}
 		if t.resolved == nil {
@@ -439,7 +439,7 @@ func (r *checkRun) validateRuleSchemas() error {
 			if err := v.validateManifestIn(sub.Dir); err != nil {
 				return fmt.Errorf("validating a sub-realm: %w", err)
 			}
-			if err := v.checkManifest(sub.Dir, sub.Realm, false); err != nil {
+			if err := v.checkManifest(sub.Dir, sub.Realm, t.manifest); err != nil {
 				return fmt.Errorf("checking a sub-realm: %w", err)
 			}
 		}

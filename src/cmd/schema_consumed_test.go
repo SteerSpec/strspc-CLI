@@ -275,3 +275,25 @@ func TestSchemaValidatorKeepsTheManifestASelectionWasMadeFrom(t *testing.T) {
 		t.Errorf("error = %v, want errNotValidated", err)
 	}
 }
+
+func TestCheckRefusesSubRealmDependenciesChangedAfterResolution(t *testing.T) {
+	dir, _ := setupInheritProject(t, "null", "./rules/")
+	rules := filepath.Join(dir, "rules")
+	writeInheritEntity(t, rules, "APP", "", inheritRule{id: "APP-001", state: "I"})
+	writeRefsFile(t, rules, "realm.json",
+		`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "a", "version": "1.0.0"}, "sub_realms": ["child"]}`)
+	child := filepath.Join(rules, "child")
+	writeRealmManifest(t, child, "dev.app.child", `{"realm_id": "dev.lib", "version": "1.0.0", "source": "../../lib/"}`)
+
+	r := &checkRun{ctx: context.Background(), out: &bytes.Buffer{}, errOut: &bytes.Buffer{}, cwd: dir}
+	if err := r.loadConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.resolveRules(); err != nil {
+		t.Fatal(err)
+	}
+	writeRealmManifest(t, child, "dev.app.child") // its dependency is gone
+	if err := r.validateRuleSchemas(); !errors.Is(err, errNotValidated) {
+		t.Errorf("error = %v, want errNotValidated", err)
+	}
+}
