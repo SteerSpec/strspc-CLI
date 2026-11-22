@@ -63,8 +63,9 @@ func (s schemasOnly) RoundTrip(req *http.Request) (*http.Response, error) {
 	if resp.StatusCode != http.StatusOK {
 		return resp, nil
 	}
-	defer func() { _ = resp.Body.Close() }()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, maxSchemaDownload+1))
+	body := resp.Body // resp.Body is replaced below
+	defer func() { _ = body.Close() }()
+	data, err := io.ReadAll(io.LimitReader(body, maxSchemaDownload+1))
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", req.URL.Redacted(), err)
 	}
