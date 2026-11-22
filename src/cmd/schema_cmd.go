@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -219,7 +220,8 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("the project's configuration: %w", err)
 	}
-	if _, err := os.Stat(config); errors.Is(err, fs.ErrNotExist) {
+	// Lstat: a dangling link is a config that can't be read, not none at all.
+	if _, err := os.Lstat(config); errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	cfg, err := loadStrspcConfig(filepath.Dir(filepath.Dir(config)))
@@ -332,7 +334,7 @@ func fetchSchemaTargets(cmd *cobra.Command, targets []schemaTarget, refresh bool
 			case err == nil && refresh:
 				err = moveIntoCache(staging, cacheDir, p)
 			case err == nil:
-				err = checkCached(cacheDir, t.version, p)
+				err = checkCached(cacheDir, t.version, p, data)
 			}
 			if err != nil {
 				failed++
@@ -379,19 +381,23 @@ func moveIntoCache(staging, cacheDir, p string) error {
 	return nil
 }
 
-// checkCached reports an error when the schema p of the core release version
-// ("" for the latest schemas) isn't a regular file in the cache after a fetch.
-// The manager's fetcher ignores a failed cache write, and serves the latest
-// schema for a release the server doesn't have. Neither leaves that release
-// usable offline, so the latest copy doesn't stand in for it here.
-func checkCached(cacheDir, version, p string) error {
+// checkCached reports an error unless data, the schema p of the core release
+// version ("" for the latest schemas) a fetch returned, is what the cache now
+// holds. The manager's fetcher ignores a failed cache write, which can leave
+// an older or unusable copy there, and serves the latest schema for a release
+// the server doesn't have. Neither leaves what was fetched usable offline, so
+// the latest copy doesn't stand in for a release here.
+func checkCached(cacheDir, version, p string, data []byte) error {
 	key, why := p, "it couldn't be written"
 	if version != "" {
 		key = "versions/" + version + "/" + p
 		why = "it couldn't be written, or that release doesn't publish it"
 	}
-	if fi, err := os.Lstat(filepath.Join(cacheDir, filepath.FromSlash(key))); err == nil && fi.Mode().IsRegular() {
-		return nil
+	file := filepath.Join(cacheDir, filepath.FromSlash(key))
+	if fi, err := os.Lstat(file); err == nil && fi.Mode().IsRegular() {
+		if cached, err := os.ReadFile(file); err == nil && bytes.Equal(cached, data) {
+			return nil
+		}
 	}
 	return fmt.Errorf("not in the cache as %s: %s", key, why)
 }
@@ -485,6 +491,12 @@ func markSchemaCache(cacheDir string) error {
 	}
 	f, err := os.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			// Another strspc marked it meanwhile; a link still doesn't count.
+			if fi, lerr := os.Lstat(marker); lerr == nil && fi.Mode().IsRegular() {
+				return nil
+			}
+		}
 		return fmt.Errorf("marking the schema cache %s: %w", cacheDir, err)
 	}
 	_, werr := f.WriteString("strspc schema cache\n")
