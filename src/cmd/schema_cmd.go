@@ -59,7 +59,10 @@ func newSchemaCmd() *cobra.Command {
 			"is used offline. A core release's schemas never change; a latest schema is refreshed after\n" +
 			"an hour when the network can be reached.\n\n" +
 			"Without a subcommand, schema lists the cache. `schema fetch` fills it for a project, so\n" +
-			"that validation works offline afterwards.",
+			"that validation works offline afterwards.\n\n" +
+			"Examples:\n" +
+			"  strspc schema\n" +
+			"  " + envSchemaCache + "=/path/to/cache strspc schema",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -86,7 +89,10 @@ func newSchemaFetchCmd() *cobra.Command {
 			"core release that each local realm pins: the local sources of .strspc/config.yaml in path\n" +
 			"(default: the current directory) that hold a realm.json, their sub-realms, and each --dir.\n" +
 			"--core-version adds a release. A schema already cached is not downloaded again. Exits 1\n" +
-			"when a schema can't be fetched and 2 when the configuration or a realm can't be read.",
+			"when a schema can't be fetched and 2 when the configuration or a realm can't be read.\n\n" +
+			"Examples:\n" +
+			"  strspc schema fetch\n" +
+			"  strspc schema fetch --dir ./rules --core-version 1.25.0",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -110,7 +116,9 @@ func newSchemaUpdateCmd() *cobra.Command {
 		Long: "Download the latest config, entity and realm schemas again, even when the cached copy is\n" +
 			"less than an hour old. A copy is replaced only once its download succeeds, so an update\n" +
 			"that fails offline keeps the cache usable. Release schemas never change and are left as\n" +
-			"they are. Exits 1 when a schema can't be fetched.",
+			"they are. Exits 1 when a schema can't be fetched.\n\n" +
+			"Examples:\n" +
+			"  strspc schema update",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -128,7 +136,9 @@ func newSchemaClearCmd() *cobra.Command {
 		Long: "Delete every schema in the cache. The next command that validates downloads the schemas it\n" +
 			"needs again, and fails offline until it can: run `strspc schema fetch` while online. Only the\n" +
 			"default location, or a directory `schema fetch` or `schema update` has used, is cleared; any\n" +
-			"other $" + envSchemaCache + " exits 2.",
+			"other $" + envSchemaCache + " exits 2.\n\n" +
+			"Examples:\n" +
+			"  strspc schema clear",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -166,7 +176,7 @@ func schemaFetchTargets(cwd string, dirs, versions []string) ([]schemaTarget, er
 
 	realms, err := schemaProjectRealms(cwd)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("finding the project's realms: %w", err)
 	}
 	for _, d := range dirs {
 		if _, err := os.Stat(filepath.Join(d, "realm.json")); err != nil {
@@ -176,7 +186,7 @@ func schemaFetchTargets(cwd string, dirs, versions []string) ([]schemaTarget, er
 	}
 	for _, dir := range realms {
 		if err := versionsOfRealmTree(dir, addVersion); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("finding the core releases to fetch: %w", err)
 		}
 	}
 	for _, v := range versions {
@@ -198,7 +208,7 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 	}
 	cfg, err := loadStrspcConfig(cwd)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading the project's configuration: %w", err)
 	}
 	var dirs []string
 	for _, r := range cfg.Rules {
@@ -206,8 +216,13 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 			continue
 		}
 		dir := filepath.Join(cwd, r.Source)
-		if _, err := os.Stat(filepath.Join(dir, "realm.json")); err == nil {
+		// Lstat: a manifest that is there but can't be read must fail the
+		// fetch, as its pin would be missing from the cache.
+		switch _, err := os.Lstat(filepath.Join(dir, "realm.json")); {
+		case err == nil:
 			dirs = append(dirs, dir)
+		case !errors.Is(err, fs.ErrNotExist):
+			return nil, fmt.Errorf("looking for a realm in %s: %w", dir, err)
 		}
 	}
 	return dirs, nil
@@ -215,27 +230,36 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 
 // versionsOfRealmTree calls add with the core version the realm in dir pins,
 // and those of its sub-realms, as deep as realm validate follows them
-// (maxSubRealmDepth). The realm in dir must be readable; a sub-realm that
-// isn't is skipped, as validate skips it (RM009).
+// (maxSubRealmDepth). Every manifest that is there must be readable, or its
+// pin would be silently left out; a listed sub-realm without one pins nothing.
 func versionsOfRealmTree(dir string, add func(string)) error {
-	root, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
-	if err != nil {
-		return fmt.Errorf("reading the realm in %s: %w", dir, err)
-	}
-	var walk func(string, *entity.RealmFile, int)
-	walk = func(d string, rf *entity.RealmFile, depth int) {
+	var walk func(string, int) error
+	walk = func(d string, depth int) error {
+		rf, err := entity.LoadRealm(filepath.Join(d, "realm.json"))
+		if err != nil {
+			return fmt.Errorf("reading the realm in %s: %w", d, err)
+		}
 		if dep := corePin(rf); dep != nil && schemaVersion.MatchString(dep.Version) {
 			add(dep.Version)
 		}
 		if depth >= maxSubRealmDepth {
-			return
+			return nil
 		}
-		for _, sub := range subRealmsOf(d, rf) {
-			walk(sub.dir, sub.rf, depth+1)
+		for _, name := range rf.SubRealms {
+			if !isSubRealmName(name) {
+				continue // RM008
+			}
+			sub := filepath.Join(d, name)
+			if _, err := os.Lstat(filepath.Join(sub, "realm.json")); errors.Is(err, fs.ErrNotExist) {
+				continue // RM009
+			}
+			if err := walk(sub, depth+1); err != nil {
+				return fmt.Errorf("in sub-realm %s: %w", name, err)
+			}
 		}
+		return nil
 	}
-	walk(dir, root, 0)
-	return nil
+	return walk(dir, 0)
 }
 
 // fetchSchemaTargets downloads each target's schemas into the cache. With
@@ -296,7 +320,7 @@ func moveIntoCache(staging, cacheDir, p string) error {
 	src := filepath.Join(staging, filepath.FromSlash(p))
 	dst := filepath.Join(cacheDir, filepath.FromSlash(p))
 	if err := refuseSymlinkedParents(cacheDir, p); err != nil {
-		return err
+		return fmt.Errorf("moving %s: %w", p, err)
 	}
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return fmt.Errorf("updating the cache: %w", err)
@@ -393,7 +417,7 @@ const schemaCacheMarker = ".strspc-schema-cache"
 // unusable cache would report success with nothing cached.
 func prepareSchemaCache(cacheDir string) error {
 	if err := checkSchemaCacheDir(cacheDir); err != nil {
-		return err
+		return fmt.Errorf("preparing the cache: %w", err)
 	}
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return fmt.Errorf("creating the schema cache %s: %w", cacheDir, err)
@@ -503,7 +527,7 @@ func removeSchemaFiles(cacheDir string) (int, error) {
 			}
 			err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 				if err != nil {
-					return err
+					return fmt.Errorf("reading %s: %w", p, err)
 				}
 				if d.IsDir() {
 					dirs = append(dirs, p)
@@ -514,13 +538,13 @@ func removeSchemaFiles(cacheDir string) (int, error) {
 					return nil //nolint:nilerr // not a schema file: left alone
 				}
 				if err := os.Remove(p); err != nil {
-					return err
+					return fmt.Errorf("deleting %s: %w", p, err)
 				}
 				removed++
 				return nil
 			})
 			if err != nil {
-				return removed, err
+				return removed, fmt.Errorf("walking %s: %w", root, err)
 			}
 		}
 	}
@@ -560,6 +584,9 @@ func listSchemaCache(w io.Writer, now time.Time) error {
 				return nil //nolint:nilerr // as above
 			}
 			rel = filepath.ToSlash(rel)
+			if !schemaCacheFile.MatchString(rel) {
+				return nil // not a schema: another file in the same directories
+			}
 			r := row{label: "latest", path: rel, note: "fetched " + info.ModTime().UTC().Format("2006-01-02 15:04 UTC")}
 			if v, rest, ok := strings.Cut(strings.TrimPrefix(rel, "versions/"), "/"); ok && strings.HasPrefix(rel, "versions/") {
 				r.label, r.path = coreRealmID+" "+v, rest

@@ -54,7 +54,7 @@ func serveSchemaCache(t *testing.T) (s *schemaServer, cache string) {
 func writeSchemaProject(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	writeRefsFile(t, dir, ".strspc/config.yaml", "rules:\n  - source: ./rules/\n    scope: local\n  - source: github://o/r@v1.0.0/rules\n    scope: remote\n")
+	writeRefsFile(t, dir, ".strspc/config.yaml", "rules:\n  - source: ./rules/\n    scope: local\n  - source: github://o/r@v1.0.0/rules\n    scope: global\n")
 	writeRefsFile(t, dir, "rules/realm.json", `{"$schema": "./_schema/realm.v1.schema.json", "realm":{"id":"dev.app","title":"t","version":"1.0.0"},`+
 		`"dependencies":[{"realm_id":"dev.steerspec.core","version":"1.2.3","source":"github://SteerSpec/strspc-rules@v1.2.3/rules/core"}],`+
 		`"sub_realms":["sub"]}`)
