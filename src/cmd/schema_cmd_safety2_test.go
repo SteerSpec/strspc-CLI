@@ -117,3 +117,34 @@ func TestSchemaFetchUnwritableCache(t *testing.T) {
 		testutil.AssertContains(t, err.Error(), "can't be written")
 	}
 }
+
+func TestSchemaFetchReportsSchemaNotCached(t *testing.T) {
+	_, cache := serveSchemaCache(t)
+	// A file where the config/ directory belongs: the fetcher downloads
+	// config/v1.json but can't cache it, and says nothing.
+	writeRefsFile(t, cache, "config", "not a directory")
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", t.TempDir())
+	if err == nil {
+		t.Fatal("fetch succeeded although config/v1.json couldn't be cached")
+	}
+	testutil.AssertContains(t, out, "couldn't be written to the cache as config/v1.json")
+	testutil.AssertContains(t, out, "ok      latest                     entity/v1.json")
+}
+
+func TestSchemaClearKeepsUnknownUpdateDirs(t *testing.T) {
+	_, cache := serveSchemaCache(t)
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", t.TempDir())
+	assertExit(t, err, exitOK)
+	writeRefsFile(t, cache, ".update-mine/data", "keep")
+	writeRefsFile(t, cache, ".update-42/config/v1.json", "{}")
+
+	_, err = testutil.ExecuteCommand(NewRootCmd(), "schema", "clear")
+	assertExit(t, err, exitOK)
+	if _, err := os.Stat(filepath.Join(cache, ".update-mine", "data")); err != nil {
+		t.Errorf("clear removed .update-mine, which schema update didn't create: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cache, ".update-42")); err == nil {
+		t.Error("clear left the staging directory .update-42")
+	}
+}
