@@ -19,7 +19,7 @@ import (
 
 // newSchemaFetcher creates the schema fetcher used by lint and realm validate.
 // Package-level so tests can override it.
-var newSchemaFetcher = schema.New
+var newSchemaFetcher = newCachedSchemaFetcher
 
 // realmSchemaOptions selects the schemas for the realm in dir: those of the core
 // version it pins or, with core, its own _schema/. Only the caller can make that

@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -27,13 +26,10 @@ const configSchemaTimeout = 5 * time.Second
 
 // newConfigSchemaFetcher builds the fetcher used to validate config.yaml.
 // Package-level so tests can serve the schema from a local server or disable
-// the validation by returning nil. Schemas are cached under .strspc/cache/
-// because the check never writes outside .strspc/.
-var newConfigSchemaFetcher = func(cwd string) *schema.Fetcher {
-	return schema.New(
-		schema.WithCacheDir(filepath.Join(cwd, ".strspc", "cache", "schemas")),
-		schema.WithClient(&http.Client{Timeout: configSchemaTimeout}),
-	)
+// the validation by returning nil. The schema is kept in the shared schema
+// cache (schemaCacheDir), which `strspc schema fetch` fills.
+var newConfigSchemaFetcher = func(string) *schema.Fetcher {
+	return newCachedSchemaFetcher(schema.WithClient(&http.Client{Timeout: configSchemaTimeout}))
 }
 
 // validateConfigSchema checks the raw config.yaml against the published
