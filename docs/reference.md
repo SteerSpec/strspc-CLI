@@ -43,6 +43,9 @@ On Windows, `schema fetch` refuses a source in `.strspc/config.yaml` that is a n
 (`\\host\share`), and any symbolic link or junction in the paths it reads from a project. Pass a share,
 or a linked realm, that you trust with `--dir`.
 
+A download that isn't a JSON schema, such as a proxy's sign-in page, is never cached: the copy already
+cached stays in use.
+
 `schema fetch` and `schema update` mark the cache with a `.strspc-schema-cache` file. `schema clear`
 runs only on the default location or a marked directory. It deletes only the schema files strspc
 writes (`config/v1.json`, `entity/v1.json`, `realm/v1.json`, the same two below `versions/X.Y.Z/`,
