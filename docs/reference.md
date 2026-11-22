@@ -42,7 +42,8 @@ path the workflow caches.
 `schema fetch` and `schema update` mark the cache with a `.strspc-schema-cache` file. `schema clear`
 runs only on the default location or a marked directory. It deletes only the schema files strspc
 writes (`config/v1.json`, `entity/v1.json`, `realm/v1.json`, the same two below `versions/X.Y.Z/`,
-and their temporary files) and the folders that leaves empty. Other files and symbolic links are kept.
+and their temporary files), also inside the `.update-N` folders an interrupted update leaves, and
+then the empty folders there. Other files and symbolic links are kept.
 
 > [!WARNING]
 > Point `STRSPC_SCHEMA_CACHE` at a directory used only for schemas. In any other directory, a
