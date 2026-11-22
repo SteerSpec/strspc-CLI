@@ -321,7 +321,13 @@ func fetchSchemaTargets(cmd *cobra.Command, targets []schemaTarget, refresh bool
 		}
 		fetcher := newSchemaFetcher(opts...)
 		for _, p := range t.paths {
-			_, err := fetcher.Fetch(cmd.Context(), p)
+			data, err := fetcher.Fetch(cmd.Context(), p)
+			if err == nil {
+				// Downloads are checked already: this is a copy from the cache.
+				if bad := checkSchemaDoc(data); bad != nil {
+					err = fmt.Errorf("the cached copy can't be used, run `strspc schema clear` and fetch again: %w", bad)
+				}
+			}
 			switch {
 			case err == nil && refresh:
 				err = moveIntoCache(staging, cacheDir, p)

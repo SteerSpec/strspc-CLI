@@ -198,7 +198,7 @@ func doctorConfigChecks(env *doctorEnv) ([]doctorResult, *doctorProject) {
 // schema in the shared schema cache.
 func doctorConfigSchemaCheck(env *doctorEnv, raw []byte) doctorResult {
 	const g = "config"
-	fetcher := schema.New(append(schemaCacheOptionsFrom(env.getenv, env.userCacheDir), schema.WithClient(env.httpClient))...)
+	fetcher := schema.New(append(schemaCacheOptionsFrom(env.getenv, env.userCacheDir), schema.WithClient(env.httpClient), withSchemasOnly())...)
 	compiled, err := compileConfigSchema(env.ctx, fetcher)
 	if err != nil {
 		if errors.Is(err, errDoctorOffline) {

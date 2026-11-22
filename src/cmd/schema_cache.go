@@ -52,7 +52,9 @@ func schemaCacheOptionsFrom(getenv func(string) string, userCacheDir func() (str
 }
 
 // newCachedSchemaFetcher builds a fetcher on the shared schema cache. Options
-// given after the cache, such as a test's WithCacheDir, take precedence.
+// given after the cache, such as a test's WithCacheDir, take precedence. It
+// caches only schemas (schemasOnly), whatever client the options give it.
 func newCachedSchemaFetcher(opts ...schema.Option) *schema.Fetcher {
-	return schema.New(append(schemaCacheOptionsFrom(os.Getenv, os.UserCacheDir), opts...)...)
+	all := append(schemaCacheOptionsFrom(os.Getenv, os.UserCacheDir), opts...)
+	return schema.New(append(all, withSchemasOnly())...)
 }
