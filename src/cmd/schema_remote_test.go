@@ -48,7 +48,8 @@ func TestCheckValidatesTransitiveGitHubDependencies(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			writeRawCheckConfig(t, dir, fmt.Sprintf(
-				"rules:\n  - source: %s\n    scope: global\nevaluator:\n  provider: \"null\"\n  effort: low\ncache:\n  ttl: 24h\n", tc.source))
+				"rules:\n  - source: %s\n    scope: global\nevaluator:\n  provider: \"null\"\n  effort: low\ncache:\n  ttl: 24h\n", tc.source,
+			))
 			tc.write(t, dir)
 			lib := cachedRemoteDir(dir, "rules/lib")
 			writeRealmManifest(t, lib, "dev.lib", `{"realm_id": "dev.base", "version": "1.0.0", "source": "../base"}`)
