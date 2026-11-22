@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 )
 
 var errAmbiguousKey = errors.New("repeats a key")
@@ -24,7 +25,7 @@ func checkUniqueKeys(data []byte) error {
 	type container struct {
 		object  bool
 		wantKey bool
-		keys    []string
+		keys    map[string]string // by foldKey, as the file spells it
 	}
 	var open []*container
 	for {
@@ -47,19 +48,31 @@ func checkUniqueKeys(data []byte) error {
 				if !ok {
 					return nil
 				}
-				for _, k := range cur.keys {
-					if strings.EqualFold(k, key) {
-						return fmt.Errorf("%w (%q and %q)", errAmbiguousKey, k, key)
-					}
+				folded := foldKey(key)
+				if prev, dup := cur.keys[folded]; dup {
+					return fmt.Errorf("%w (%q and %q)", errAmbiguousKey, prev, key)
 				}
-				cur.keys = append(cur.keys, key)
+				cur.keys[folded] = key
 				cur.wantKey = false
 				continue
 			}
 			cur.wantKey = true // this token starts the key's value
 		}
 		if isDelim {
-			open = append(open, &container{object: delim == '{', wantKey: delim == '{'})
+			open = append(open, &container{object: delim == '{', wantKey: delim == '{', keys: map[string]string{}})
 		}
 	}
+}
+
+// foldKey maps the keys encoding/json takes for one another to one string:
+// each rune becomes the smallest of those it folds with, as strings.EqualFold
+// compares them. Lowering isn't enough: it keeps \u017f apart from s.
+func foldKey(key string) string {
+	return strings.Map(func(r rune) rune {
+		least := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			least = min(least, f)
+		}
+		return least
+	}, key)
 }
