@@ -148,6 +148,21 @@ func TestSchemaValidatorSelectsTheRealmsSchemas(t *testing.T) {
 		t.Errorf("pinned realm label = %q, want its pin", label)
 	}
 
+	// A sub-realm that pins no core release takes its parent's pin, as lint
+	// does; a directory the parent doesn't list doesn't.
+	parent := t.TempDir()
+	writeRefsFile(t, parent, "realm.json", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "a", "version": "1.0.0"}, `+
+		`"dependencies": [{"realm_id": "dev.steerspec.core", "version": "1.21.0", "source": "../core/"}], "sub_realms": ["sub"]}`)
+	unpinned := `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app.x", "title": "x", "version": "1.0.0"}}`
+	writeRefsFile(t, filepath.Join(parent, "sub"), "realm.json", unpinned)
+	writeRefsFile(t, filepath.Join(parent, "other"), "realm.json", unpinned)
+	if _, label := v.realmSchemaFor(filepath.Join(parent, "sub")); label != "dev.steerspec.core 1.21.0" {
+		t.Errorf("unpinned sub-realm label = %q, want its parent's pin", label)
+	}
+	if _, label := v.realmSchemaFor(filepath.Join(parent, "other")); label != "the latest schemas" {
+		t.Errorf("unlisted realm label = %q, want the latest schemas", label)
+	}
+
 	if _, label := v.realmSchemaFor(""); label != "the latest schemas" {
 		t.Errorf("no realm label = %q, want the latest schemas", label)
 	}

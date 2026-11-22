@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -61,10 +62,15 @@ func newSchemaValidator(ctx context.Context) *schemaValidator {
 }
 
 // realmSchemaFor returns the schema options and a label for the realm in dir
-// (dir == "" for a file outside any realm): those of the core release core
-// itself is, or of the core release the realm pins, as lint selects them;
-// otherwise the latest schemas.
+// (dir == "" for a file outside any realm), as lint selects them: those of
+// the core release core itself is, or of the core release the realm pins; for
+// a sub-realm that pins none, those of the realm listing it; otherwise the
+// latest schemas.
 func (v *schemaValidator) realmSchemaFor(dir string) (opts []schema.Option, label string) {
+	return v.realmSchemaAt(dir, 0)
+}
+
+func (v *schemaValidator) realmSchemaAt(dir string, depth int) (opts []schema.Option, label string) {
 	if cached, ok := v.options[dir]; ok {
 		return cached, v.labels[dir]
 	}
@@ -78,11 +84,29 @@ func (v *schemaValidator) realmSchemaFor(dir string) (opts []schema.Option, labe
 			case dep != nil && schemaVersion.MatchString(dep.Version):
 				opts = schema.ForRealm(dir)
 				label = coreRealmID + " " + dep.Version
+			default:
+				if parent, ok := listingRealm(dir); ok && depth < maxSubRealmDepth {
+					opts, label = v.realmSchemaAt(parent, depth+1)
+				}
 			}
 		}
 	}
 	v.options[dir], v.labels[dir] = opts, label
 	return opts, label
+}
+
+// listingRealm returns the directory above dir when the realm.json there
+// lists dir as one of its sub_realms.
+func listingRealm(dir string) (string, bool) {
+	parent := filepath.Dir(dir)
+	if parent == dir {
+		return "", false
+	}
+	rf, err := entity.LoadRealm(filepath.Join(parent, "realm.json"))
+	if err != nil {
+		return "", false
+	}
+	return parent, slices.Contains(rf.SubRealms, filepath.Base(dir))
 }
 
 // compile fetches and compiles schemaPath for the realm in dir.
@@ -171,7 +195,11 @@ func (v *schemaValidator) validateRealmManifest(path string, data []byte) error 
 	if v.done[path] {
 		return nil
 	}
-	if err := v.validate(path, data, filepath.Dir(path), schema.RealmV1Path); err != nil {
+	dir, err := filepath.Abs(filepath.Dir(path))
+	if err != nil {
+		return fmt.Errorf("can't validate %s: %w", path, err)
+	}
+	if err := v.validate(path, data, dir, schema.RealmV1Path); err != nil {
 		return err
 	}
 	v.done[path] = true
