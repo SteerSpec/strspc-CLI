@@ -229,3 +229,49 @@ func TestSchemaValidatorRefusesGoverningManifestChangedSinceSelection(t *testing
 		t.Errorf("error = %v, want errNotValidated", err)
 	}
 }
+
+func TestSchemaValidatorValidatesInheritedFromManifest(t *testing.T) {
+	top := resolvedPath(t.TempDir())
+	// Invalid (no $schema), and it chooses sub's schema by listing it.
+	writeRefsFile(t, top, "realm.json", `{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0"}, "sub_realms": ["sub"]}`)
+	sub := filepath.Join(top, "sub")
+	writeRealmManifest(t, sub, "dev.app.sub")
+	writeInheritEntity(t, sub, "APP", "", inheritRule{id: "APP-001", state: "I"})
+	p := filepath.Join(sub, "APP.json")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := newSchemaValidator(context.Background())
+	if err := v.validateEntityFile(p, data); err != nil {
+		t.Fatal(err)
+	}
+	err = v.validateGoverning()
+	if err == nil {
+		t.Fatal("the parent manifest chose a schema without being validated")
+	}
+	testutil.AssertContains(t, err.Error(), "does not match the realm/v1.json schema")
+}
+
+func TestSchemaValidatorKeepsTheManifestASelectionWasMadeFrom(t *testing.T) {
+	dir := resolvedPath(t.TempDir())
+	writeRealmManifest(t, dir, "dev.app")
+	writeInheritEntity(t, dir, "APP", "", inheritRule{id: "APP-001", state: "I"})
+	p := filepath.Join(dir, "APP.json")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := newSchemaValidator(context.Background())
+	if err := v.validateEntityFile(p, data); err != nil {
+		t.Fatal(err)
+	}
+	writeRealmManifest(t, dir, "dev.changed")
+	// A tree or source pass validates the changed file before validateGoverning runs.
+	if err := v.validateManifestIn(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.validateGoverning(); !errors.Is(err, errNotValidated) {
+		t.Errorf("error = %v, want errNotValidated", err)
+	}
+}

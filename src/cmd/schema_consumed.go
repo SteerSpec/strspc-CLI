@@ -140,21 +140,29 @@ func refersTo(entities map[string]*entity.File, realmID string) bool {
 	return false
 }
 
-// validateGoverning validates each manifest that chose the schema of a
-// validated entity, whether or not a realm above lists it, and requires it to
-// be the manifest the choice was made from. Call it once every entity has
-// been validated.
+// validateGoverning validates each manifest that chose a schema: the nearest
+// one of an entity or the manifest itself, and those above that it inherits a
+// pin from, listed or not. Each must be the manifest the choice was made
+// from. Validating one can bring in those above it, so it goes on until none
+// is left. Call it once everything else has been validated.
 func (v *schemaValidator) validateGoverning() error {
-	for _, dir := range slices.Sorted(maps.Keys(v.governing)) {
-		chose := v.manifests[dir]
-		if err := v.validateManifestIn(dir); err != nil {
-			return err
-		}
-		if chose == nil {
-			return fmt.Errorf("%s %w", filepath.Join(dir, "realm.json"), errNotValidated)
-		}
-		if err := v.checkManifest(dir, chose, true); err != nil {
-			return err
+	checked := map[string]bool{}
+	for len(checked) < len(v.governing) {
+		for _, dir := range slices.Sorted(maps.Keys(v.governing)) {
+			if checked[dir] {
+				continue
+			}
+			checked[dir] = true
+			if err := v.validateManifestIn(dir); err != nil {
+				return err
+			}
+			chose := v.governing[dir]
+			if chose == nil {
+				return fmt.Errorf("%s %w", filepath.Join(dir, "realm.json"), errNotValidated)
+			}
+			if err := v.checkManifest(dir, chose, true); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

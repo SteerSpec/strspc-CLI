@@ -448,7 +448,7 @@ func (r *checkRun) validateRuleSchemas() error {
 	if err := r.validateDependencies(v, deps); err != nil {
 		return err
 	}
-	// After the dependencies: their trees have governing manifests too.
+	// Last: the validations above all add to the manifests that chose a schema.
 	if err := v.validateGoverning(); err != nil {
 		return err
 	}

@@ -48,7 +48,7 @@ type schemaValidator struct {
 	labels    map[string]string            // by realm directory
 	done      map[string]bool              // validated paths
 	entities  map[string][]*entity.File    // parsed from validated bytes, by EUID
-	governing map[string]bool              // realm directories that chose a validated entity's schema
+	governing map[string]*entity.RealmFile // each manifest that chose a schema, as first used for that
 }
 
 func newSchemaValidator(ctx context.Context) *schemaValidator {
@@ -63,7 +63,7 @@ func newSchemaValidator(ctx context.Context) *schemaValidator {
 		labels:    map[string]string{},
 		done:      map[string]bool{},
 		entities:  map[string][]*entity.File{},
-		governing: map[string]bool{},
+		governing: map[string]*entity.RealmFile{},
 	}
 }
 
@@ -82,7 +82,13 @@ func (v *schemaValidator) realmSchemaAt(dir string, depth int) (opts []schema.Op
 	}
 	label = "the latest schemas"
 	if dir != "" {
-		if rf := v.manifest(dir); rf != nil {
+		rf := v.manifest(dir)
+		// Every manifest the choice passes through, kept as it was then:
+		// v.manifests is overwritten when the manifest itself is validated.
+		if _, ok := v.governing[dir]; !ok {
+			v.governing[dir] = rf
+		}
+		if rf != nil {
 			// The options are built from rf: schema.ForRealm would read the file again.
 			switch dep := corePin(rf); {
 			case rf.Realm.ID == coreRealmID && schemaVersion.MatchString(rf.Realm.Version):
@@ -213,9 +219,6 @@ func (v *schemaValidator) validateEntityFile(path string, data []byte) error {
 		return fmt.Errorf("parsing %s: %w", path, err)
 	}
 	v.index(ef)
-	if dir != "" {
-		v.governing[dir] = true
-	}
 	v.done[path] = true
 	return nil
 }

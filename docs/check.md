@@ -97,7 +97,8 @@ validation is skipped and `--verbose` says so.
 **Rule files.** Once the sources are resolved, and before anything is evaluated, the check validates
 what it reads against the entity and realm schemas. That covers four things:
 
-- every entity file of each source, and the nearest `realm.json` above it, listed as a sub-realm or not;
+- every entity file of each source, and each `realm.json` that chose a schema: the nearest one above
+  a file, listed as a sub-realm or not, and the ones it inherits a core pin from;
 - the `realm.json` of each source realm and of its sub-realms;
 - the whole tree of each realm a source or one of its sub-realms depends on, where a listed sub-realm
   without a readable `realm.json` is an error;
