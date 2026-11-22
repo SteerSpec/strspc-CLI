@@ -216,8 +216,13 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 			continue
 		}
 		dir := filepath.Join(cwd, r.Source)
-		if _, err := os.Stat(filepath.Join(dir, "realm.json")); err == nil {
+		// Lstat: a manifest that is there but can't be read must fail the
+		// fetch, as its pin would be missing from the cache.
+		switch _, err := os.Lstat(filepath.Join(dir, "realm.json")); {
+		case err == nil:
 			dirs = append(dirs, dir)
+		case !errors.Is(err, fs.ErrNotExist):
+			return nil, fmt.Errorf("looking for a realm in %s: %w", dir, err)
 		}
 	}
 	return dirs, nil
@@ -225,27 +230,36 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 
 // versionsOfRealmTree calls add with the core version the realm in dir pins,
 // and those of its sub-realms, as deep as realm validate follows them
-// (maxSubRealmDepth). The realm in dir must be readable; a sub-realm that
-// isn't is skipped, as validate skips it (RM009).
+// (maxSubRealmDepth). Every manifest that is there must be readable, or its
+// pin would be silently left out; a listed sub-realm without one pins nothing.
 func versionsOfRealmTree(dir string, add func(string)) error {
-	root, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
-	if err != nil {
-		return fmt.Errorf("reading the realm in %s: %w", dir, err)
-	}
-	var walk func(string, *entity.RealmFile, int)
-	walk = func(d string, rf *entity.RealmFile, depth int) {
+	var walk func(string, int) error
+	walk = func(d string, depth int) error {
+		rf, err := entity.LoadRealm(filepath.Join(d, "realm.json"))
+		if err != nil {
+			return fmt.Errorf("reading the realm in %s: %w", d, err)
+		}
 		if dep := corePin(rf); dep != nil && schemaVersion.MatchString(dep.Version) {
 			add(dep.Version)
 		}
 		if depth >= maxSubRealmDepth {
-			return
+			return nil
 		}
-		for _, sub := range subRealmsOf(d, rf) {
-			walk(sub.dir, sub.rf, depth+1)
+		for _, name := range rf.SubRealms {
+			if !isSubRealmName(name) {
+				continue // RM008
+			}
+			sub := filepath.Join(d, name)
+			if _, err := os.Lstat(filepath.Join(sub, "realm.json")); errors.Is(err, fs.ErrNotExist) {
+				continue // RM009
+			}
+			if err := walk(sub, depth+1); err != nil {
+				return fmt.Errorf("in sub-realm %s: %w", name, err)
+			}
 		}
+		return nil
 	}
-	walk(dir, root, 0)
-	return nil
+	return walk(dir, 0)
 }
 
 // fetchSchemaTargets downloads each target's schemas into the cache. With
@@ -570,6 +584,9 @@ func listSchemaCache(w io.Writer, now time.Time) error {
 				return nil //nolint:nilerr // as above
 			}
 			rel = filepath.ToSlash(rel)
+			if !schemaCacheFile.MatchString(rel) {
+				return nil // not a schema: another file in the same directories
+			}
 			r := row{label: "latest", path: rel, note: "fetched " + info.ModTime().UTC().Format("2006-01-02 15:04 UTC")}
 			if v, rest, ok := strings.Cut(strings.TrimPrefix(rel, "versions/"), "/"); ok && strings.HasPrefix(rel, "versions/") {
 				r.label, r.path = coreRealmID+" "+v, rest

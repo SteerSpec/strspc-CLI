@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
@@ -185,4 +186,43 @@ func TestSchemaUpdateKeepsNonEmptyDirectoryAtSchemaPath(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(cache, "config", "v1.json", "data")); err != nil {
 		t.Errorf("update removed a file that isn't a schema: %v", err)
 	}
+}
+
+func TestSchemaListShowsOnlySchemas(t *testing.T) {
+	_, cache := serveSchemaCache(t)
+	writeRefsFile(t, cache, "config/v1.json", "{}")
+	writeRefsFile(t, cache, "config/settings.json", "{}")
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "schema")
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, out, "config/v1.json")
+	if strings.Contains(out, "settings.json") {
+		t.Errorf("the listing shows a file that isn't a schema:\n%s", out)
+	}
+}
+
+func TestSchemaFetchRefusesUnreadableManifest(t *testing.T) {
+	serveSchemaCache(t)
+	t.Run("sub-realm", func(t *testing.T) {
+		dir := writeSchemaProject(t)
+		writeRefsFile(t, dir, "rules/sub/realm.json", "{")
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", dir)
+		assertExit(t, err, exitConfig)
+		testutil.AssertContains(t, err.Error(), "sub-realm sub")
+	})
+	t.Run("dangling link", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("creating a link needs a privilege here")
+		}
+		dir := writeSchemaProject(t)
+		p := filepath.Join(dir, "rules", "realm.json")
+		if err := os.Remove(p); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join(dir, "nowhere"), p); err != nil {
+			t.Fatal(err)
+		}
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", dir)
+		assertExit(t, err, exitConfig)
+	})
 }
