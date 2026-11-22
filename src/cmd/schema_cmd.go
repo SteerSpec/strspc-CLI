@@ -203,7 +203,12 @@ func schemaFetchTargets(cwd string, dirs, versions []string) ([]schemaTarget, er
 // schemaProjectRealms returns the local sources of the project's config that
 // hold a realm.json. A project without .strspc/config.yaml has none.
 func schemaProjectRealms(cwd string) ([]string, error) {
-	if _, err := os.Stat(filepath.Join(cwd, ".strspc", "config.yaml")); errors.Is(err, fs.ErrNotExist) {
+	// Before any call that follows a link: all of this is project content.
+	config := filepath.Join(".strspc", "config.yaml")
+	if err := checkProjectPath(cwd, config); err != nil {
+		return nil, fmt.Errorf("the project's configuration: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(cwd, config)); errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	cfg, err := loadStrspcConfig(cwd)
@@ -215,7 +220,16 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 		if r.Source == "" || strings.HasPrefix(r.Source, remote.Scheme) {
 			continue
 		}
-		dir := filepath.Join(cwd, r.Source)
+		dir := r.Source
+		// Before any file system call that follows it, as the config is
+		// repository content. --dir is typed by the user, so it isn't limited.
+		// Not Join, which would clean away a .. that follows a link.
+		if err := checkProjectPath(cwd, dir+string(filepath.Separator)+"realm.json"); err != nil {
+			return nil, fmt.Errorf("source %q: %w", dir, err)
+		}
+		if !filepath.IsAbs(dir) { // as check resolves a source
+			dir = filepath.Join(cwd, dir)
+		}
 		// Lstat: a manifest that is there but can't be read must fail the
 		// fetch, as its pin would be missing from the cache.
 		switch _, err := os.Lstat(filepath.Join(dir, "realm.json")); {
@@ -235,6 +249,9 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 func versionsOfRealmTree(dir string, add func(string)) error {
 	var walk func(string, int) error
 	walk = func(d string, depth int) error {
+		if err := checkProjectPath(d, "realm.json"); err != nil {
+			return fmt.Errorf("the realm in %s: %w", d, err)
+		}
 		rf, err := entity.LoadRealm(filepath.Join(d, "realm.json"))
 		if err != nil {
 			return fmt.Errorf("reading the realm in %s: %w", d, err)
@@ -250,6 +267,9 @@ func versionsOfRealmTree(dir string, add func(string)) error {
 				continue // RM008
 			}
 			sub := filepath.Join(d, name)
+			if err := checkProjectPath(d, filepath.Join(name, "realm.json")); err != nil {
+				return fmt.Errorf("in sub-realm %s: %w", name, err)
+			}
 			if _, err := os.Lstat(filepath.Join(sub, "realm.json")); errors.Is(err, fs.ErrNotExist) {
 				continue // RM009
 			}
@@ -325,14 +345,18 @@ func moveIntoCache(staging, cacheDir, p string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return fmt.Errorf("updating the cache: %w", err)
 	}
-	if err := os.Rename(src, dst); err == nil {
+	// Rename replaces a file on every platform, Windows included, and leaves
+	// it as it was on failure. So the cached copy is never removed first.
+	renameErr := os.Rename(src, dst)
+	if renameErr == nil {
 		return nil
 	}
-	// Windows refuses to rename onto an existing file, and no platform
-	// renames a file onto a directory: remove what is there, then retry. Not
-	// RemoveAll: a directory that holds files isn't a cached schema, so it
-	// stays and the update fails.
-	if err := os.Remove(dst); err != nil && !errors.Is(err, fs.ErrNotExist) {
+	if fi, err := os.Lstat(dst); err != nil || !fi.IsDir() {
+		return fmt.Errorf("updating the cache: %w", renameErr)
+	}
+	// No platform renames a file onto a directory. An empty one is replaced;
+	// one that holds files isn't a cached schema, so it stays.
+	if err := os.Remove(dst); err != nil {
 		return fmt.Errorf("updating the cache: %w", err)
 	}
 	if err := os.Rename(src, dst); err != nil {
@@ -343,20 +367,19 @@ func moveIntoCache(staging, cacheDir, p string) error {
 
 // checkCached reports an error when the schema p of the core release version
 // ("" for the latest schemas) isn't a regular file in the cache after a fetch.
-// The manager's fetcher ignores a failed cache write, for instance into a
-// read-only subdirectory, so a fetch alone doesn't prove the schema is cached.
-// A release the server doesn't have is served, and cached, as the latest copy.
+// The manager's fetcher ignores a failed cache write, and serves the latest
+// schema for a release the server doesn't have. Neither leaves that release
+// usable offline, so the latest copy doesn't stand in for it here.
 func checkCached(cacheDir, version, p string) error {
-	keys := []string{p}
+	key, why := p, "it couldn't be written"
 	if version != "" {
-		keys = []string{"versions/" + version + "/" + p, p}
+		key = "versions/" + version + "/" + p
+		why = "it couldn't be written, or that release doesn't publish it"
 	}
-	for _, k := range keys {
-		if fi, err := os.Lstat(filepath.Join(cacheDir, filepath.FromSlash(k))); err == nil && fi.Mode().IsRegular() {
-			return nil
-		}
+	if fi, err := os.Lstat(filepath.Join(cacheDir, filepath.FromSlash(key))); err == nil && fi.Mode().IsRegular() {
+		return nil
 	}
-	return fmt.Errorf("downloaded, but it couldn't be written to the cache as %s", keys[0])
+	return fmt.Errorf("not in the cache as %s: %s", key, why)
 }
 
 // refuseSymlinkedParents reports an error when a directory between cacheDir
@@ -507,13 +530,16 @@ func clearSchemaCache(w io.Writer) error {
 // directory holding them is called.
 func removeSchemaFiles(cacheDir string) (int, error) {
 	bases := []string{cacheDir}
-	stale, _ := filepath.Glob(filepath.Join(cacheDir, ".update-*"))
+	// Not Glob: the cache's own path may hold pattern characters, and would
+	// then match other directories.
+	entries, err := os.ReadDir(cacheDir)
+	if err != nil {
+		return 0, fmt.Errorf("reading %s: %w", cacheDir, err)
+	}
 	var dirs []string
-	for _, s := range stale {
-		if !schemaStagingDir.MatchString(filepath.Base(s)) {
-			continue
-		}
-		if fi, err := os.Lstat(s); err == nil && fi.IsDir() {
+	for _, e := range entries {
+		if e.IsDir() && schemaStagingDir.MatchString(e.Name()) {
+			s := filepath.Join(cacheDir, e.Name())
 			bases = append(bases, s)
 			dirs = append(dirs, s)
 		}
