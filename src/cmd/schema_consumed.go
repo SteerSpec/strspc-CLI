@@ -226,10 +226,10 @@ type realmName struct{ source, realm string }
 
 // realmCopy is what was validated of one directory of a realm.
 type realmCopy struct {
-	root         string // the realm ID of the directory
-	dependencies []entity.RealmDep
-	entities     map[string][]*entity.File // by EUID
-	superseded   map[string]bool           // the IDs of the rules superseded in it
+	root       string                    // the realm ID of the directory
+	declarers  [][]entity.RealmDep       // what each realm that resolves references in it declares
+	entities   map[string][]*entity.File // by EUID
+	superseded map[string]bool           // the IDs of the rules superseded in it
 }
 
 // live reports whether rule is in force in the copy (RUL-011), judged as
@@ -242,17 +242,22 @@ func (c realmCopy) live(rule *entity.Rule) bool {
 
 // indexRealm records the validated entities below dir as a copy of the realm
 // tree rf roots. realmresolve takes a reference qualified with the root's ID
-// or with that of a sub-realm it lists to mean any entity of the tree.
-func (v *schemaValidator) indexRealm(source, dir string, rf *entity.RealmFile) error {
+// or with that of a sub-realm it lists to mean any entity of the tree. subs
+// are a source's sub-realms, which resolve references against dependencies of
+// their own; those of a dependency use its root's.
+func (v *schemaValidator) indexRealm(source, dir string, rf *entity.RealmFile, subs ...*realmresolve.ResolvedRealm) error {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return fmt.Errorf("resolving %s: %w", dir, err)
 	}
 	tree := realmCopy{
-		root:         rf.Realm.ID,
-		dependencies: rf.Dependencies,
-		entities:     map[string][]*entity.File{},
-		superseded:   map[string]bool{},
+		root:       rf.Realm.ID,
+		declarers:  [][]entity.RealmDep{rf.Dependencies},
+		entities:   map[string][]*entity.File{},
+		superseded: map[string]bool{},
+	}
+	for _, sub := range subs {
+		tree.declarers = append(tree.declarers, sub.Realm.Dependencies)
 	}
 	var add func(*entity.File)
 	add = func(f *entity.File) {
@@ -283,10 +288,53 @@ func (v *schemaValidator) indexRealm(source, dir string, rf *entity.RealmFile) e
 	return nil
 }
 
-// matchInEveryCopy reports an error unless each copy of the realm holds euid
-// and matches accepts all it holds of it.
-func (v *schemaValidator) matchInEveryCopy(source, realm, euid string, matches func(realmCopy, *entity.File) bool) error {
-	copies := v.trees[realmName{source, realm}]
+// namedCopies returns the copies that realm can mean in a note of the realm
+// from, and whether it can mean any. To realmresolve a qualifier is the note's
+// own realm or a sub-realm that lists, else a dependency the note's realm
+// declares, else a sub-realm listed by one, which means that dependency's
+// whole tree. So for a sub-realm every copy of the root counts, also one that
+// doesn't list the child (any more); a child declared by itself is a realm of
+// its own and brings in no other copy.
+func (v *schemaValidator) namedCopies(source, from, realm string) ([]realmCopy, bool) {
+	named := v.trees[realmName{source, realm}]
+	if realm == from {
+		return named, true
+	}
+	listedBy := func(root string) bool {
+		return slices.ContainsFunc(named, func(c realmCopy) bool { return c.root == root })
+	}
+	can, roots := false, map[string]bool{}
+	if listedBy(from) {
+		roots[from] = true
+	} else {
+		for _, c := range v.trees[realmName{source, from}] {
+			for _, decls := range c.declarers {
+				if slices.ContainsFunc(decls, func(d entity.RealmDep) bool { return d.RealmID == realm }) {
+					can = true
+					continue
+				}
+				for _, d := range decls {
+					if listedBy(d.RealmID) {
+						roots[d.RealmID] = true
+					}
+				}
+			}
+		}
+	}
+	out := slices.Clone(named)
+	for _, root := range slices.Sorted(maps.Keys(roots)) {
+		for _, c := range v.trees[realmName{source, root}] {
+			if c.root == root {
+				out = append(out, c) // again when it lists realm, which changes no outcome
+			}
+		}
+	}
+	return out, can || len(roots) > 0
+}
+
+// matchInEveryCopy reports an error unless each of copies holds euid and
+// matches accepts all it holds of it.
+func matchInEveryCopy(copies []realmCopy, euid string, matches func(realmCopy, *entity.File) bool) error {
 	matched := 0
 	for _, tree := range copies {
 		files := tree.entities[euid]
@@ -346,7 +394,7 @@ func (r *checkRun) checkConsumed(v *schemaValidator) error {
 
 func (v *schemaValidator) checkEntity(source, realm string, f *entity.File) error {
 	same := func(_ realmCopy, ok *entity.File) bool { return reflect.DeepEqual(ok, f) }
-	if err := v.matchInEveryCopy(source, realm, f.Entity.ID, same); err != nil {
+	if err := matchInEveryCopy(v.trees[realmName{source, realm}], f.Entity.ID, same); err != nil {
 		return fmt.Errorf("entity %s of %s %w", f.Entity.ID, realm, err)
 	}
 	return nil
@@ -369,7 +417,8 @@ func (v *schemaValidator) checkRule(source, from string, t inherit.Extended) err
 		n := slices.IndexFunc(f.Rules, func(rule entity.Rule) bool { return rule.ID == id })
 		return n >= 0 && f.Rules[n].Revision == t.Revision && f.Rules[n].Body == t.Body && c.live(&f.Rules[n])
 	}
-	if err := v.matchInEveryCopy(source, realm, id[:i], same); err != nil {
+	copies, _ := v.namedCopies(source, from, realm) // resolved, so it can name it
+	if err := matchInEveryCopy(copies, id[:i], same); err != nil {
 		return fmt.Errorf("rule %s, named by an extends note, %w", t.ID, err)
 	}
 	return nil
