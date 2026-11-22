@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"path"
 	"path/filepath"
 	"reflect"
@@ -137,6 +138,26 @@ func refersTo(entities map[string]*entity.File, realmID string) bool {
 		}
 	}
 	return false
+}
+
+// validateGoverning validates each manifest that chose the schema of a
+// validated entity, whether or not a realm above lists it, and requires it to
+// be the manifest the choice was made from. Call it once every entity has
+// been validated.
+func (v *schemaValidator) validateGoverning() error {
+	for _, dir := range slices.Sorted(maps.Keys(v.governing)) {
+		chose := v.manifests[dir]
+		if err := v.validateManifestIn(dir); err != nil {
+			return err
+		}
+		if chose == nil {
+			return fmt.Errorf("%s %w", filepath.Join(dir, "realm.json"), errNotValidated)
+		}
+		if err := v.checkManifest(dir, chose, true); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // index records an entity parsed from validated bytes, and its sub-entities.

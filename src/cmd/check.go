@@ -423,13 +423,6 @@ func (r *checkRun) validateRuleSchemas() error {
 			return err
 		}
 	}
-	// A nested realm.json picks the schema of the files below it, whether or
-	// not the realm above lists it.
-	for _, dir := range slices.Sorted(maps.Keys(v.governing)) {
-		if err := v.validateManifestIn(dir); err != nil {
-			return err
-		}
-	}
 	var deps []depRealm
 	for _, s := range slices.Sorted(maps.Keys(r.realmTrees)) {
 		t := r.realmTrees[s]
@@ -453,6 +446,10 @@ func (r *checkRun) validateRuleSchemas() error {
 		deps = append(deps, sourceDependencies(s, t)...)
 	}
 	if err := r.validateDependencies(v, deps); err != nil {
+		return err
+	}
+	// After the dependencies: their trees have governing manifests too.
+	if err := v.validateGoverning(); err != nil {
 		return err
 	}
 	if err := r.checkConsumed(v); err != nil {

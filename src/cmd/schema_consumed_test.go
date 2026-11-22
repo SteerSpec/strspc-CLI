@@ -181,3 +181,51 @@ func TestDependencyOrigin(t *testing.T) {
 		t.Errorf("a local realm got the origin %v", got)
 	}
 }
+
+func TestCheckValidatesUnlistedNestedManifestInDependency(t *testing.T) {
+	dir, diff := setupInheritProject(t, "null", "./rules/")
+	nested := filepath.Join(dir, "lib", "nested")
+	writeInheritEntity(t, nested, "NEST", "", inheritRule{id: "NEST-001", state: "I"})
+	writeRefsFile(t, nested, "realm.json", `{"realm": {"id": "dev.other", "version": "x"}}`)
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, err.Error(), "realm.json does not match the realm/v1.json schema")
+}
+
+// The resolver resolves a dependency's entities, those of its sub-realms too,
+// against the dependency's root dependencies only (realmresolve depNode), so
+// a sub-realm's own dependency is never loaded and needn't be queued.
+func TestCheckDependencySubRealmsOwnDependencyIsNotLoaded(t *testing.T) {
+	dir, diff := setupTransitiveProject(t)
+	lib := filepath.Join(dir, "lib")
+	writeRefsFile(t, lib, "realm.json",
+		`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.lib", "title": "l", "version": "1.0.0"}, "sub_realms": ["sub"]}`)
+	sub := filepath.Join(lib, "sub")
+	writeRealmManifest(t, sub, "dev.lib.sub", `{"realm_id": "dev.base", "version": "1.0.0", "source": "../../base/"}`)
+	writeInheritEntity(t, sub, "SUBACCT", "dev.base:BASE", inheritRule{id: "SUBACCT-001", state: "I"})
+	writeInheritEntity(t, filepath.Join(dir, "rules"), "APP", "dev.lib:SUBACCT", inheritRule{id: "APP-001", state: "I"})
+
+	out, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, out, "realm dev.base is not a dependency of realm dev.lib")
+}
+
+func TestSchemaValidatorRefusesGoverningManifestChangedSinceSelection(t *testing.T) {
+	dir := t.TempDir()
+	writeRealmManifest(t, dir, "dev.app")
+	writeInheritEntity(t, dir, "APP", "", inheritRule{id: "APP-001", state: "I"})
+	p := filepath.Join(dir, "APP.json")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := newSchemaValidator(context.Background())
+	if err := v.validateEntityFile(p, data); err != nil {
+		t.Fatal(err)
+	}
+	writeRealmManifest(t, dir, "dev.changed")
+	if err := v.validateGoverning(); !errors.Is(err, errNotValidated) {
+		t.Errorf("error = %v, want errNotValidated", err)
+	}
+}
