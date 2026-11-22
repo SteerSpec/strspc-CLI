@@ -39,6 +39,20 @@ Run `strspc schema fetch` once while online to validate offline afterwards, for 
 pre-commit hook runs `strspc check`. In CI, cache the directory or set `STRSPC_SCHEMA_CACHE` to a
 path the workflow caches.
 
+`schema fetch` and `schema update` mark the cache with a `.strspc-schema-cache` file. `schema clear`
+runs only on the default location or a marked directory. It deletes only the schema files strspc
+writes (`config/v1.json`, `entity/v1.json`, `realm/v1.json`, the same two below `versions/X.Y.Z/`,
+and their temporary files) and the folders that leaves empty. Other files and symbolic links are kept.
+
+> [!WARNING]
+> Point `STRSPC_SCHEMA_CACHE` at a directory used only for schemas. In any other directory, a
+> fetch overwrites a file that has the path of a schema, such as `config/v1.json`, marks the
+> directory as a cache, and `schema clear` then deletes that file.
+>
+> The cache is trusted like any other file you own. Anyone who can write to it can replace the
+> schemas. `schema update` refuses a folder in the cache that is a symbolic link, but someone who can
+> write to the cache could swap a folder for a link between that check and the move.
+
 ## Environment variables
 
 | Variable | Used for |
