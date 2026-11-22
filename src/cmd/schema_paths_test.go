@@ -119,7 +119,7 @@ func TestSchemaFetchRefusesRootedSourceLink(t *testing.T) {
 func TestCheckCachedWantsTheReleaseItself(t *testing.T) {
 	cache := t.TempDir()
 	writeRefsFile(t, cache, "entity/v1.json", "{}")
-	if err := checkCached(cache, "9.9.9", "entity/v1.json"); err == nil {
+	if err := checkCached(cache, "9.9.9", "entity/v1.json", []byte("{}")); err == nil {
 		t.Error("the latest schema stood in for a release that isn't cached")
 	}
 }
