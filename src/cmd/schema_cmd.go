@@ -73,6 +73,13 @@ func newSchemaCmd() *cobra.Command {
 	cmd.AddCommand(newSchemaFetchCmd(), newSchemaUpdateCmd(), newSchemaClearCmd())
 	for _, c := range append([]*cobra.Command{cmd}, cmd.Commands()...) {
 		c.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return withExitCode(exitConfig, err) })
+		validate := c.Args
+		c.Args = func(cc *cobra.Command, args []string) error {
+			if err := validate(cc, args); err != nil {
+				return withExitCode(exitConfig, err)
+			}
+			return nil
+		}
 	}
 	return cmd
 }
