@@ -71,7 +71,11 @@ func TestSchemaFetchDeepSubRealm(t *testing.T) {
 
 func TestSchemaUpdateReplacesDirectory(t *testing.T) {
 	_, cache := serveSchemaCache(t)
-	writeRefsFile(t, cache, "config/v1.json/stale", "x") // a directory where the schema belongs
+	// An empty directory where the schema belongs. One that holds files is kept:
+	// TestSchemaUpdateKeepsNonEmptyDirectoryAtSchemaPath.
+	if err := os.MkdirAll(filepath.Join(cache, "config", "v1.json"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "update")
 	assertExit(t, err, exitOK)
 	cachedSchema(t, cache, "config/v1.json")

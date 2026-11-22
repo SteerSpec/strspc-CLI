@@ -148,3 +148,41 @@ func TestSchemaClearKeepsUnknownUpdateDirs(t *testing.T) {
 		t.Error("clear left the staging directory .update-42")
 	}
 }
+
+func TestSchemaClearKeepsForeignFilesInStagingDirs(t *testing.T) {
+	_, cache := serveSchemaCache(t)
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", t.TempDir())
+	assertExit(t, err, exitOK)
+	kept := []string{".update-123/data", ".update-123/config/settings.json", ".update-123/nested/config/v1.json"}
+	gone := []string{".update-123/entity/v1.json", ".update-123/realm/.schema-cache-7", ".update-456/config/v1.json"}
+	for _, p := range append(append([]string{}, kept...), gone...) {
+		writeRefsFile(t, cache, p, "{}")
+	}
+
+	_, err = testutil.ExecuteCommand(NewRootCmd(), "schema", "clear")
+	assertExit(t, err, exitOK)
+	for _, p := range kept {
+		if _, err := os.Stat(filepath.Join(cache, filepath.FromSlash(p))); err != nil {
+			t.Errorf("clear removed %s, which schema update didn't write: %v", p, err)
+		}
+	}
+	for _, p := range append(gone, ".update-456", ".update-123/entity") {
+		if _, err := os.Stat(filepath.Join(cache, filepath.FromSlash(p))); err == nil {
+			t.Errorf("%s survived clear", p)
+		}
+	}
+}
+
+func TestSchemaUpdateKeepsNonEmptyDirectoryAtSchemaPath(t *testing.T) {
+	_, cache := serveSchemaCache(t)
+	writeRefsFile(t, cache, "config/v1.json/data", "keep")
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "update")
+	if err == nil {
+		t.Fatal("update succeeded over a directory that holds files")
+	}
+	testutil.AssertContains(t, out, "failed")
+	if _, err := os.Stat(filepath.Join(cache, "config", "v1.json", "data")); err != nil {
+		t.Errorf("update removed a file that isn't a schema: %v", err)
+	}
+}

@@ -305,8 +305,10 @@ func moveIntoCache(staging, cacheDir, p string) error {
 		return nil
 	}
 	// Windows refuses to rename onto an existing file, and no platform
-	// renames a file onto a directory: remove what is there, then retry.
-	if err := os.RemoveAll(dst); err != nil {
+	// renames a file onto a directory: remove what is there, then retry. Not
+	// RemoveAll: a directory that holds files isn't a cached schema, so it
+	// stays and the update fails.
+	if err := os.Remove(dst); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("updating the cache: %w", err)
 	}
 	if err := os.Rename(src, dst); err != nil {
@@ -474,49 +476,52 @@ func clearSchemaCache(w io.Writer) error {
 	return nil
 }
 
-// removeSchemaFiles deletes the schema files and staging directories in
-// cacheDir, then the directories that leaves empty, and returns how many
-// entries it removed. Anything else, and symbolic links, are left alone.
+// removeSchemaFiles deletes the schema files in cacheDir and in the staging
+// directories an interrupted update left there, which have the same layout,
+// then the directories that leaves empty. It returns how many files it
+// removed. Anything else, and symbolic links, are left alone, whatever the
+// directory holding them is called.
 func removeSchemaFiles(cacheDir string) (int, error) {
-	removed := 0
+	bases := []string{cacheDir}
 	stale, _ := filepath.Glob(filepath.Join(cacheDir, ".update-*"))
+	var dirs []string
 	for _, s := range stale {
 		if !schemaStagingDir.MatchString(filepath.Base(s)) {
 			continue
 		}
 		if fi, err := os.Lstat(s); err == nil && fi.IsDir() {
-			if err := os.RemoveAll(s); err != nil {
-				return removed, err
-			}
-			removed++
+			bases = append(bases, s)
+			dirs = append(dirs, s)
 		}
 	}
-	var dirs []string
-	for _, name := range schemaCacheEntries {
-		root := filepath.Join(cacheDir, name)
-		if fi, err := os.Lstat(root); err != nil || !fi.IsDir() {
-			continue
-		}
-		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
+	removed := 0
+	for _, base := range bases {
+		for _, name := range schemaCacheEntries {
+			root := filepath.Join(base, name)
+			if fi, err := os.Lstat(root); err != nil || !fi.IsDir() {
+				continue
 			}
-			if d.IsDir() {
-				dirs = append(dirs, p)
+			err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if d.IsDir() {
+					dirs = append(dirs, p)
+					return nil
+				}
+				rel, err := filepath.Rel(base, p)
+				if err != nil || !d.Type().IsRegular() || !schemaCacheFile.MatchString(filepath.ToSlash(rel)) {
+					return nil //nolint:nilerr // not a schema file: left alone
+				}
+				if err := os.Remove(p); err != nil {
+					return err
+				}
+				removed++
 				return nil
+			})
+			if err != nil {
+				return removed, err
 			}
-			rel, err := filepath.Rel(cacheDir, p)
-			if err != nil || !d.Type().IsRegular() || !schemaCacheFile.MatchString(filepath.ToSlash(rel)) {
-				return nil //nolint:nilerr // not a schema file: left alone
-			}
-			if err := os.Remove(p); err != nil {
-				return err
-			}
-			removed++
-			return nil
-		})
-		if err != nil {
-			return removed, err
 		}
 	}
 	// Deepest first, so a parent is empty once its children are gone.
