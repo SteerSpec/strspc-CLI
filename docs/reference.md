@@ -40,7 +40,8 @@ pre-commit hook runs `strspc check`. In CI, cache the directory or set `STRSPC_S
 path the workflow caches.
 
 On Windows, `schema fetch` refuses a source in `.strspc/config.yaml` that is a network or device path
-(`\\host\share`). Pass a share you trust with `--dir`.
+(`\\host\share`), and any symbolic link or junction in the paths it reads from a project. Pass a share,
+or a linked realm, that you trust with `--dir`.
 
 `schema fetch` and `schema update` mark the cache with a `.strspc-schema-cache` file. `schema clear`
 runs only on the default location or a marked directory. It deletes only the schema files strspc

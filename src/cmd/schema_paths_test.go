@@ -1,23 +1,21 @@
 package cmd
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/schema"
 )
 
-// refuseBelow makes paths below root refused, standing in for a share.
-func refuseBelow(t *testing.T, root string) {
+// refuseLinks makes projectPath refuse links, as it does on Windows.
+func refuseLinks(t *testing.T) {
 	t.Helper()
-	orig := refusedPath
-	refusedPath = func(p string) bool { return strings.HasPrefix(p, root) }
-	t.Cleanup(func() { refusedPath = orig })
+	orig := refuseProjectLinks
+	refuseProjectLinks = true
+	t.Cleanup(func() { refuseProjectLinks = orig })
 }
 
 func linkOrSkip(t *testing.T, target, link string) {
@@ -33,48 +31,88 @@ func linkOrSkip(t *testing.T, target, link string) {
 	}
 }
 
-func TestSchemaFetchRefusesLinkToRefusedPath(t *testing.T) {
+// Each target is a realm that would load, so only a refusal fails the fetch.
+func TestSchemaFetchRefusesLinks(t *testing.T) {
 	for _, rel := range []string{".strspc/config.yaml", ".strspc", "rules", "rules/realm.json", "rules/sub", "rules/sub/realm.json"} {
 		t.Run(rel, func(t *testing.T) {
 			serveSchemaCache(t)
-			share := t.TempDir()
-			refuseBelow(t, share)
+			refuseLinks(t)
+			elsewhere := writeSchemaProject(t)
 			dir := writeSchemaProject(t)
-			linkOrSkip(t, filepath.Join(share, "target"), filepath.Join(dir, filepath.FromSlash(rel)))
+			p := filepath.FromSlash(rel)
+			linkOrSkip(t, filepath.Join(elsewhere, p), filepath.Join(dir, p))
 
 			_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", dir)
 			assertExit(t, err, exitConfig)
-			testutil.AssertContains(t, err.Error(), "network or device path")
+			testutil.AssertContains(t, err.Error(), "is a link")
 		})
 	}
 }
 
-func TestCheckProjectPathFollowsChains(t *testing.T) {
-	share := t.TempDir()
-	refuseBelow(t, share)
-	dir := t.TempDir()
-	linkOrSkip(t, share, filepath.Join(dir, "last"))
-	linkOrSkip(t, "last", filepath.Join(dir, "first"))
-	if err := checkProjectPath(dir, "first/realm.json"); err == nil {
-		t.Error("a chain of links to a refused path passed")
-	}
+func TestSchemaFetchRefusesLinkBehindDotDot(t *testing.T) {
+	for _, src := range []string{"missing/../out/", "./missing/../out", "rules/../out/"} {
+		t.Run(src, func(t *testing.T) {
+			serveSchemaCache(t)
+			refuseLinks(t)
+			dir := writeSchemaProject(t)
+			linkOrSkip(t, filepath.Join(writeSchemaProject(t), "rules"), filepath.Join(dir, "out"))
+			writeRefsFile(t, dir, ".strspc/config.yaml", "rules:\n  - source: "+src+"\n    scope: local\n")
 
-	if err := os.MkdirAll(filepath.Join(dir, "real", "inner"), 0o755); err != nil {
-		t.Fatal(err)
+			_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", dir)
+			assertExit(t, err, exitConfig)
+			testutil.AssertContains(t, err.Error(), "is a link")
+		})
 	}
-	linkOrSkip(t, filepath.Join("real", "inner"), filepath.Join(dir, "in"))
-	linkOrSkip(t, share, filepath.Join(dir, "real", "out"))
-	// in/.. is real, not dir.
-	if err := checkProjectPath(dir, "in/../out/realm.json"); err == nil {
-		t.Error("a .. after a link hid a refused path")
-	}
-	if err := checkProjectPath(dir, "in/realm.json"); err != nil {
-		t.Errorf("a link inside the project was refused: %v", err)
-	}
+}
 
-	linkOrSkip(t, "loop", filepath.Join(dir, "loop"))
-	if err := checkProjectPath(dir, "loop"); !errors.Is(err, errTooManyLinks) {
-		t.Errorf("loop: error = %v, want errTooManyLinks", err)
+func TestSchemaFetchRefusesLinkBelowDir(t *testing.T) {
+	for _, rel := range []string{"realm.json", "sub"} {
+		t.Run(rel, func(t *testing.T) {
+			serveSchemaCache(t)
+			refuseLinks(t)
+			realm := filepath.Join(writeSchemaProject(t), "rules")
+			linkOrSkip(t, filepath.Join(writeSchemaProject(t), "rules", rel), filepath.Join(realm, rel))
+
+			_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", t.TempDir(), "--dir", realm)
+			assertExit(t, err, exitConfig)
+			testutil.AssertContains(t, err.Error(), "is a link")
+		})
+	}
+}
+
+func TestSchemaFetchWithoutLinks(t *testing.T) {
+	_, cache := serveSchemaCache(t)
+	refuseLinks(t)
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", writeSchemaProject(t))
+	assertExit(t, err, exitOK)
+	cachedSchema(t, cache, "versions/1.3.0/realm/v1.json")
+}
+
+func TestSchemaFetchFollowsLinksElsewhere(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows refuses links")
+	}
+	_, cache := serveSchemaCache(t)
+	dir := writeSchemaProject(t)
+	linkOrSkip(t, filepath.Join(writeSchemaProject(t), "rules"), filepath.Join(dir, "rules"))
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", dir)
+	assertExit(t, err, exitOK)
+	cachedSchema(t, cache, "versions/1.3.0/realm/v1.json")
+}
+
+func TestSchemaFetchRefusesRootedSourceLink(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("only Windows has rooted paths that aren't absolute")
+	}
+	for _, src := range []string{`/out`, `\out`} {
+		serveSchemaCache(t)
+		dir := writeSchemaProject(t)
+		linkOrSkip(t, filepath.Join(writeSchemaProject(t), "rules"), filepath.Join(dir, "out"))
+		writeRefsFile(t, dir, ".strspc/config.yaml", "rules:\n  - source: '"+src+"'\n    scope: local\n")
+
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", dir)
+		assertExit(t, err, exitConfig)
+		testutil.AssertContains(t, err.Error(), "is a link")
 	}
 }
 
