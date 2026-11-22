@@ -48,7 +48,7 @@ type schemaValidator struct {
 	labels    map[string]string            // by realm directory
 	done      map[string][]byte            // the bytes validated, by path
 	parsed    map[string]*entity.File      // from validated bytes, by absolute path
-	entities  map[realmEntity][]*entity.File
+	trees     map[realmName][]realmCopy
 	governing map[string]*entity.RealmFile // each manifest that chose a schema, as first used for that
 }
 
@@ -64,7 +64,7 @@ func newSchemaValidator(ctx context.Context) *schemaValidator {
 		labels:    map[string]string{},
 		done:      map[string][]byte{},
 		parsed:    map[string]*entity.File{},
-		entities:  map[realmEntity][]*entity.File{},
+		trees:     map[realmName][]realmCopy{},
 		governing: map[string]*entity.RealmFile{},
 	}
 }

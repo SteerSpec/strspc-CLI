@@ -111,6 +111,9 @@ func rehashRealmTree(v *schemaValidator, root *os.Root, top, rel string, res *re
 		if err != nil {
 			return err
 		}
+		if err := v.ctx.Err(); err != nil {
+			return fmt.Errorf("interrupted before writing %s: %w", path, err)
+		}
 		if err := replaceFileIn(root, manifest, out, "realm.json"); err != nil {
 			return err
 		}

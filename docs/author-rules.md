@@ -7,7 +7,7 @@ Author rules through the CLI, which keeps versions and hashes valid. Don't edit 
 Every command that changes an entity file or a `realm.json` validates it against its schema first,
 and leaves it untouched when it doesn't match. That covers `rule`, `note`, `entity`, `realm dep`,
 `realm note`, `realm standards`, `realm contributor`, `entity rehash`, `realm rehash` and
-`realm rewrite-added-by`. `realm dep upgrade` does so before it looks up any release;
+`realm rewrite-added-by`, and `realm add-subrealm` for the parent it writes from. `realm dep upgrade` does so before it looks up any release;
 with `--check` it only reports, and doesn't validate. Fix a file that doesn't match by hand, and `strspc lint` shows each
 violation. The schemas come from the [schema cache](reference.md#schema-cache); when one isn't cached
 and can't be fetched, the command fails until you run `strspc schema fetch` online.

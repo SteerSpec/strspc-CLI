@@ -187,17 +187,21 @@ func (v *schemaValidator) validateGoverning() error {
 	return nil
 }
 
-// realmEntity names an entity as a reference in the resolution of one source
-// does: by a name of the realm tree that holds it, and its EUID. Content is
-// compared within that, so an unchanged copy in another source's dependencies
-// or in another realm can't vouch for what changed in this one.
+// realmName names a realm tree as a reference in the resolution of one
+// source does. Content is compared within that, so an unchanged copy in
+// another source's dependencies or in another realm can't vouch for what
+// changed in this one.
 //
 // One source can still reach two directories with the same realm ID, two
 // versions of a realm. The resolver doesn't say which it read, so what is
-// used must then equal both, and is refused when they differ.
-type realmEntity struct{ source, realm, euid string }
+// used must then be in both, equal, and is refused when they differ or one
+// lacks it: it may have been deleted since.
+type realmName struct{ source, realm string }
 
-// indexRealm records the validated entities below dir as those of the realm
+// realmCopy is the validated entities of one directory of a realm, by EUID.
+type realmCopy map[string][]*entity.File
+
+// indexRealm records the validated entities below dir as a copy of the realm
 // tree rf roots. realmresolve takes a reference qualified with the root's ID
 // or with that of a sub-realm it lists to mean any entity of the tree.
 func (v *schemaValidator) indexRealm(source, dir string, rf *entity.RealmFile) error {
@@ -205,16 +209,10 @@ func (v *schemaValidator) indexRealm(source, dir string, rf *entity.RealmFile) e
 	if err != nil {
 		return fmt.Errorf("resolving %s: %w", dir, err)
 	}
-	names := []string{rf.Realm.ID}
-	for _, sub := range rf.SubRealms {
-		names = append(names, rf.Realm.ID+"."+sub)
-	}
+	tree := realmCopy{}
 	var add func(*entity.File)
 	add = func(f *entity.File) {
-		for _, n := range names {
-			k := realmEntity{source, n, f.Entity.ID}
-			v.entities[k] = append(v.entities[k], f)
-		}
+		tree[f.Entity.ID] = append(tree[f.Entity.ID], f)
 		for i := range f.SubEntities {
 			add(&f.SubEntities[i])
 		}
@@ -223,6 +221,34 @@ func (v *schemaValidator) indexRealm(source, dir string, rf *entity.RealmFile) e
 		if rel, err := filepath.Rel(abs, p); err == nil && filepath.IsLocal(rel) {
 			add(f)
 		}
+	}
+	names := []string{rf.Realm.ID}
+	for _, sub := range rf.SubRealms {
+		names = append(names, rf.Realm.ID+"."+sub)
+	}
+	for _, n := range names {
+		k := realmName{source, n}
+		v.trees[k] = append(v.trees[k], tree)
+	}
+	return nil
+}
+
+// matchInEveryCopy reports an error unless each copy of the realm holds euid
+// and matches accepts all it holds of it.
+func (v *schemaValidator) matchInEveryCopy(source, realm, euid string, matches func(*entity.File) bool) error {
+	copies := v.trees[realmName{source, realm}]
+	matched := 0
+	for _, tree := range copies {
+		files := tree[euid]
+		if len(files) > 0 && !slices.ContainsFunc(files, func(f *entity.File) bool { return !matches(f) }) {
+			matched++
+		}
+	}
+	switch {
+	case matched == 0:
+		return errNotValidated
+	case matched < len(copies):
+		return errDifferingCopies
 	}
 	return nil
 }
@@ -269,18 +295,9 @@ func (r *checkRun) checkConsumed(v *schemaValidator) error {
 }
 
 func (v *schemaValidator) checkEntity(source, realm string, f *entity.File) error {
-	copies := v.entities[realmEntity{source, realm, f.Entity.ID}]
-	matched := 0
-	for _, ok := range copies {
-		if reflect.DeepEqual(ok, f) {
-			matched++
-		}
-	}
-	switch {
-	case matched == 0:
-		return fmt.Errorf("entity %s of %s %w", f.Entity.ID, realm, errNotValidated)
-	case matched < len(copies):
-		return fmt.Errorf("entity %s of %s %w", f.Entity.ID, realm, errDifferingCopies)
+	same := func(ok *entity.File) bool { return reflect.DeepEqual(ok, f) }
+	if err := v.matchInEveryCopy(source, realm, f.Entity.ID, same); err != nil {
+		return fmt.Errorf("entity %s of %s %w", f.Entity.ID, realm, err)
 	}
 	return nil
 }
@@ -296,20 +313,13 @@ func (v *schemaValidator) checkRule(source, from string, t inherit.Extended) err
 	if i < 0 {
 		return fmt.Errorf("rule %s, named by an extends note, %w", t.ID, errNotValidated)
 	}
-	copies := v.entities[realmEntity{source, realm, id[:i]}]
-	matched := 0
-	for _, f := range copies {
-		if slices.ContainsFunc(f.Rules, func(rule entity.Rule) bool {
+	same := func(f *entity.File) bool {
+		return slices.ContainsFunc(f.Rules, func(rule entity.Rule) bool {
 			return rule.ID == id && rule.Revision == t.Revision && rule.Body == t.Body
-		}) {
-			matched++
-		}
+		})
 	}
-	switch {
-	case matched == 0:
-		return fmt.Errorf("rule %s, named by an extends note, %w", t.ID, errNotValidated)
-	case matched < len(copies):
-		return fmt.Errorf("rule %s, named by an extends note, %w", t.ID, errDifferingCopies)
+	if err := v.matchInEveryCopy(source, realm, id[:i], same); err != nil {
+		return fmt.Errorf("rule %s, named by an extends note, %w", t.ID, err)
 	}
 	return nil
 }

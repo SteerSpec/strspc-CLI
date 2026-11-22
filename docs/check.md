@@ -107,7 +107,7 @@ what it reads against the entity and realm schemas. That covers four things:
 
 The rules evaluated must then be the ones validated, source by source and realm by realm: if a file
 changes during the run, the check exits 2 and asks you to run it again. It also exits 2 when one source
-reaches two versions of a realm that differ in an entity it inherits or extends, as it can't then tell
+reaches two versions of a realm that differ in an entity it inherits or extends (or of which one lacks it), as it can't then tell
 which was evaluated; two sources may use different versions. A file with a key twice in one object, in any case, is
 refused as well, as the schema and the parser would read it differently.
 

@@ -206,6 +206,9 @@ Examples:
 					return nil
 				}
 				if !dryRun {
+					if err := validator.ctx.Err(); err != nil {
+						return fmt.Errorf("interrupted before writing %s: %w", path, err)
+					}
 					if err := replaceEntityFile(path, ef); err != nil {
 						return err
 					}

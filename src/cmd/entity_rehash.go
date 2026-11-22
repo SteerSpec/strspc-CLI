@@ -76,6 +76,9 @@ func rehashEntity(v *schemaValidator, path string, data []byte, ef *entity.File)
 	if err := entityops.UpdateMeta(ef); err != nil {
 		return nil, fmt.Errorf("updating metadata for %s: %w", path, err)
 	}
+	if err := v.ctx.Err(); err != nil {
+		return nil, fmt.Errorf("interrupted before writing %s: %w", path, err)
+	}
 	if err := replaceEntityFile(path, ef); err != nil {
 		return nil, err
 	}

@@ -54,12 +54,13 @@ func TestCheckRuleTellsCopiesApart(t *testing.T) {
 	copyWith := func(body string) *entity.File {
 		return &entity.File{Rules: []entity.Rule{{ID: "ACCT-002", Body: body}}}
 	}
-	v.entities[realmEntity{"./rules/", "dev.lib", "ACCT"}] = []*entity.File{copyWith("Old."), copyWith("New.")}
+	tree := func(body string) realmCopy { return realmCopy{"ACCT": {copyWith(body)}} }
+	v.trees[realmName{"./rules/", "dev.lib"}] = []realmCopy{tree("Old."), tree("New.")}
 	if err := v.checkRule("./rules/", "dev.app", used); !errors.Is(err, errDifferingCopies) {
 		t.Errorf("two releases in one source: error = %v, want errDifferingCopies", err)
 	}
-	v.entities[realmEntity{"./one/", "dev.lib", "ACCT"}] = []*entity.File{copyWith("New.")}
-	v.entities[realmEntity{"./two/", "dev.lib", "ACCT"}] = []*entity.File{copyWith("Old.")}
+	v.trees[realmName{"./one/", "dev.lib"}] = []realmCopy{tree("New.")}
+	v.trees[realmName{"./two/", "dev.lib"}] = []realmCopy{tree("Old.")}
 	if err := v.checkRule("./one/", "dev.app", used); !errors.Is(err, errNotValidated) {
 		t.Errorf("another source's release vouched: error = %v", err)
 	}
