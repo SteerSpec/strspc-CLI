@@ -215,7 +215,10 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 		if r.Source == "" || strings.HasPrefix(r.Source, remote.Scheme) {
 			continue
 		}
-		dir := filepath.Join(cwd, r.Source)
+		dir := r.Source
+		if !filepath.IsAbs(dir) { // as check resolves a source
+			dir = filepath.Join(cwd, dir)
+		}
 		// Lstat: a manifest that is there but can't be read must fail the
 		// fetch, as its pin would be missing from the cache.
 		switch _, err := os.Lstat(filepath.Join(dir, "realm.json")); {

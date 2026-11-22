@@ -226,3 +226,15 @@ func TestSchemaFetchRefusesUnreadableManifest(t *testing.T) {
 		assertExit(t, err, exitConfig)
 	})
 }
+
+func TestSchemaFetchAbsoluteSource(t *testing.T) {
+	_, cache := serveSchemaCache(t)
+	realm := filepath.Join(writeSchemaProject(t), "rules")
+	project := t.TempDir()
+	writeRefsFile(t, project, ".strspc/config.yaml", "rules:\n  - source: '"+realm+"'\n    scope: local\n")
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", project)
+	assertExit(t, err, exitOK)
+	cachedSchema(t, cache, "versions/1.2.3/entity/v1.json")
+	cachedSchema(t, cache, "versions/1.3.0/entity/v1.json")
+}
