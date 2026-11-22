@@ -217,3 +217,46 @@ func TestSchemaValidatorTreeErrors(t *testing.T) {
 		t.Error("nothing was recorded as validated")
 	}
 }
+
+func TestSchemaValidatorSelectsFromTheBytesItValidates(t *testing.T) {
+	manifest := func(id, pin, extra string) string {
+		deps := ""
+		if pin != "" {
+			deps = `, "dependencies": [{"realm_id": "dev.steerspec.core", "version": "` + pin + `", "source": "../core/"}]`
+		}
+		return `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "` + id + `", "title": "t", "version": "1.0.0"}` + deps + extra + `}`
+	}
+	top := t.TempDir()
+	sub := filepath.Join(top, "sub")
+	read := manifest("dev.app", "1.21.0", `, "sub_realms": ["sub"]`)
+	// What is on disk by the time the schema is selected isn't what was read.
+	writeRefsFile(t, top, "realm.json", manifest("dev.app", "1.25.0", ""))
+	writeRefsFile(t, sub, "realm.json", manifest("dev.app.sub", "1.25.0", ""))
+
+	v := newSchemaValidator(context.Background())
+	if err := v.validateRealmManifest(filepath.Join(top, "realm.json"), []byte(read)); err != nil {
+		t.Fatal(err)
+	}
+	if _, label := v.realmSchemaFor(top); label != "dev.steerspec.core 1.21.0" {
+		t.Errorf("label = %q, want the pin of the validated bytes", label)
+	}
+	if err := v.validateRealmManifest(filepath.Join(sub, "realm.json"), []byte(manifest("dev.app.sub", "", ""))); err != nil {
+		t.Fatal(err)
+	}
+	if _, label := v.realmSchemaFor(sub); label != "dev.steerspec.core 1.21.0" {
+		t.Errorf("sub-realm label = %q, want the pin of the parent's validated bytes", label)
+	}
+}
+
+func TestSchemaValidatorOwnPinStopsInheritance(t *testing.T) {
+	top := t.TempDir()
+	writeRefsFile(t, top, "realm.json", `{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0"}, `+
+		`"dependencies": [{"realm_id": "dev.steerspec.core", "version": "1.21.0"}], "sub_realms": ["sub"]}`)
+	sub := filepath.Join(top, "sub")
+	writeRefsFile(t, sub, "realm.json", `{"realm": {"id": "dev.app.sub", "title": "s", "version": "1.0.0"}, `+
+		`"dependencies": [{"realm_id": "dev.steerspec.core", "version": "1.22.0-rc.1"}]}`)
+
+	if _, label := newSchemaValidator(context.Background()).realmSchemaFor(sub); label != "the latest schemas" {
+		t.Errorf("label = %q, want the latest schemas, as lint selects for a pin that isn't a release", label)
+	}
+}

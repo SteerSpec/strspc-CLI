@@ -41,11 +41,12 @@ var errSchemaUnavailable = errors.New("schema unavailable")
 // schemaValidator validates files against the entity and realm schemas of
 // the realm holding them, compiling each schema once.
 type schemaValidator struct {
-	ctx      context.Context
-	compiled map[string]*jsonschema.Schema
-	options  map[string][]schema.Option // by realm directory
-	labels   map[string]string          // by realm directory
-	done     map[string]bool            // validated paths
+	ctx       context.Context
+	compiled  map[string]*jsonschema.Schema
+	manifests map[string]*entity.RealmFile // by realm directory; nil when unreadable
+	options   map[string][]schema.Option   // by realm directory
+	labels    map[string]string            // by realm directory
+	done      map[string]bool              // validated paths
 }
 
 func newSchemaValidator(ctx context.Context) *schemaValidator {
@@ -53,11 +54,12 @@ func newSchemaValidator(ctx context.Context) *schemaValidator {
 		ctx = context.Background()
 	}
 	return &schemaValidator{
-		ctx:      ctx,
-		compiled: map[string]*jsonschema.Schema{},
-		options:  map[string][]schema.Option{},
-		labels:   map[string]string{},
-		done:     map[string]bool{},
+		ctx:       ctx,
+		compiled:  map[string]*jsonschema.Schema{},
+		manifests: map[string]*entity.RealmFile{},
+		options:   map[string][]schema.Option{},
+		labels:    map[string]string{},
+		done:      map[string]bool{},
 	}
 }
 
@@ -76,16 +78,21 @@ func (v *schemaValidator) realmSchemaAt(dir string, depth int) (opts []schema.Op
 	}
 	label = "the latest schemas"
 	if dir != "" {
-		if rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json")); err == nil {
+		if rf := v.manifest(dir); rf != nil {
+			// The options are built from rf: schema.ForRealm would read the file again.
 			switch dep := corePin(rf); {
 			case rf.Realm.ID == coreRealmID && schemaVersion.MatchString(rf.Realm.Version):
 				opts = []schema.Option{schema.WithCoreVersion(rf.Realm.Version)}
 				label = coreRealmID + " " + rf.Realm.Version
-			case dep != nil && schemaVersion.MatchString(dep.Version):
-				opts = schema.ForRealm(dir)
-				label = coreRealmID + " " + dep.Version
+			case dep != nil:
+				// A pin that isn't a release selects the latest schemas, as in
+				// lint: only a realm with no pin inherits one.
+				if schemaVersion.MatchString(dep.Version) {
+					opts = []schema.Option{schema.WithCoreVersion(dep.Version)}
+					label = coreRealmID + " " + dep.Version
+				}
 			default:
-				if parent, ok := listingRealm(dir); ok && depth < maxSubRealmDepth {
+				if parent, ok := v.listingRealm(dir); ok && depth < maxSubRealmDepth {
 					opts, label = v.realmSchemaAt(parent, depth+1)
 				}
 			}
@@ -95,18 +102,30 @@ func (v *schemaValidator) realmSchemaAt(dir string, depth int) (opts []schema.Op
 	return opts, label
 }
 
+// manifest returns the manifest of the realm in dir: the bytes given to
+// validateRealmManifest when there were some, so that a file or link swapped
+// in since they were read can't choose their schema, else the file on disk.
+func (v *schemaValidator) manifest(dir string) *entity.RealmFile {
+	if rf, ok := v.manifests[dir]; ok {
+		return rf
+	}
+	rf, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
+	if err != nil {
+		rf = nil // the latest schemas apply
+	}
+	v.manifests[dir] = rf
+	return rf
+}
+
 // listingRealm returns the directory above dir when the realm.json there
 // lists dir as one of its sub_realms.
-func listingRealm(dir string) (string, bool) {
+func (v *schemaValidator) listingRealm(dir string) (string, bool) {
 	parent := filepath.Dir(dir)
 	if parent == dir {
 		return "", false
 	}
-	rf, err := entity.LoadRealm(filepath.Join(parent, "realm.json"))
-	if err != nil {
-		return "", false
-	}
-	return parent, slices.Contains(rf.SubRealms, filepath.Base(dir))
+	rf := v.manifest(parent)
+	return parent, rf != nil && slices.Contains(rf.SubRealms, filepath.Base(dir))
 }
 
 // compile fetches and compiles schemaPath for the realm in dir.
@@ -199,6 +218,12 @@ func (v *schemaValidator) validateRealmManifest(path string, data []byte) error 
 	if err != nil {
 		return fmt.Errorf("can't validate %s: %w", path, err)
 	}
+	rf, err := entity.ParseRealm(data)
+	if err != nil {
+		rf = nil // validate reports what is wrong, against the latest schema
+	}
+	v.manifests[dir] = rf
+	delete(v.options, dir) // select again, from these bytes
 	if err := v.validate(path, data, dir, schema.RealmV1Path); err != nil {
 		return err
 	}
