@@ -58,7 +58,7 @@ func rehashEntity(v *schemaValidator, path string, data []byte, ef *entity.File)
 	}
 	// SEC-004: the file is checked against its schema before it is changed.
 	if err := v.validateEntityFile(path, data); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("validating before rehashing: %w", err)
 	}
 	subsChanged, err := rehashSubEntities(ef)
 	if err != nil {

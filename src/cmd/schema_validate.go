@@ -212,7 +212,7 @@ func (v *schemaValidator) validateEntityFile(path string, data []byte) error {
 		return fmt.Errorf("can't validate %s: %w", path, err)
 	}
 	if err := v.validate(path, data, dir, schema.EntityV1Path); err != nil {
-		return err
+		return fmt.Errorf("validating an entity file: %w", err)
 	}
 	ef, err := entity.Parse(data)
 	if err != nil {
@@ -249,7 +249,7 @@ func (v *schemaValidator) validateRealmManifest(path string, data []byte) error 
 	v.manifests[dir] = rf
 	delete(v.options, dir) // select again, from these bytes
 	if err := v.validate(path, data, dir, schema.RealmV1Path); err != nil {
-		return err
+		return fmt.Errorf("validating a manifest: %w", err)
 	}
 	v.done[path] = data
 	return nil
@@ -278,7 +278,7 @@ func (v *schemaValidator) validateRealmTreeAt(dir string, depth int) error {
 		return fmt.Errorf("reading %s: %w", manifest, err)
 	}
 	if err := v.validateRealmManifest(manifest, data); err != nil {
-		return err
+		return fmt.Errorf("validating a realm tree: %w", err)
 	}
 	rf, err := entity.ParseRealm(data)
 	if err != nil {
@@ -291,7 +291,7 @@ func (v *schemaValidator) validateRealmTreeAt(dir string, depth int) error {
 		return v.validateEntityFile(path, data)
 	}, entity.WithExcludeDirs(rf.SubRealms))
 	if err != nil {
-		return err
+		return fmt.Errorf("walking the realm in %s: %w", dir, err)
 	}
 	if depth >= maxSubRealmDepth && len(rf.SubRealms) > 0 {
 		return fmt.Errorf("can't validate %s: sub-realms are nested more than %d deep", manifest, maxSubRealmDepth)
@@ -303,7 +303,7 @@ func (v *schemaValidator) validateRealmTreeAt(dir string, depth int) error {
 			return fmt.Errorf("%s lists sub-realm %q, which is not the name of a directory next to it", manifest, name)
 		}
 		if err := v.validateRealmTreeAt(filepath.Join(dir, name), depth+1); err != nil {
-			return err
+			return fmt.Errorf("validating a sub-realm tree: %w", err)
 		}
 	}
 	return nil

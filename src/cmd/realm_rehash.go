@@ -83,7 +83,7 @@ func rehashRealmTree(v *schemaValidator, root *os.Root, top, rel string, res *re
 	}
 	// SEC-004: the manifest is checked against its schema before it is changed.
 	if err := v.validateRealmManifest(path, data); err != nil {
-		return err
+		return fmt.Errorf("validating before rehashing: %w", err)
 	}
 	rf, err := entity.ParseRealm(data)
 	if err != nil {

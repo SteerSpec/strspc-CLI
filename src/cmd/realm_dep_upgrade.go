@@ -201,7 +201,7 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			// only reports, like realm dep list, so it doesn't validate.
 			if !check {
 				if err := newSchemaValidator(cmd.Context()).validateRealmManifest(realmPath, manifest); err != nil {
-					return err
+					return fmt.Errorf("validating before planning: %w", err)
 				}
 			}
 			rf, err := entity.ParseRealm(manifest)

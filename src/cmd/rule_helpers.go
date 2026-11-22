@@ -115,7 +115,7 @@ func loadModifySaveEntity(entityPath string, mutate func(*entity.File) error) er
 	}
 	// SEC-004: the file is checked against its schema before it is changed.
 	if err := newSchemaValidator(context.TODO()).validateEntityFile(entityPath, data); err != nil {
-		return err
+		return fmt.Errorf("validating before writing: %w", err)
 	}
 	f, err := entity.Parse(data)
 	if err != nil {

@@ -190,7 +190,7 @@ Examples:
 				}
 				// SEC-004: the file is checked against its schema before it is changed.
 				if err := validator.validateEntityFile(path, data); err != nil {
-					return err
+					return fmt.Errorf("validating before rewriting: %w", err)
 				}
 				fileMap := m
 				if githubHandles {

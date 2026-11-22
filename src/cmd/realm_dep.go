@@ -77,7 +77,7 @@ func loadModifyWriteRealm(realmPath string, mutate func(*entity.RealmFile) error
 	}
 	// SEC-004: the manifest is checked against its schema before it is changed.
 	if err := newSchemaValidator(context.TODO()).validateRealmManifest(realmPath, data); err != nil {
-		return err
+		return fmt.Errorf("validating before writing: %w", err)
 	}
 	rf, err := entity.ParseRealm(data)
 	if err != nil {

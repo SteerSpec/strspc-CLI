@@ -420,40 +420,40 @@ func (r *checkRun) validateRuleSchemas() error {
 			return fmt.Errorf("reading %s: %w", rf.Path, err)
 		}
 		if err := v.validateEntityFile(rf.Path, data); err != nil {
-			return err
+			return fmt.Errorf("validating a rule file: %w", err)
 		}
 	}
 	var deps []depRealm
 	for _, s := range slices.Sorted(maps.Keys(r.realmTrees)) {
 		t := r.realmTrees[s]
 		if err := v.validateManifestIn(t.dir); err != nil {
-			return err
+			return fmt.Errorf("validating a source realm: %w", err)
 		}
 		if err := v.checkManifest(t.dir, t.manifest, true); err != nil {
-			return err
+			return fmt.Errorf("checking a source realm: %w", err)
 		}
 		if t.resolved == nil {
 			continue
 		}
 		for _, sub := range t.resolved.SubRealms {
 			if err := v.validateManifestIn(sub.Dir); err != nil {
-				return err
+				return fmt.Errorf("validating a sub-realm: %w", err)
 			}
 			if err := v.checkManifest(sub.Dir, sub.Realm, false); err != nil {
-				return err
+				return fmt.Errorf("checking a sub-realm: %w", err)
 			}
 		}
 		deps = append(deps, sourceDependencies(s, t)...)
 	}
 	if err := r.validateDependencies(v, deps); err != nil {
-		return err
+		return fmt.Errorf("validating dependencies: %w", err)
 	}
 	// Last: the validations above all add to the manifests that chose a schema.
 	if err := v.validateGoverning(); err != nil {
-		return err
+		return fmt.Errorf("validating the manifests that chose schemas: %w", err)
 	}
 	if err := r.checkConsumed(v); err != nil {
-		return err
+		return fmt.Errorf("checking what will be evaluated: %w", err)
 	}
 	r.verbosef("schemas: %d file(s) validated", len(v.done))
 	return nil

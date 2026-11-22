@@ -98,10 +98,10 @@ func (r *checkRun) validateDependencies(v *schemaValidator, queue []depRealm) er
 		}
 		seen[d.realm.Dir] = true
 		if err := v.validateRealmTree(d.realm.Dir); err != nil {
-			return err
+			return fmt.Errorf("validating a dependency: %w", err)
 		}
 		if err := v.checkManifest(d.realm.Dir, d.realm.Realm, true); err != nil {
-			return err
+			return fmt.Errorf("checking a dependency: %w", err)
 		}
 		for _, decl := range d.realm.Realm.Dependencies {
 			if !refersTo(d.realm.Entities, decl.RealmID) {
@@ -111,7 +111,7 @@ func (r *checkRun) validateDependencies(v *schemaValidator, queue []depRealm) er
 			only.Dependencies, only.SubRealms = []entity.RealmDep{decl}, nil
 			out, _ := r.realmResolver(cacheDir, d.origin).Resolve(r.ctx, &only, d.realm.Dir)
 			if err := r.ctx.Err(); err != nil {
-				return err
+				return fmt.Errorf("resolving further dependencies: %w", err)
 			}
 			for _, next := range out.Dependencies {
 				queue = append(queue, depRealm{next, dependencyOrigin(d.origin, decl.Source)})
@@ -154,14 +154,14 @@ func (v *schemaValidator) validateGoverning() error {
 			}
 			checked[dir] = true
 			if err := v.validateManifestIn(dir); err != nil {
-				return err
+				return fmt.Errorf("validating a governing manifest: %w", err)
 			}
 			chose := v.governing[dir]
 			if chose == nil {
 				return fmt.Errorf("%s %w", filepath.Join(dir, "realm.json"), errNotValidated)
 			}
 			if err := v.checkManifest(dir, chose, true); err != nil {
-				return err
+				return fmt.Errorf("checking a governing manifest: %w", err)
 			}
 		}
 	}
@@ -188,7 +188,7 @@ func (r *checkRun) checkConsumed(v *schemaValidator) error {
 	for _, c := range r.chains {
 		for _, hop := range append([]inherit.Hop{c.Entity}, c.Ancestors...) {
 			if err := v.checkEntity(hop.Entity); err != nil {
-				return err
+				return fmt.Errorf("checking an inheritance chain: %w", err)
 			}
 		}
 	}
