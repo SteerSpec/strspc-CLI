@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -76,4 +79,40 @@ func TestSchemaFetchReportsBadCachedRelease(t *testing.T) {
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", t.TempDir(), "--core-version", "1.2.3")
 	assertExit(t, err, exitViolations)
 	testutil.AssertContains(t, out, "strspc schema clear")
+}
+
+type closeRecorder struct {
+	io.Reader
+	closed bool
+}
+
+func (c *closeRecorder) Close() error {
+	c.closed = true
+	return nil
+}
+
+func TestSchemasOnlyClosesTheOriginalBody(t *testing.T) {
+	for name, body := range map[string]string{
+		"schema":       `{"type":"object"}`,
+		"oversized":    strings.Repeat("x", maxSchemaDownload+2),
+		"not a schema": "<html>",
+	} {
+		t.Run(name, func(t *testing.T) {
+			orig := &closeRecorder{Reader: strings.NewReader(body)}
+			rt := schemasOnly{roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusOK, Body: orig}, nil
+			})}
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://example.com/s.json", http.NoBody)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp, err := rt.RoundTrip(req)
+			if err == nil {
+				defer func() { _ = resp.Body.Close() }()
+			}
+			if !orig.closed {
+				t.Error("the original response body wasn't closed")
+			}
+		})
+	}
 }
