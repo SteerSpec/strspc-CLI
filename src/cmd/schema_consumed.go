@@ -107,6 +107,9 @@ func (r *checkRun) validateDependencies(v *schemaValidator, queue []depRealm) er
 		if walked {
 			continue
 		}
+		if err := v.indexRealm(d.realm.Dir, d.realm.Realm); err != nil {
+			return fmt.Errorf("indexing a dependency: %w", err)
+		}
 		var needed []entity.RealmDep
 		for _, decl := range d.realm.Realm.Dependencies {
 			if refersTo(d.realm.Entities, decl.RealmID) {
@@ -181,34 +184,68 @@ func (v *schemaValidator) validateGoverning() error {
 	return nil
 }
 
-// index records an entity parsed from validated bytes, and its sub-entities.
-func (v *schemaValidator) index(f *entity.File) {
-	v.entities[f.Entity.ID] = append(v.entities[f.Entity.ID], f)
-	for i := range f.SubEntities {
-		v.index(&f.SubEntities[i])
+// realmEntity names an entity as a reference does: by a name of the realm
+// tree that holds it, and its EUID. Content is compared within one realm, so
+// an unchanged copy in another can't vouch for what changed in this one.
+type realmEntity struct{ realm, euid string }
+
+// indexRealm records the validated entities below dir as those of the realm
+// tree rf roots. realmresolve takes a reference qualified with the root's ID
+// or with that of a sub-realm it lists to mean any entity of the tree.
+func (v *schemaValidator) indexRealm(dir string, rf *entity.RealmFile) error {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("resolving %s: %w", dir, err)
 	}
+	names := []string{rf.Realm.ID}
+	for _, sub := range rf.SubRealms {
+		names = append(names, rf.Realm.ID+"."+sub)
+	}
+	var add func(*entity.File)
+	add = func(f *entity.File) {
+		for _, n := range names {
+			k := realmEntity{n, f.Entity.ID}
+			v.entities[k] = append(v.entities[k], f)
+		}
+		for i := range f.SubEntities {
+			add(&f.SubEntities[i])
+		}
+	}
+	for p, f := range v.parsed {
+		if rel, err := filepath.Rel(abs, p); err == nil && filepath.IsLocal(rel) {
+			add(f)
+		}
+	}
+	return nil
 }
 
 // checkConsumed reports an error for anything the evaluation uses that
-// doesn't equal what was validated: the resolved files, the entities of each
-// inheritance chain, and the rules `extends` notes name.
+// doesn't equal what was validated: each resolved file against the same
+// path, the entities of each inheritance chain and the rules `extends` notes
+// name against the same realm.
 func (r *checkRun) checkConsumed(v *schemaValidator) error {
 	for _, rf := range r.resolved {
-		if err := v.checkEntity(rf.File); err != nil {
-			return fmt.Errorf("%s: %w", rf.Path, err)
+		abs, err := filepath.Abs(rf.Path)
+		if err != nil {
+			return fmt.Errorf("resolving %s: %w", rf.Path, err)
+		}
+		if ok := v.parsed[abs]; ok == nil || !reflect.DeepEqual(ok, rf.File) {
+			return fmt.Errorf("%s: entity %s %w", rf.Path, rf.File.Entity.ID, errNotValidated)
 		}
 	}
 	for _, c := range r.chains {
 		for _, hop := range append([]inherit.Hop{c.Entity}, c.Ancestors...) {
-			if err := v.checkEntity(hop.Entity); err != nil {
+			if err := v.checkEntity(hop.RealmID, hop.Entity); err != nil {
 				return fmt.Errorf("checking an inheritance chain: %w", err)
 			}
 		}
 	}
 	for _, bySource := range r.extended {
-		for _, targets := range bySource {
+		for key, targets := range bySource {
+			// The realm of the note, which an unqualified reference is in.
+			from, _, _ := strings.Cut(key, ":")
 			for _, t := range targets {
-				if !v.hasRule(t) {
+				if !v.hasRule(from, t) {
 					return fmt.Errorf("rule %s, named by an extends note, %w", t.ID, errNotValidated)
 				}
 			}
@@ -217,22 +254,28 @@ func (r *checkRun) checkConsumed(v *schemaValidator) error {
 	return nil
 }
 
-func (v *schemaValidator) checkEntity(f *entity.File) error {
-	if slices.ContainsFunc(v.entities[f.Entity.ID], func(ok *entity.File) bool { return reflect.DeepEqual(ok, f) }) {
+func (v *schemaValidator) checkEntity(realm string, f *entity.File) error {
+	same := func(ok *entity.File) bool { return reflect.DeepEqual(ok, f) }
+	if slices.ContainsFunc(v.entities[realmEntity{realm, f.Entity.ID}], same) {
 		return nil
 	}
-	return fmt.Errorf("entity %s %w", f.Entity.ID, errNotValidated)
+	return fmt.Errorf("entity %s of %s %w", f.Entity.ID, realm, errNotValidated)
 }
 
-func (v *schemaValidator) hasRule(t inherit.Extended) bool {
-	id := t.ID[strings.LastIndex(t.ID, ":")+1:] // the note may qualify it
+// hasRule reports whether t, named by a note in the realm from, is a
+// validated rule of the realm the note means.
+func (v *schemaValidator) hasRule(from string, t inherit.Extended) bool {
+	realm, id := from, t.ID
+	if q, rest, qualified := strings.Cut(t.ID, ":"); qualified {
+		realm, id = q, rest
+	}
 	i := strings.LastIndex(id, "-")
 	if i < 0 {
 		return false
 	}
-	for _, f := range v.entities[id[:i]] {
-		for i := range f.Rules {
-			rule := &f.Rules[i]
+	for _, f := range v.entities[realmEntity{realm, id[:i]}] {
+		for j := range f.Rules {
+			rule := &f.Rules[j]
 			if rule.ID == id && rule.Revision == t.Revision && rule.Body == t.Body {
 				return true
 			}

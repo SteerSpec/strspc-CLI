@@ -432,6 +432,9 @@ func (r *checkRun) validateRuleSchemas() error {
 		if err := v.checkManifest(t.dir, t.manifest, nil); err != nil {
 			return fmt.Errorf("checking a source realm: %w", err)
 		}
+		if err := v.indexRealm(t.dir, t.manifest); err != nil {
+			return fmt.Errorf("indexing a source realm: %w", err)
+		}
 		if t.resolved == nil {
 			continue
 		}

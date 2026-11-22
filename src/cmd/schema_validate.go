@@ -47,7 +47,8 @@ type schemaValidator struct {
 	options   map[string][]schema.Option   // by realm directory
 	labels    map[string]string            // by realm directory
 	done      map[string][]byte            // the bytes validated, by path
-	entities  map[string][]*entity.File    // parsed from validated bytes, by EUID
+	parsed    map[string]*entity.File      // from validated bytes, by absolute path
+	entities  map[realmEntity][]*entity.File
 	governing map[string]*entity.RealmFile // each manifest that chose a schema, as first used for that
 }
 
@@ -62,7 +63,8 @@ func newSchemaValidator(ctx context.Context) *schemaValidator {
 		options:   map[string][]schema.Option{},
 		labels:    map[string]string{},
 		done:      map[string][]byte{},
-		entities:  map[string][]*entity.File{},
+		parsed:    map[string]*entity.File{},
+		entities:  map[realmEntity][]*entity.File{},
 		governing: map[string]*entity.RealmFile{},
 	}
 }
@@ -187,6 +189,9 @@ func (v *schemaValidator) validate(path string, data []byte, dir, schemaPath str
 	if err != nil {
 		return fmt.Errorf("can't validate %s: %w", path, err)
 	}
+	if err := checkUniqueKeys(data); err != nil {
+		return fmt.Errorf("%s %w", path, err)
+	}
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("%s is not valid JSON: %w", path, err)
@@ -227,7 +232,7 @@ func (v *schemaValidator) validateEntityFile(path string, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("parsing %s: %w", path, err)
 	}
-	v.index(ef)
+	v.parsed[abs] = ef
 	v.done[path] = data
 	return nil
 }
