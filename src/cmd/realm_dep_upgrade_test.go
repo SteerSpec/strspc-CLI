@@ -354,7 +354,9 @@ func TestRealmDepUpgradeErrorsNeutraliseRealmValues(t *testing.T) {
 			dir := setupUpgradeTest(t, "v9.9.9", nil)
 			writeRealmDeps(t, dir, tt.dep)
 
-			_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
+			// --check plans without validating; an upgrade refuses such a
+			// manifest against its schema before it plans (SEC-004).
+			_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--check", "--dir", dir)
 			if err == nil {
 				t.Fatal("expected an error")
 			}

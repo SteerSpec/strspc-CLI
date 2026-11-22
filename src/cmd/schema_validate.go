@@ -46,7 +46,7 @@ type schemaValidator struct {
 	manifests map[string]*entity.RealmFile // by realm directory; nil when unreadable
 	options   map[string][]schema.Option   // by realm directory
 	labels    map[string]string            // by realm directory
-	done      map[string]bool              // validated paths
+	done      map[string][]byte            // the bytes validated, by path
 	entities  map[string][]*entity.File    // parsed from validated bytes, by EUID
 	governing map[string]*entity.RealmFile // each manifest that chose a schema, as first used for that
 }
@@ -61,7 +61,7 @@ func newSchemaValidator(ctx context.Context) *schemaValidator {
 		manifests: map[string]*entity.RealmFile{},
 		options:   map[string][]schema.Option{},
 		labels:    map[string]string{},
-		done:      map[string]bool{},
+		done:      map[string][]byte{},
 		entities:  map[string][]*entity.File{},
 		governing: map[string]*entity.RealmFile{},
 	}
@@ -200,8 +200,8 @@ func (v *schemaValidator) validate(path string, data []byte, dir, schemaPath str
 // validateEntityFile checks an entity file against the entity schema of the
 // realm holding it.
 func (v *schemaValidator) validateEntityFile(path string, data []byte) error {
-	if v.done[path] {
-		return nil
+	if seen, ok := v.done[path]; ok {
+		return sameBytes(path, seen, data)
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -219,15 +219,24 @@ func (v *schemaValidator) validateEntityFile(path string, data []byte) error {
 		return fmt.Errorf("parsing %s: %w", path, err)
 	}
 	v.index(ef)
-	v.done[path] = true
+	v.done[path] = data
 	return nil
+}
+
+// sameBytes reports an error when path, validated as seen, is given again as
+// data: the caller would use bytes that were never validated.
+func sameBytes(path string, seen, data []byte) error {
+	if bytes.Equal(seen, data) {
+		return nil
+	}
+	return fmt.Errorf("%s %w", path, errNotValidated)
 }
 
 // validateRealmManifest checks the realm.json at path against the realm
 // schema of that realm.
 func (v *schemaValidator) validateRealmManifest(path string, data []byte) error {
-	if v.done[path] {
-		return nil
+	if seen, ok := v.done[path]; ok {
+		return sameBytes(path, seen, data)
 	}
 	dir, err := filepath.Abs(filepath.Dir(path))
 	if err != nil {
@@ -242,7 +251,7 @@ func (v *schemaValidator) validateRealmManifest(path string, data []byte) error 
 	if err := v.validate(path, data, dir, schema.RealmV1Path); err != nil {
 		return err
 	}
-	v.done[path] = true
+	v.done[path] = data
 	return nil
 }
 

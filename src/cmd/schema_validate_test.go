@@ -260,3 +260,43 @@ func TestSchemaValidatorOwnPinStopsInheritance(t *testing.T) {
 		t.Errorf("label = %q, want the latest schemas, as lint selects for a pin that isn't a release", label)
 	}
 }
+
+func TestRealmDepUpgradeRefusesManifestBeforePlanning(t *testing.T) {
+	dir := t.TempDir()
+	// No $schema, and nothing to upgrade, so the write's own check never runs.
+	writeRefsFile(t, dir, "realm.json", `{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0"}}`)
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
+	if err == nil || !strings.Contains(err.Error(), "does not match the realm/v1.json schema") {
+		t.Fatalf("error = %v, want a schema refusal before planning", err)
+	}
+}
+
+func TestSchemaValidatorRefusesOtherBytesForAValidatedPath(t *testing.T) {
+	dir := t.TempDir()
+	setupEntityFile(t, dir, "ENT")
+	p := filepath.Join(dir, "ENT.json")
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := newSchemaValidator(context.Background())
+	if err := v.validateEntityFile(p, data); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.validateEntityFile(p, []byte("{")); !errors.Is(err, errNotValidated) {
+		t.Errorf("entity: error = %v, want errNotValidated", err)
+	}
+
+	m := filepath.Join(dir, "realm.json")
+	manifest := []byte(`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "t", "version": "1.0.0"}}`)
+	if err := v.validateRealmManifest(m, manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.validateRealmManifest(m, manifest); err != nil {
+		t.Errorf("the same bytes again: %v", err)
+	}
+	if err := v.validateRealmManifest(m, []byte("{")); !errors.Is(err, errNotValidated) {
+		t.Errorf("manifest: error = %v, want errNotValidated", err)
+	}
+}
