@@ -411,7 +411,8 @@ func (r *checkRun) resolveSources() error {
 // validates every resolved entity file and the manifest governing it, the
 // manifests of each source realm and its sub-realms, and the tree of each
 // realm they depend on, directly or through an inherited or extended rule.
-// What the resolvers returned must then equal what was validated.
+// What the resolvers returned must then equal what was validated, and
+// resolving again must give the same.
 func (r *checkRun) validateRuleSchemas() error {
 	v := newSchemaValidator(r.ctx)
 	for _, rf := range r.resolved {
@@ -459,6 +460,10 @@ func (r *checkRun) validateRuleSchemas() error {
 	}
 	if err := r.checkConsumed(v); err != nil {
 		return fmt.Errorf("checking what will be evaluated: %w", err)
+	}
+	// After checkConsumed, whose errors say which entity or rule it is.
+	if err := r.checkResolutionCurrent(); err != nil {
+		return fmt.Errorf("checking that the resolution is current: %w", err)
 	}
 	r.verbosef("schemas: %d file(s) validated", len(v.done))
 	return nil

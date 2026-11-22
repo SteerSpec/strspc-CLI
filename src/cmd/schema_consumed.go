@@ -39,12 +39,7 @@ type depRealm struct {
 // sourceDependencies returns the dependencies of a source realm and of its
 // sub-realms.
 func sourceDependencies(source string, t *realmTree) []depRealm {
-	var origin *remote.Ref
-	if strings.HasPrefix(source, remote.Scheme) {
-		if ref, err := remote.ParseGitHub(source); err == nil {
-			origin = &ref
-		}
-	}
+	origin := dependencyOrigin(nil, source)
 	var out []depRealm
 	add := func(deps []*realmresolve.ResolvedRealm, decls []entity.RealmDep, base *remote.Ref) {
 		for _, d := range deps {
@@ -140,6 +135,30 @@ func (r *checkRun) validateDependencies(v *schemaValidator, source string, queue
 	return nil
 }
 
+// checkResolutionCurrent resolves each source again, once its files are
+// validated, and reports an error unless that gives the chains and the extends
+// targets that will be used. checkConsumed compares what was resolved; this
+// also covers what resolution left out, and what it derived from the manifests
+// it loaded on demand, such as the sub-realm IDs an override can be named by.
+func (r *checkRun) checkResolutionCurrent() error {
+	cacheDir := filepath.Join(r.cwd, ".strspc", "cache")
+	for _, source := range slices.Sorted(maps.Keys(r.realmTrees)) {
+		t := r.realmTrees[source]
+		if t.resolved == nil {
+			continue
+		}
+		// The diagnostics were reported by the first resolution.
+		now, _ := r.realmResolver(cacheDir, dependencyOrigin(nil, source)).Resolve(r.ctx, t.manifest, t.dir)
+		if err := r.ctx.Err(); err != nil {
+			return fmt.Errorf("resolving %s again: %w", source, err)
+		}
+		if !reflect.DeepEqual(now.Inheritance, t.resolved.Inheritance) || !reflect.DeepEqual(now.Extended, r.extended[source]) {
+			return fmt.Errorf("what %s inherits or extends %w", source, errNotValidated)
+		}
+	}
+	return nil
+}
+
 // refersTo reports whether an entity inherits from, or extends a rule of,
 // realmID or one of its sub-realms. It may say yes too often, never too rarely.
 func refersTo(entities map[string]*entity.File, realmID string) bool {
@@ -198,8 +217,19 @@ func (v *schemaValidator) validateGoverning() error {
 // lacks it: it may have been deleted since.
 type realmName struct{ source, realm string }
 
-// realmCopy is the validated entities of one directory of a realm, by EUID.
-type realmCopy map[string][]*entity.File
+// realmCopy is what was validated of one directory of a realm.
+type realmCopy struct {
+	entities   map[string][]*entity.File // by EUID
+	superseded map[string]bool           // the IDs of the rules superseded in it
+}
+
+// live reports whether rule is in force in the copy (RUL-011), judged as
+// realmresolve does before it offers an extends target: neither Abandoned nor
+// Terminated, nor superseded by a rule of the copy that isn't Abandoned. Draft
+// and Retired rules are live.
+func (c realmCopy) live(rule *entity.Rule) bool {
+	return rule.State != entity.StateAbandoned && rule.State != entity.StateTerminated && !c.superseded[rule.ID]
+}
 
 // indexRealm records the validated entities below dir as a copy of the realm
 // tree rf roots. realmresolve takes a reference qualified with the root's ID
@@ -209,10 +239,16 @@ func (v *schemaValidator) indexRealm(source, dir string, rf *entity.RealmFile) e
 	if err != nil {
 		return fmt.Errorf("resolving %s: %w", dir, err)
 	}
-	tree := realmCopy{}
+	tree := realmCopy{entities: map[string][]*entity.File{}, superseded: map[string]bool{}}
 	var add func(*entity.File)
 	add = func(f *entity.File) {
-		tree[f.Entity.ID] = append(tree[f.Entity.ID], f)
+		tree.entities[f.Entity.ID] = append(tree.entities[f.Entity.ID], f)
+		for i := range f.Rules {
+			rule := &f.Rules[i]
+			if rule.Supersedes != nil && rule.State != entity.StateAbandoned {
+				tree.superseded[*rule.Supersedes] = true
+			}
+		}
 		for i := range f.SubEntities {
 			add(&f.SubEntities[i])
 		}
@@ -235,12 +271,12 @@ func (v *schemaValidator) indexRealm(source, dir string, rf *entity.RealmFile) e
 
 // matchInEveryCopy reports an error unless each copy of the realm holds euid
 // and matches accepts all it holds of it.
-func (v *schemaValidator) matchInEveryCopy(source, realm, euid string, matches func(*entity.File) bool) error {
+func (v *schemaValidator) matchInEveryCopy(source, realm, euid string, matches func(realmCopy, *entity.File) bool) error {
 	copies := v.trees[realmName{source, realm}]
 	matched := 0
 	for _, tree := range copies {
-		files := tree[euid]
-		if len(files) > 0 && !slices.ContainsFunc(files, func(f *entity.File) bool { return !matches(f) }) {
+		files := tree.entities[euid]
+		if len(files) > 0 && !slices.ContainsFunc(files, func(f *entity.File) bool { return !matches(tree, f) }) {
 			matched++
 		}
 	}
@@ -295,7 +331,7 @@ func (r *checkRun) checkConsumed(v *schemaValidator) error {
 }
 
 func (v *schemaValidator) checkEntity(source, realm string, f *entity.File) error {
-	same := func(ok *entity.File) bool { return reflect.DeepEqual(ok, f) }
+	same := func(_ realmCopy, ok *entity.File) bool { return reflect.DeepEqual(ok, f) }
 	if err := v.matchInEveryCopy(source, realm, f.Entity.ID, same); err != nil {
 		return fmt.Errorf("entity %s of %s %w", f.Entity.ID, realm, err)
 	}
@@ -303,7 +339,8 @@ func (v *schemaValidator) checkEntity(source, realm string, f *entity.File) erro
 }
 
 // checkRule reports an error unless t, named by a note in the realm from, is
-// the validated rule of the realm the note means.
+// the validated rule of the realm the note means, and still live there: the
+// resolver offers no other, and neither state nor supersession shows in t.
 func (v *schemaValidator) checkRule(source, from string, t inherit.Extended) error {
 	realm, id := from, t.ID
 	if q, rest, qualified := strings.Cut(t.ID, ":"); qualified {
@@ -313,10 +350,10 @@ func (v *schemaValidator) checkRule(source, from string, t inherit.Extended) err
 	if i < 0 {
 		return fmt.Errorf("rule %s, named by an extends note, %w", t.ID, errNotValidated)
 	}
-	same := func(f *entity.File) bool {
-		return slices.ContainsFunc(f.Rules, func(rule entity.Rule) bool {
-			return rule.ID == id && rule.Revision == t.Revision && rule.Body == t.Body
-		})
+	same := func(c realmCopy, f *entity.File) bool {
+		// The first with the ID, which is the one the resolver reads.
+		n := slices.IndexFunc(f.Rules, func(rule entity.Rule) bool { return rule.ID == id })
+		return n >= 0 && f.Rules[n].Revision == t.Revision && f.Rules[n].Body == t.Body && c.live(&f.Rules[n])
 	}
 	if err := v.matchInEveryCopy(source, realm, id[:i], same); err != nil {
 		return fmt.Errorf("rule %s, named by an extends note, %w", t.ID, err)
