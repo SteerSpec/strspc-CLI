@@ -574,10 +574,17 @@ func removeSchemaFiles(cacheDir string) (int, error) {
 	for _, base := range bases {
 		for _, name := range schemaCacheEntries {
 			root := filepath.Join(base, name)
-			if fi, err := os.Lstat(root); err != nil || !fi.IsDir() {
+			fi, err := os.Lstat(root)
+			if errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
-			err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return removed, fmt.Errorf("looking at %s: %w", root, err)
+			}
+			if !fi.IsDir() {
+				continue
+			}
+			err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 				if err != nil {
 					return fmt.Errorf("reading %s: %w", p, err)
 				}

@@ -70,3 +70,20 @@ func TestSchemaFetchReportsFailedOverwrite(t *testing.T) {
 	assertExit(t, err, exitViolations)
 	testutil.AssertContains(t, out, "not in the cache as config/v1.json")
 }
+
+func TestSchemaClearReportsWhatItCantLookAt(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("permissions don't stop the lookup here")
+	}
+	cache := t.TempDir()
+	writeRefsFile(t, cache, "config/v1.json", "{}")
+	// Listable, but nothing in it can be looked at.
+	if err := os.Chmod(cache, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(cache, 0o755) })
+
+	if _, err := removeSchemaFiles(cache); err == nil {
+		t.Error("clear reported success with the schemas still cached")
+	}
+}
