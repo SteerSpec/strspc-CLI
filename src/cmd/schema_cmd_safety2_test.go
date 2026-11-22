@@ -73,6 +73,10 @@ func TestSchemaFlagErrors(t *testing.T) {
 		{"schema", "fetch", "--dir"},
 		{"schema", "--no-such-flag"},
 		{"schema", "clear", "--no-such-flag"},
+		{"schema", "extra"},
+		{"schema", "update", "extra"},
+		{"schema", "clear", "extra"},
+		{"schema", "fetch", "a", "b"},
 	} {
 		_, err := testutil.ExecuteCommand(NewRootCmd(), args...)
 		assertExit(t, err, exitConfig)

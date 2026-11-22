@@ -73,6 +73,13 @@ func newSchemaCmd() *cobra.Command {
 	cmd.AddCommand(newSchemaFetchCmd(), newSchemaUpdateCmd(), newSchemaClearCmd())
 	for _, c := range append([]*cobra.Command{cmd}, cmd.Commands()...) {
 		c.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return withExitCode(exitConfig, err) })
+		validate := c.Args
+		c.Args = func(cc *cobra.Command, args []string) error {
+			if err := validate(cc, args); err != nil {
+				return withExitCode(exitConfig, err)
+			}
+			return nil
+		}
 	}
 	return cmd
 }
@@ -179,7 +186,11 @@ func schemaFetchTargets(cwd string, dirs, versions []string) ([]schemaTarget, er
 		return nil, fmt.Errorf("finding the project's realms: %w", err)
 	}
 	for _, d := range dirs {
-		if _, err := os.Stat(filepath.Join(d, "realm.json")); err != nil {
+		manifest, err := projectPath(d, "realm.json")
+		if err != nil {
+			return nil, fmt.Errorf("--dir %s: %w", d, err)
+		}
+		if _, err := os.Stat(manifest); err != nil {
 			return nil, fmt.Errorf("--dir %s: no realm.json: %w", d, err)
 		}
 		realms = append(realms, d)
@@ -203,15 +214,15 @@ func schemaFetchTargets(cwd string, dirs, versions []string) ([]schemaTarget, er
 // schemaProjectRealms returns the local sources of the project's config that
 // hold a realm.json. A project without .strspc/config.yaml has none.
 func schemaProjectRealms(cwd string) ([]string, error) {
-	// Before any call that follows a link: all of this is project content.
-	config := filepath.Join(".strspc", "config.yaml")
-	if err := checkProjectPath(cwd, config); err != nil {
+	// All of this is project content: open only what projectPath returns.
+	config, err := projectPath(cwd, filepath.Join(".strspc", "config.yaml"))
+	if err != nil {
 		return nil, fmt.Errorf("the project's configuration: %w", err)
 	}
-	if _, err := os.Stat(filepath.Join(cwd, config)); errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(config); errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
-	cfg, err := loadStrspcConfig(cwd)
+	cfg, err := loadStrspcConfig(filepath.Dir(filepath.Dir(config)))
 	if err != nil {
 		return nil, fmt.Errorf("reading the project's configuration: %w", err)
 	}
@@ -220,19 +231,15 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 		if r.Source == "" || strings.HasPrefix(r.Source, remote.Scheme) {
 			continue
 		}
-		dir := r.Source
-		// Before any file system call that follows it, as the config is
-		// repository content. --dir is typed by the user, so it isn't limited.
-		// Not Join, which would clean away a .. that follows a link.
-		if err := checkProjectPath(cwd, dir+string(filepath.Separator)+"realm.json"); err != nil {
-			return nil, fmt.Errorf("source %q: %w", dir, err)
+		// --dir is typed by the user, so only what is below it is checked.
+		manifest, err := projectPath(cwd, filepath.Join(r.Source, "realm.json"))
+		if err != nil {
+			return nil, fmt.Errorf("source %q: %w", r.Source, err)
 		}
-		if !filepath.IsAbs(dir) { // as check resolves a source
-			dir = filepath.Join(cwd, dir)
-		}
+		dir := filepath.Dir(manifest)
 		// Lstat: a manifest that is there but can't be read must fail the
 		// fetch, as its pin would be missing from the cache.
-		switch _, err := os.Lstat(filepath.Join(dir, "realm.json")); {
+		switch _, err := os.Lstat(manifest); {
 		case err == nil:
 			dirs = append(dirs, dir)
 		case !errors.Is(err, fs.ErrNotExist):
@@ -249,10 +256,11 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 func versionsOfRealmTree(dir string, add func(string)) error {
 	var walk func(string, int) error
 	walk = func(d string, depth int) error {
-		if err := checkProjectPath(d, "realm.json"); err != nil {
+		manifest, err := projectPath(d, "realm.json")
+		if err != nil {
 			return fmt.Errorf("the realm in %s: %w", d, err)
 		}
-		rf, err := entity.LoadRealm(filepath.Join(d, "realm.json"))
+		rf, err := entity.LoadRealm(manifest)
 		if err != nil {
 			return fmt.Errorf("reading the realm in %s: %w", d, err)
 		}
@@ -266,14 +274,14 @@ func versionsOfRealmTree(dir string, add func(string)) error {
 			if !isSubRealmName(name) {
 				continue // RM008
 			}
-			sub := filepath.Join(d, name)
-			if err := checkProjectPath(d, filepath.Join(name, "realm.json")); err != nil {
+			subManifest, err := projectPath(d, filepath.Join(name, "realm.json"))
+			if err != nil {
 				return fmt.Errorf("in sub-realm %s: %w", name, err)
 			}
-			if _, err := os.Lstat(filepath.Join(sub, "realm.json")); errors.Is(err, fs.ErrNotExist) {
+			if _, err := os.Lstat(subManifest); errors.Is(err, fs.ErrNotExist) {
 				continue // RM009
 			}
-			if err := walk(sub, depth+1); err != nil {
+			if err := walk(filepath.Dir(subManifest), depth+1); err != nil {
 				return fmt.Errorf("in sub-realm %s: %w", name, err)
 			}
 		}
