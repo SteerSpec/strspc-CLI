@@ -113,8 +113,8 @@ is checked against the schemas of the core release it pins, and core against its
 sub-realm that pins none takes those of the realm that lists it, and a pin that isn't a release
 selects the latest schemas. A file that doesn't match exits 2, naming the file and the first violations;
 `strspc lint` lists them all. A schema that isn't in the [schema cache](reference.md#schema-cache)
-and can't be fetched also exits 2: run `strspc schema fetch` once while online to check offline
-afterwards.
+and can't be fetched also exits 2: run the `strspc schema fetch` command the error gives, which names
+the core release when there is one, once while online to check offline afterwards.
 
 **Endpoint safety.** `.strspc/config.yaml` is repository content, so a pull request could point
 `evaluator.endpoint` at a host that would receive your `ANTHROPIC_API_KEY`. The check accepts an

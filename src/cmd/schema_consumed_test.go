@@ -9,7 +9,9 @@ import (
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/inherit"
+	"github.com/SteerSpec/strspc-manager/src/realmresolve"
 	"github.com/SteerSpec/strspc-manager/src/remote"
 )
 
@@ -296,4 +298,39 @@ func TestCheckRefusesSubRealmDependenciesChangedAfterResolution(t *testing.T) {
 	if err := r.validateRuleSchemas(); !errors.Is(err, errNotValidated) {
 		t.Errorf("error = %v, want errNotValidated", err)
 	}
+}
+
+func TestValidateDependenciesComparesEverySnapshot(t *testing.T) {
+	dir := resolvedPath(t.TempDir())
+	writeRealmManifest(t, dir, "dev.lib")
+	same, err := entity.LoadRealm(filepath.Join(dir, "realm.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := *same
+	stale.Realm.Title = "as another source read it"
+
+	r := &checkRun{ctx: context.Background(), cwd: t.TempDir()}
+	err = r.validateDependencies(newSchemaValidator(r.ctx), []depRealm{
+		{realm: &realmresolve.ResolvedRealm{Dir: dir, Realm: same}},
+		{realm: &realmresolve.ResolvedRealm{Dir: dir, Realm: &stale}},
+	})
+	if !errors.Is(err, errNotValidated) {
+		t.Errorf("error = %v, want errNotValidated for the second snapshot", err)
+	}
+}
+
+func TestUnavailableReleaseRemedyNamesTheRelease(t *testing.T) {
+	offlineSchemas(t)
+	dir := t.TempDir()
+	writeRealmManifest(t, dir, "dev.app", `{"realm_id": "dev.steerspec.core", "version": "1.21.0", "source": "../core/"}`)
+	data, err := os.ReadFile(filepath.Join(dir, "realm.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = newSchemaValidator(context.Background()).validateRealmManifest(filepath.Join(dir, "realm.json"), data)
+	if !errors.Is(err, errSchemaUnavailable) {
+		t.Fatalf("error = %v, want errSchemaUnavailable", err)
+	}
+	testutil.AssertContains(t, err.Error(), "run `strspc schema fetch --core-version 1.21.0` while online")
 }

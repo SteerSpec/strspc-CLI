@@ -93,15 +93,19 @@ func (r *checkRun) validateDependencies(v *schemaValidator, queue []depRealm) er
 	for len(queue) > 0 {
 		d := queue[0]
 		queue = queue[1:]
-		if seen[d.realm.Dir] {
-			continue
-		}
+		walked := seen[d.realm.Dir]
 		seen[d.realm.Dir] = true
-		if err := v.validateRealmTree(d.realm.Dir); err != nil {
-			return fmt.Errorf("validating a dependency: %w", err)
+		if !walked {
+			if err := v.validateRealmTree(d.realm.Dir); err != nil {
+				return fmt.Errorf("validating a dependency: %w", err)
+			}
 		}
+		// Each time: two sources can have read the manifest at different times.
 		if err := v.checkManifest(d.realm.Dir, d.realm.Realm, nil); err != nil {
 			return fmt.Errorf("checking a dependency: %w", err)
+		}
+		if walked {
+			continue
 		}
 		var needed []entity.RealmDep
 		for _, decl := range d.realm.Realm.Dependencies {

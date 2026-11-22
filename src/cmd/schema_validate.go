@@ -151,8 +151,14 @@ func (v *schemaValidator) compile(dir, schemaPath string) (*jsonschema.Schema, s
 	}
 	data, err := fetcher.Fetch(v.ctx, schemaPath)
 	if err != nil {
+		remedy := "strspc schema fetch"
+		// Named, as fetch can't find every pin by itself: a dependency's, a
+		// remote source's, or that of a realm outside the project's config.
+		if release, ok := strings.CutPrefix(label, coreRealmID+" "); ok {
+			remedy += " --core-version " + release
+		}
 		return nil, label, fmt.Errorf("%w: the %s schema of %s is not cached and can't be fetched; "+
-			"run `strspc schema fetch` while online: %w", errSchemaUnavailable, schemaPath, label, err)
+			"run `%s` while online: %w", errSchemaUnavailable, schemaPath, label, remedy, err)
 	}
 	sch, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
 	if err != nil {
