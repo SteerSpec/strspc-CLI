@@ -112,6 +112,94 @@ func TestCheckComparesEveryCopyOfAQualifiersRoot(t *testing.T) {
 	}
 }
 
+// dev.other declares the child dev.lib.sub as a realm of its own and the
+// source declares its parent dev.lib, which lists it. A qualifier binds to one
+// root, so neither realm counts as a copy of the other.
+func TestCheckBindsAQualifierToItsRoot(t *testing.T) {
+	ext := func(euid, target string) string {
+		return withNote(inheritEntityJSON(euid, "", "", inheritRule{id: euid + "-001", state: "I"}),
+			euid+"-001", "extends", "Builds on "+target+".")
+	}
+	cases := map[string]struct {
+		twoReleases bool
+		third       bool // dev.third also declares release 1.0.0 of the child
+		setup       func(t *testing.T, rules, lib, oth string)
+		want        error
+	}{
+		"two releases, child inherited": {twoReleases: true},
+		"two releases, child extended": {twoReleases: true, setup: func(t *testing.T, _, _, oth string) {
+			writeInheritFile(t, oth, "OTH", ext("OTH", "dev.lib.sub:SUBX-002"))
+		}},
+		"two releases, the child's note naming its own rule": {twoReleases: true, setup: func(t *testing.T, rules, _, _ string) {
+			writeInheritFile(t, filepath.Join(filepath.Dir(rules), "child"), "SUBX", withNote(inheritEntityJSON("SUBX", "", "",
+				inheritRule{id: "SUBX-001", state: "I"}, inheritRule{id: "SUBX-002", state: "P"}),
+				"SUBX-001", "extends", "Builds on SUBX-002."))
+		}},
+		"one release, parent's rule named through the child": {setup: func(t *testing.T, rules, _, _ string) {
+			writeInheritFile(t, rules, "EXT", ext("EXT", "dev.lib.sub:ACCT-002"))
+		}},
+		"one release, parent supersedes the child's rule": {setup: func(t *testing.T, _, lib, oth string) {
+			writeInheritFile(t, oth, "OTH", ext("OTH", "dev.lib.sub:SUBX-001"))
+			writeInheritFile(t, lib, "NEWER", strings.Replace(
+				inheritEntityJSON("NEWER", "", "", inheritRule{id: "NEWER-001", state: "P"}),
+				`"supersedes": null`, `"supersedes": "SUBX-001"`, 1,
+			))
+		}},
+		"one release, child inherited": {},
+		"two releases of the child itself": {twoReleases: true, third: true, setup: func(t *testing.T, _, _, oth string) {
+			writeInheritFile(t, oth, "OTH", ext("OTH", "dev.lib.sub:SUBX-002"))
+		}, want: errDifferingCopies},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			dir, diff := setupInheritProject(t, "null", "./rules/")
+			rules, lib, oth := filepath.Join(dir, "rules"), filepath.Join(dir, "lib"), filepath.Join(dir, "other")
+			listSubRealm(t, lib, "1.0.0")
+			writeInheritEntity(t, filepath.Join(lib, "sub"), "SUBX", "", inheritRule{id: "SUBX-001", state: "I"})
+
+			child, version := "../lib/sub/", "1.0.0"
+			if c.twoReleases {
+				child, version = "../child/", "2.0.0"
+				d := filepath.Join(dir, "child")
+				writeRefsFile(t, d, "realm.json", `{"$schema": "./_schema/realm.v1.schema.json",`+
+					` "realm": {"id": "dev.lib.sub", "title": "t", "version": "2.0.0"}}`)
+				writeInheritEntity(t, d, "SUBX", "",
+					inheritRule{id: "SUBX-001", state: "I"}, inheritRule{id: "SUBX-002", state: "P"})
+			}
+			writeRealmManifest(t, oth, "dev.other",
+				fmt.Sprintf(`{"realm_id": "dev.lib.sub", "version": %q, "source": %q}`, version, child))
+			deps := []string{
+				`{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}`,
+				`{"realm_id": "dev.other", "version": "1.0.0", "source": "../other/"}`,
+			}
+			if c.third {
+				third := filepath.Join(dir, "third")
+				writeRealmManifest(t, third, "dev.third",
+					`{"realm_id": "dev.lib.sub", "version": "1.0.0", "source": "../lib/sub/"}`)
+				writeInheritEntity(t, third, "THD", "dev.lib.sub:SUBX", inheritRule{id: "THD-001", state: "I"})
+				writeInheritEntity(t, rules, "APPTHD", "dev.third:THD", inheritRule{id: "APPTHD-001", state: "I"})
+				deps = append(deps, `{"realm_id": "dev.third", "version": "1.0.0", "source": "../third/"}`)
+			}
+			writeRealmManifest(t, rules, "dev.app", deps...)
+			writeInheritEntity(t, rules, "APP", "dev.other:OTH", inheritRule{id: "APP-001", state: "I"})
+			writeInheritEntity(t, oth, "OTH", "dev.lib.sub:SUBX", inheritRule{id: "OTH-001", state: "I"})
+			if c.setup != nil {
+				c.setup(t, rules, lib, oth)
+			}
+
+			_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+			if c.want == nil {
+				assertExit(t, err, exitOK)
+				return
+			}
+			assertExit(t, err, exitConfig)
+			if !errors.Is(err, c.want) {
+				t.Errorf("error = %v, want %v", err, c.want)
+			}
+		})
+	}
+}
+
 // A source's sub-realm can declare a dependency that the source doesn't.
 func TestCheckComparesCopiesOfASubRealmsOwnDependency(t *testing.T) {
 	dir, diff := setupTwoReleases(t)

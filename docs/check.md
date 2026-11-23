@@ -114,7 +114,8 @@ lacks it), or in whether a rule named by an `extends` note is live, in either di
 the note's realm declares and not in the other, or the reverse. It can't then tell which was evaluated, so
 it refuses on every run until the source uses one version, for instance after a rule is Terminated in a new
 release that a dependency doesn't use yet. A reference qualified with a sub-realm counts against every
-version of the realm that lists it, including one that doesn't list that sub-realm. Two sources may use
+version of the realm that lists it, including one that doesn't list that sub-realm, but not against a
+realm of that name declared by itself, which is compared only with its own versions. Two sources may use
 different versions. A file with a key twice in one object, in any case, is
 refused as well, as the schema and the parser would read it differently.
 

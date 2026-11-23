@@ -289,28 +289,29 @@ func (v *schemaValidator) indexRealm(source, dir string, rf *entity.RealmFile, s
 }
 
 // namedCopies returns the copies that realm can mean in a note of the realm
-// from, and whether it can mean any. To realmresolve a qualifier is the note's
-// own realm or a sub-realm that lists, else a dependency the note's realm
-// declares, else a sub-realm listed by one, which means that dependency's
-// whole tree. So for a sub-realm every copy of the root counts, also one that
-// doesn't list the child (any more); a child declared by itself is a realm of
-// its own and brings in no other copy.
+// from (a root ID), and whether it can mean any. To realmresolve a qualifier
+// is the note's own realm or a sub-realm that lists, else a dependency the
+// note's realm declares, else a sub-realm listed by one, which means that
+// dependency's whole tree. Each of these binds the qualifier to a root, and
+// only copies of that root count: for a sub-realm every copy of the root, also
+// one that doesn't list the child (any more), but no copy of another root that
+// lists or is a realm of the same name.
 func (v *schemaValidator) namedCopies(source, from, realm string) ([]realmCopy, bool) {
 	named := v.trees[realmName{source, realm}]
 	if realm == from {
-		return named, true
+		return rootedAt(named, realm), true
 	}
 	listedBy := func(root string) bool {
 		return slices.ContainsFunc(named, func(c realmCopy) bool { return c.root == root })
 	}
-	can, roots := false, map[string]bool{}
+	roots := map[string]bool{}
 	if listedBy(from) {
 		roots[from] = true
 	} else {
 		for _, c := range v.trees[realmName{source, from}] {
 			for _, decls := range c.declarers {
 				if slices.ContainsFunc(decls, func(d entity.RealmDep) bool { return d.RealmID == realm }) {
-					can = true
+					roots[realm] = true
 					continue
 				}
 				for _, d := range decls {
@@ -321,15 +322,22 @@ func (v *schemaValidator) namedCopies(source, from, realm string) ([]realmCopy, 
 			}
 		}
 	}
-	out := slices.Clone(named)
+	var out []realmCopy
 	for _, root := range slices.Sorted(maps.Keys(roots)) {
-		for _, c := range v.trees[realmName{source, root}] {
-			if c.root == root {
-				out = append(out, c) // again when it lists realm, which changes no outcome
-			}
+		out = append(out, rootedAt(v.trees[realmName{source, root}], root)...)
+	}
+	return out, len(roots) > 0
+}
+
+// rootedAt returns the copies of the realm tree root among copies.
+func rootedAt(copies []realmCopy, root string) []realmCopy {
+	var out []realmCopy
+	for _, c := range copies {
+		if c.root == root {
+			out = append(out, c)
 		}
 	}
-	return out, can || len(roots) > 0
+	return out
 }
 
 // matchInEveryCopy reports an error unless each of copies holds euid and
@@ -394,7 +402,9 @@ func (r *checkRun) checkConsumed(v *schemaValidator) error {
 
 func (v *schemaValidator) checkEntity(source, realm string, f *entity.File) error {
 	same := func(_ realmCopy, ok *entity.File) bool { return reflect.DeepEqual(ok, f) }
-	if err := matchInEveryCopy(v.trees[realmName{source, realm}], f.Entity.ID, same); err != nil {
+	// A hop names its realm by the root ID, which a parent listing a child of
+	// that name doesn't hold.
+	if err := matchInEveryCopy(rootedAt(v.trees[realmName{source, realm}], realm), f.Entity.ID, same); err != nil {
 		return fmt.Errorf("entity %s of %s %w", f.Entity.ID, realm, err)
 	}
 	return nil

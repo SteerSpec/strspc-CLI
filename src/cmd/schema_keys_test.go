@@ -55,7 +55,11 @@ func TestCheckRuleTellsCopiesApart(t *testing.T) {
 		return &entity.File{Rules: []entity.Rule{{ID: "ACCT-002", Body: body}}}
 	}
 	tree := func(body string) realmCopy {
-		return realmCopy{entities: map[string][]*entity.File{"ACCT": {copyWith(body)}}}
+		return realmCopy{root: "dev.lib", entities: map[string][]*entity.File{"ACCT": {copyWith(body)}}}
+	}
+	// What indexRealm records for the note's realm, which declares dev.lib.
+	for _, source := range []string{"./rules/", "./one/", "./two/"} {
+		v.trees[realmName{source, "dev.app"}] = []realmCopy{{root: "dev.app", declarers: [][]entity.RealmDep{{{RealmID: "dev.lib"}}}}}
 	}
 	v.trees[realmName{"./rules/", "dev.lib"}] = []realmCopy{tree("Old."), tree("New.")}
 	if err := v.checkRule("./rules/", "dev.app", used); !errors.Is(err, errDifferingCopies) {
