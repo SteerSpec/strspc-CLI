@@ -12,6 +12,7 @@ import (
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/schema"
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // breakEntity rewrites dir/name so that it no longer matches the entity
@@ -51,6 +52,10 @@ func TestCheckRefusesRuleFileThatFailsItsSchema(t *testing.T) {
 	assertExit(t, err, exitConfig)
 	testutil.AssertContains(t, err.Error(), "TST.json does not match the entity/v1.json schema")
 	testutil.AssertContains(t, err.Error(), "/rule_set/version")
+	var ve *jsonschema.ValidationError
+	if !errors.As(err, &ve) {
+		t.Errorf("error = %v, want it to wrap the validator's *jsonschema.ValidationError", err)
+	}
 }
 
 func TestCheckRefusesWhenSchemaUnavailable(t *testing.T) {

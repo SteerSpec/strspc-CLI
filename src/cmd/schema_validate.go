@@ -206,10 +206,26 @@ func (v *schemaValidator) validate(path string, data []byte, dir, schemaPath str
 		if n := len(msgs) - len(shown); n > 0 {
 			more = fmt.Sprintf(" (and %d more; strspc lint lists them)", n)
 		}
-		return fmt.Errorf("%s does not match the %s schema of %s: %s%s", path, schemaPath, label, strings.Join(shown, "; "), more)
+		return &schemaMismatchError{
+			msg:   fmt.Sprintf("%s does not match the %s schema of %s: %s%s", path, schemaPath, label, strings.Join(shown, "; "), more),
+			cause: err,
+		}
 	}
 	return nil
 }
+
+// schemaMismatchError reports a file the schema refuses, listing at most
+// maxViolationsShown of the violations rather than the validator's own text.
+type schemaMismatchError struct {
+	msg   string
+	cause error
+}
+
+func (e *schemaMismatchError) Error() string { return e.msg }
+
+// Unwrap returns the validator's error, so callers can inspect it with
+// errors.As (CONV-004).
+func (e *schemaMismatchError) Unwrap() error { return e.cause }
 
 // validateEntityFile checks an entity file against the entity schema of the
 // realm holding it.
