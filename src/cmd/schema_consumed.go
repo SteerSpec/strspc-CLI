@@ -308,7 +308,9 @@ func (v *schemaValidator) namedCopies(source, from, realm string) ([]realmCopy, 
 	if listedBy(from) {
 		roots[from] = true
 	} else {
-		for _, c := range v.trees[realmName{source, from}] {
+		// Only the note's realm declares what it resolves, not a parent
+		// listing a child of that name.
+		for _, c := range rootedAt(v.trees[realmName{source, from}], from) {
 			for _, decls := range c.declarers {
 				if slices.ContainsFunc(decls, func(d entity.RealmDep) bool { return d.RealmID == realm }) {
 					roots[realm] = true

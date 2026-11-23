@@ -135,6 +135,36 @@ func TestCheckBindsAQualifierToItsRoot(t *testing.T) {
 				inheritRule{id: "SUBX-001", state: "I"}, inheritRule{id: "SUBX-002", state: "P"}),
 				"SUBX-001", "extends", "Builds on SUBX-002."))
 		}},
+		// The parent's dependency doesn't resolve the child's notes, so the
+		// resolver omits the target and its releases aren't compared.
+		"two releases, the child naming its parent's dependency": {twoReleases: true, setup: func(t *testing.T, rules, lib, _ string) {
+			dir := filepath.Dir(rules)
+			for _, b := range []struct{ name, version string }{{"base1", "1.0.0"}, {"base2", "2.0.0"}} {
+				d := filepath.Join(dir, b.name)
+				writeRefsFile(t, d, "realm.json", fmt.Sprintf(`{"$schema": "./_schema/realm.v1.schema.json",`+
+					` "realm": {"id": "dev.base", "title": "t", "version": %q}, "sub_realms": ["x"]}`, b.version))
+				writeRealmManifest(t, filepath.Join(d, "x"), "dev.base.x")
+				writeInheritEntity(t, filepath.Join(d, "x"), "BXE", "", inheritRule{id: "BXE-001", state: "I"})
+			}
+			// Live in one release only, so comparing them would refuse.
+			writeInheritFile(t, filepath.Join(dir, "base1"), "SUP", strings.Replace(
+				inheritEntityJSON("SUP", "", "", inheritRule{id: "SUP-001", state: "P"}),
+				`"supersedes": null`, `"supersedes": "BXE-001"`, 1,
+			))
+			writeRefsFile(t, lib, "realm.json", `{"$schema": "./_schema/realm.v1.schema.json",`+
+				` "realm": {"id": "dev.lib", "title": "t", "version": "1.0.0"}, "sub_realms": ["sub"],`+
+				` "dependencies": [{"realm_id": "dev.base", "version": "1.0.0", "source": "../base1/"}]}`)
+			writeRealmManifest(t, rules, "dev.app",
+				`{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}`,
+				`{"realm_id": "dev.other", "version": "1.0.0", "source": "../other/"}`,
+				`{"realm_id": "dev.base", "version": "2.0.0", "source": "../base2/"}`)
+			writeInheritEntity(t, rules, "APPBXE", "dev.base.x:BXE", inheritRule{id: "APPBXE-001", state: "I"})
+			writeInheritEntity(t, lib, "LIBBXE", "dev.base.x:BXE", inheritRule{id: "LIBBXE-001", state: "I"})
+			writeInheritEntity(t, rules, "APPLIB", "dev.lib:LIBBXE", inheritRule{id: "APPLIB-001", state: "I"})
+			writeInheritFile(t, filepath.Join(dir, "child"), "SUBX", withNote(inheritEntityJSON("SUBX", "", "",
+				inheritRule{id: "SUBX-001", state: "I"}, inheritRule{id: "SUBX-002", state: "P"}),
+				"SUBX-001", "extends", "Builds on dev.base.x:BXE-001."))
+		}},
 		"one release, parent's rule named through the child": {setup: func(t *testing.T, rules, _, _ string) {
 			writeInheritFile(t, rules, "EXT", ext("EXT", "dev.lib.sub:ACCT-002"))
 		}},
