@@ -83,14 +83,18 @@ func TestCheckRefusesLinkedNestedSubRealmDependency(t *testing.T) {
 	testutil.AssertContains(t, err.Error(), "is a link")
 }
 
-// A manifest listing its own directory, or its parent, as a sub-realm can't
-// make the walk revisit it: without that, each "." would double the work at
-// each of maxSubRealmDepth levels.
+// A manifest listing its own directory, or its parent, as a sub-realm or a
+// dependency can't make the walk revisit it: without that, each "." would
+// double the work at each of maxSubRealmDepth levels, and a dependency
+// leading back would recurse without end.
 func TestCheckDependencySourcesWalksEachDirectoryOnce(t *testing.T) {
 	dir := t.TempDir()
 	writeRefsFile(t, dir, "realm.json", `{"$schema": "./_schema/realm.v1.schema.json",`+
 		` "realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},`+
-		` "sub_realms": [".", ".", "..", "./", "child", "loop", "loop", "back"]}`)
+		` "sub_realms": [".", ".", "..", "./", "child", "loop", "loop", "back"],`+
+		` "dependencies": [{"realm_id": "dev.a", "version": "1.0.0", "source": "./loop/"},`+
+		` {"realm_id": "dev.b", "version": "1.0.0", "source": "./back/"},`+
+		` {"realm_id": "dev.c", "version": "1.0.0", "source": "."}]}`)
 	// Off Windows a link is followed: loop and back lead to dir, each giving
 	// a new path at every level.
 	if runtime.GOOS != "windows" {
@@ -104,7 +108,7 @@ func TestCheckDependencySourcesWalksEachDirectoryOnce(t *testing.T) {
 		t.Fatalf("loading the manifest: %v", err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- checkDependencySources(dir, rf, map[string]bool{}) }()
+	go func() { done <- checkDependencySources(dir, rf, &dirSet{}) }()
 	select {
 	case err := <-done:
 		if err != nil {

@@ -35,28 +35,20 @@ func checkLocalSources(cwd string, entries []ruleresolve.SourceEntry) error {
 // manifests of the sub-realms it lists and those of the local dependencies
 // they reach, and refuses each local dependency source that projectPath
 // refuses, before the realm resolver opens any of them. seen holds the
-// dependency directories already checked.
-func checkDependencySources(dir string, rf *entity.RealmFile, seen map[string]bool) error {
+// directories already walked.
+func checkDependencySources(dir string, rf *entity.RealmFile, seen *dirSet) error {
 	type declarer struct {
 		dir  string
 		deps []entity.RealmDep
 	}
 	var decls []declarer
-	var walked []os.FileInfo
 	// The realm and its sub-realms, as deep as lint follows them, although
-	// the resolver refuses a sub-realm that lists more (RR010). Each
-	// directory once, by identity rather than by path, so neither a name
-	// nor links leading back can make the walk fan out.
+	// the resolver refuses a sub-realm that lists more (RR010).
 	var walk func(d string, r *entity.RealmFile, depth int) error
 	walk = func(d string, r *entity.RealmFile, depth int) error {
-		here, err := os.Stat(d)
-		if err != nil {
-			return nil //nolint:nilerr // gone: nothing to walk
-		}
-		if slices.ContainsFunc(walked, func(fi os.FileInfo) bool { return os.SameFile(fi, here) }) {
+		if !seen.enter(d) {
 			return nil
 		}
-		walked = append(walked, here)
 		decls = append(decls, declarer{d, r.Dependencies})
 		if depth >= maxSubRealmDepth {
 			return nil
@@ -90,8 +82,7 @@ func checkDependencySources(dir string, rf *entity.RealmFile, seen map[string]bo
 				continue
 			}
 			p, err := projectPath(d.dir, dep.Source)
-			if err == nil && !seen[p] {
-				seen[p] = true
+			if err == nil {
 				var drf *entity.RealmFile
 				if drf, err = loadRealmIfAny(p); err == nil && drf != nil {
 					err = checkDependencySources(p, drf, seen)
@@ -103,6 +94,22 @@ func checkDependencySources(dir string, rf *entity.RealmFile, seen map[string]bo
 		}
 	}
 	return nil
+}
+
+// dirSet holds the directories a walk has entered, by identity rather than
+// by path: links leading back give a new path at every level, so only
+// identity keeps a walk over sub-realms and dependencies finite.
+type dirSet struct{ entered []os.FileInfo }
+
+// enter reports whether dir is new to s, and adds it. A directory that can't
+// be read isn't entered: there is nothing to walk in it.
+func (s *dirSet) enter(dir string) bool {
+	fi, err := os.Stat(dir)
+	if err != nil || slices.ContainsFunc(s.entered, func(e os.FileInfo) bool { return os.SameFile(e, fi) }) {
+		return false
+	}
+	s.entered = append(s.entered, fi)
+	return true
 }
 
 // loadRealmIfAny loads dir/realm.json. It returns an error only when

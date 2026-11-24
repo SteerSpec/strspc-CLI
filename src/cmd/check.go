@@ -559,7 +559,7 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 // local dependency sources that checkDependencySources refuses in the
 // manifest of each source realm.
 func (r *checkRun) checkDependencySources() error {
-	seen := map[string]bool{}
+	seen := &dirSet{}
 	for _, e := range r.entries {
 		dir, err := r.sourceDir(e)
 		if err != nil || dir == "" {
