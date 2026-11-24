@@ -12,7 +12,7 @@ import (
 
 var (
 	errRefusedVolume = errors.New("is a network or device path")
-	errProjectLink   = errors.New("is a link, which schema fetch doesn't follow in a project on Windows")
+	errProjectLink   = errors.New("is a link, which strspc doesn't follow in a project on Windows")
 )
 
 // refuseProjectLinks reports whether projectPath refuses links. Package-level
@@ -38,7 +38,7 @@ func networkOrDeviceVolume(vol string) bool {
 // ends the walk, as nothing past it can be opened.
 func projectPath(base, p string) (string, error) {
 	if networkOrDeviceVolume(filepath.VolumeName(p)) {
-		return "", fmt.Errorf("%q %w: pass the realm with --dir if you trust it", p, errRefusedVolume)
+		return "", fmt.Errorf("%q %w, which strspc doesn't open for a project", p, errRefusedVolume)
 	}
 	start, err := filepath.Abs(base)
 	if err != nil {
@@ -71,7 +71,7 @@ func projectPath(base, p string) (string, error) {
 			return "", fmt.Errorf("looking at %s: %w", cur, err)
 		}
 		if isLinkOrJunction(cur, fi.Mode()) {
-			return "", fmt.Errorf("%s %w: pass the realm it leads to with --dir if you trust it", cur, errProjectLink)
+			return "", fmt.Errorf("%s %w", cur, errProjectLink)
 		}
 	}
 	return full, nil
