@@ -42,17 +42,15 @@ func checkDependencySources(dir string, rf *entity.RealmFile, seen *dirSet) erro
 		deps []entity.RealmDep
 	}
 	var decls []declarer
-	// The realm and its sub-realms, as deep as lint follows them, although
-	// the resolver refuses a sub-realm that lists more (RR010).
-	var walk func(d string, r *entity.RealmFile, depth int) error
-	walk = func(d string, r *entity.RealmFile, depth int) error {
+	// The realm and all its sub-realms, although the resolver refuses a
+	// sub-realm that lists more (RR010). No depth limit: seen bounds the walk,
+	// and a directory cut off at a limit would be skipped when reached again.
+	var walk func(d string, r *entity.RealmFile) error
+	walk = func(d string, r *entity.RealmFile) error {
 		if !seen.enter(d) {
 			return nil
 		}
 		decls = append(decls, declarer{d, r.Dependencies})
-		if depth >= maxSubRealmDepth {
-			return nil
-		}
 		for _, sub := range r.SubRealms {
 			if !isSubRealmName(sub) {
 				continue // RM008, which the resolver reports
@@ -66,14 +64,14 @@ func checkDependencySources(dir string, rf *entity.RealmFile, seen *dirSet) erro
 				return fmt.Errorf("sub-realm of %s: %w", r.Realm.ID, err)
 			}
 			if srf != nil {
-				if err := walk(subDir, srf, depth+1); err != nil {
+				if err := walk(subDir, srf); err != nil {
 					return err
 				}
 			}
 		}
 		return nil
 	}
-	if err := walk(dir, rf, 0); err != nil {
+	if err := walk(dir, rf); err != nil {
 		return err
 	}
 	for _, d := range decls {

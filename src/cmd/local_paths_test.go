@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -116,6 +118,33 @@ func TestCheckDependencySourcesWalksEachDirectoryOnce(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the walk revisits directories")
+	}
+}
+
+// No depth limit cuts the walk short: a dependency declared deeper than lint
+// follows sub-realms is checked too.
+func TestCheckDependencySourcesHasNoDepthLimit(t *testing.T) {
+	refuseLinks(t)
+	root := t.TempDir()
+	d := root
+	for i := 0; i <= maxSubRealmDepth+8; i++ {
+		writeRefsFile(t, d, "realm.json", fmt.Sprintf(`{"$schema": "./_schema/realm.v1.schema.json",`+
+			` "realm": {"id": "dev.r%d", "title": "t", "version": "1.0.0"}, "sub_realms": ["s"]}`, i))
+		d = filepath.Join(d, "s")
+	}
+	writeRefsFile(t, d, "realm.json", `{"$schema": "./_schema/realm.v1.schema.json",`+
+		` "realm": {"id": "dev.deep", "title": "t", "version": "1.0.0"},`+
+		` "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "./lib/"}]}`)
+	writeRealmManifest(t, filepath.Join(root, "real"), "dev.lib")
+	linkOrSkip(t, filepath.Join(root, "real"), filepath.Join(d, "lib"))
+
+	rf, err := loadRealmIfAny(root)
+	if err != nil || rf == nil {
+		t.Fatalf("loading the manifest: %v", err)
+	}
+	err = checkDependencySources(root, rf, &dirSet{})
+	if !errors.Is(err, errProjectLink) {
+		t.Errorf("error = %v, want errProjectLink", err)
 	}
 }
 
