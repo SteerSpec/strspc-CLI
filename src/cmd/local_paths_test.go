@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 )
@@ -80,6 +81,36 @@ func TestCheckRefusesLinkedNestedSubRealmDependency(t *testing.T) {
 	assertExit(t, err, exitConfig)
 	testutil.AssertContains(t, err.Error(), "dependency dev.nested of dev.app")
 	testutil.AssertContains(t, err.Error(), "is a link")
+}
+
+// A manifest listing its own directory, or its parent, as a sub-realm can't
+// make the walk revisit it: without that, each "." would double the work at
+// each of maxSubRealmDepth levels.
+func TestCheckDependencySourcesWalksEachDirectoryOnce(t *testing.T) {
+	dir := t.TempDir()
+	writeRefsFile(t, dir, "realm.json", `{"$schema": "./_schema/realm.v1.schema.json",`+
+		` "realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},`+
+		` "sub_realms": [".", ".", "..", "./", "child", "loop", "loop"]}`)
+	// Off Windows a link is followed: loop leads back to dir.
+	if runtime.GOOS != "windows" {
+		linkOrSkip(t, ".", filepath.Join(dir, "loop"))
+	}
+	writeRefsFile(t, filepath.Join(dir, "child"), "realm.json", `{"$schema": "./_schema/realm.v1.schema.json",`+
+		` "realm": {"id": "dev.app.child", "title": "t", "version": "1.0.0"}, "sub_realms": ["..", "../child"]}`)
+	rf, err := loadRealmIfAny(dir)
+	if err != nil || rf == nil {
+		t.Fatalf("loading the manifest: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- checkDependencySources(dir, rf, map[string]bool{}) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("error = %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the walk revisits directories")
+	}
 }
 
 // Elsewhere than on Windows links are followed, as before.

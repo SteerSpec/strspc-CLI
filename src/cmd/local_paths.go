@@ -41,15 +41,24 @@ func checkDependencySources(dir string, rf *entity.RealmFile, seen map[string]bo
 		deps []entity.RealmDep
 	}
 	var decls []declarer
+	walked := map[string]bool{}
 	// The realm and its sub-realms, as deep as lint follows them, although
-	// the resolver refuses a sub-realm that lists more (RR010).
+	// the resolver refuses a sub-realm that lists more (RR010). Each
+	// directory once, so a manifest can't make the walk fan out.
 	var walk func(d string, r *entity.RealmFile, depth int) error
 	walk = func(d string, r *entity.RealmFile, depth int) error {
+		if walked[d] {
+			return nil
+		}
+		walked[d] = true
 		decls = append(decls, declarer{d, r.Dependencies})
 		if depth >= maxSubRealmDepth {
 			return nil
 		}
 		for _, sub := range r.SubRealms {
+			if !isSubRealmName(sub) {
+				continue // RM008, which the resolver reports
+			}
 			subDir, err := projectPath(d, sub)
 			if err != nil {
 				return fmt.Errorf("sub-realm of %s: %w", r.Realm.ID, err)
