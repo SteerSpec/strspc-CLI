@@ -30,29 +30,44 @@ func checkLocalSources(cwd string, entries []ruleresolve.SourceEntry) error {
 	return nil
 }
 
-// checkDependencySources refuses each local dependency source that
-// projectPath refuses, in the manifest rf of the realm in dir, in those of
-// the sub-realms it lists and in those of the local dependencies they reach,
-// before the realm resolver opens any of them. seen holds the dependency
-// directories already checked.
+// checkDependencySources walks rf, the manifest of the realm in dir, the
+// manifests of the sub-realms it lists and those of the local dependencies
+// they reach, and refuses each local dependency source that projectPath
+// refuses, before the realm resolver opens any of them. seen holds the
+// dependency directories already checked.
 func checkDependencySources(dir string, rf *entity.RealmFile, seen map[string]bool) error {
 	type declarer struct {
 		dir  string
 		deps []entity.RealmDep
 	}
-	decls := []declarer{{dir, rf.Dependencies}}
-	for _, sub := range rf.SubRealms {
-		subDir, err := projectPath(dir, sub)
-		if err != nil {
-			return fmt.Errorf("sub-realm of %s: %w", rf.Realm.ID, err)
+	var decls []declarer
+	// The realm and its sub-realms, as deep as lint follows them, although
+	// the resolver refuses a sub-realm that lists more (RR010).
+	var walk func(d string, r *entity.RealmFile, depth int) error
+	walk = func(d string, r *entity.RealmFile, depth int) error {
+		decls = append(decls, declarer{d, r.Dependencies})
+		if depth >= maxSubRealmDepth {
+			return nil
 		}
-		srf, err := loadRealmIfAny(subDir)
-		if err != nil {
-			return fmt.Errorf("sub-realm of %s: %w", rf.Realm.ID, err)
+		for _, sub := range r.SubRealms {
+			subDir, err := projectPath(d, sub)
+			if err != nil {
+				return fmt.Errorf("sub-realm of %s: %w", r.Realm.ID, err)
+			}
+			srf, err := loadRealmIfAny(subDir)
+			if err != nil {
+				return fmt.Errorf("sub-realm of %s: %w", r.Realm.ID, err)
+			}
+			if srf != nil {
+				if err := walk(subDir, srf, depth+1); err != nil {
+					return err
+				}
+			}
 		}
-		if srf != nil {
-			decls = append(decls, declarer{subDir, srf.Dependencies})
-		}
+		return nil
+	}
+	if err := walk(dir, rf, 0); err != nil {
+		return err
 	}
 	for _, d := range decls {
 		for _, dep := range d.deps {

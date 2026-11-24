@@ -62,6 +62,26 @@ func TestCheckRefusesLinkedLocalPaths(t *testing.T) {
 	}
 }
 
+// A sub-realm's own sub-realm is checked too, before the resolver refuses
+// the nesting (RR010).
+func TestCheckRefusesLinkedNestedSubRealmDependency(t *testing.T) {
+	dir, diff := setupLinkProject(t)
+	rules := filepath.Join(dir, "rules")
+	writeRefsFile(t, filepath.Join(rules, "child"), "realm.json", `{"$schema": "./_schema/realm.v1.schema.json",`+
+		` "realm": {"id": "dev.app.child", "title": "t", "version": "1.0.0"}, "sub_realms": ["deep"],`+
+		` "dependencies": [{"realm_id": "dev.other", "version": "1.0.0", "source": "../../other/"}]}`)
+	writeRealmManifest(t, filepath.Join(rules, "child", "deep"), "dev.app.child.deep",
+		`{"realm_id": "dev.nested", "version": "1.0.0", "source": "../../../nested/"}`)
+	writeRealmManifest(t, filepath.Join(dir, "nested"), "dev.nested")
+	refuseLinks(t)
+	relink(t, dir, "nested")
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, err.Error(), "dependency dev.nested of dev.app")
+	testutil.AssertContains(t, err.Error(), "is a link")
+}
+
 // Elsewhere than on Windows links are followed, as before.
 func TestCheckFollowsLinkedLocalPathsElsewhere(t *testing.T) {
 	if runtime.GOOS == "windows" {
