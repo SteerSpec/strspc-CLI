@@ -90,10 +90,12 @@ func TestCheckDependencySourcesWalksEachDirectoryOnce(t *testing.T) {
 	dir := t.TempDir()
 	writeRefsFile(t, dir, "realm.json", `{"$schema": "./_schema/realm.v1.schema.json",`+
 		` "realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},`+
-		` "sub_realms": [".", ".", "..", "./", "child", "loop", "loop"]}`)
-	// Off Windows a link is followed: loop leads back to dir.
+		` "sub_realms": [".", ".", "..", "./", "child", "loop", "loop", "back"]}`)
+	// Off Windows a link is followed: loop and back lead to dir, each giving
+	// a new path at every level.
 	if runtime.GOOS != "windows" {
 		linkOrSkip(t, ".", filepath.Join(dir, "loop"))
+		linkOrSkip(t, ".", filepath.Join(dir, "back"))
 	}
 	writeRefsFile(t, filepath.Join(dir, "child"), "realm.json", `{"$schema": "./_schema/realm.v1.schema.json",`+
 		` "realm": {"id": "dev.app.child", "title": "t", "version": "1.0.0"}, "sub_realms": ["..", "../child"]}`)

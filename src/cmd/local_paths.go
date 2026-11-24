@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
@@ -41,16 +42,21 @@ func checkDependencySources(dir string, rf *entity.RealmFile, seen map[string]bo
 		deps []entity.RealmDep
 	}
 	var decls []declarer
-	walked := map[string]bool{}
+	var walked []os.FileInfo
 	// The realm and its sub-realms, as deep as lint follows them, although
 	// the resolver refuses a sub-realm that lists more (RR010). Each
-	// directory once, so a manifest can't make the walk fan out.
+	// directory once, by identity rather than by path, so neither a name
+	// nor links leading back can make the walk fan out.
 	var walk func(d string, r *entity.RealmFile, depth int) error
 	walk = func(d string, r *entity.RealmFile, depth int) error {
-		if walked[d] {
+		here, err := os.Stat(d)
+		if err != nil {
+			return nil //nolint:nilerr // gone: nothing to walk
+		}
+		if slices.ContainsFunc(walked, func(fi os.FileInfo) bool { return os.SameFile(fi, here) }) {
 			return nil
 		}
-		walked[d] = true
+		walked = append(walked, here)
 		decls = append(decls, declarer{d, r.Dependencies})
 		if depth >= maxSubRealmDepth {
 			return nil
