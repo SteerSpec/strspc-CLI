@@ -261,7 +261,7 @@ Examples:
 				return err
 			}
 			u := standardUpdate{Entity: args[0], Path: target.path}
-			err = modifyEntity(target, func(f *entity.File) error {
+			err = modifyEntity(cmd.Context(), target, func(f *entity.File) error {
 				refs, before, after, err := edit.apply(cmd, f.Entity.Standards)
 				if err != nil {
 					return err
@@ -327,7 +327,7 @@ Examples:
 				return err
 			}
 			u := standardUpdate{Path: realmPath}
-			err = loadModifyWriteRealm(realmPath, func(rf *entity.RealmFile) error {
+			err = loadModifyWriteRealm(cmd.Context(), realmPath, func(rf *entity.RealmFile) error {
 				refs, before, after, err := edit.apply(cmd, rf.Realm.Standards)
 				if err != nil {
 					return err

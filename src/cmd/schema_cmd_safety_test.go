@@ -55,7 +55,7 @@ func TestSchemaFetchDeepSubRealm(t *testing.T) {
 	dir := root
 	const depth = 20 // deeper than a short traversal bound, within maxSubRealmDepth
 	for i := 0; i <= depth; i++ {
-		body := fmt.Sprintf(`{"realm":{"id":"dev.d%d","title":"t","version":"1.0.0"}`, i)
+		body := fmt.Sprintf(`{"$schema": "./_schema/realm.v1.schema.json", "realm":{"id":"dev.d%d","title":"t","version":"1.0.0"}`, i)
 		if i == depth {
 			body += `,"dependencies":[{"realm_id":"dev.steerspec.core","version":"4.5.6","source":"../core/"}]`
 		} else {

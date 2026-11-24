@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -97,7 +98,7 @@ func TestDependencyRealmIDOutsideTheGrammar(t *testing.T) {
 func TestRealmDepRemoveAcceptsAnIDOutsideTheGrammar(t *testing.T) {
 	dir := t.TempDir()
 	setupValidRealm(t, dir)
-	if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+	if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 		rf.Dependencies = []entity.RealmDep{{RealmID: "acme-prod", Version: "1.0.0"}}
 		return nil
 	}); err != nil {

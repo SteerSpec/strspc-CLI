@@ -42,7 +42,7 @@ Examples:
 			var oldVersion, version string
 			var oldState, newState string
 
-			err = modifyEntity(target, func(f *entity.File) error {
+			err = modifyEntity(cmd.Context(), target, func(f *entity.File) error {
 				oldVersion = f.RuleSet.Version
 				if r := findRule(f, ruleID); r != nil {
 					oldState = r.State

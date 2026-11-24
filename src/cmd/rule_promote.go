@@ -131,7 +131,7 @@ func runRulePromote(ctx context.Context, out, errOut io.Writer, ruleID string, o
 
 	var promoted entity.Rule
 	var stamp string
-	err = modifyEntity(target, func(f *entity.File) error {
+	err = modifyEntity(ctx, target, func(f *entity.File) error {
 		// The file is read again to be changed: a rule edited while it was
 		// being verified is not the rule the verdict is about.
 		if res.Verify != nil && !sameRule(res.Verify, findRule(f, ruleID)) {

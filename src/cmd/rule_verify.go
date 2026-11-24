@@ -203,6 +203,9 @@ func (r *verifyRun) run(ids []string, o *verifyOptions) error {
 	if err := r.resolveSources(); err != nil {
 		return r.verifyFail(exitConfig, err)
 	}
+	if err := r.validateRuleSchemas(); err != nil {
+		return r.verifyFail(exitConfig, err)
+	}
 	// The tree first: buildInputs labels sources relative to r.repoDir, the
 	// base the file paths use, so local rules stay scoped to their directory.
 	if err := r.collectVerifyTree(o.paths, o.excludes); err != nil {

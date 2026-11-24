@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -23,7 +24,7 @@ func setupLinkRealm(t *testing.T, dir string) {
 	t.Helper()
 	setupValidRealm(t, dir)
 	pinCoreFrom(t, dir, manifestMinCore.String(), "")
-	if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+	if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 		rf.Dependencies = append(rf.Dependencies, entity.RealmDep{RealmID: testStdRealm, Version: "5.0.0"})
 		return nil
 	}); err != nil {

@@ -66,7 +66,7 @@ Examples:
 			var oldVersion, version string
 			var profiles []string
 
-			err = modifyEntity(target, func(f *entity.File) error {
+			err = modifyEntity(cmd.Context(), target, func(f *entity.File) error {
 				oldVersion = f.RuleSet.Version
 				for i := range f.Rules {
 					r := &f.Rules[i]

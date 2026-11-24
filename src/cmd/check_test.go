@@ -38,6 +38,18 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	_ = os.Setenv(envSchemaCache, schemaCache)
+	// Validate against this repository's copy of the core schemas, whatever
+	// release a test realm pins, so no test needs the network (SEC-004 checks
+	// rule files before they are used). A test serving its own schemas
+	// replaces newSchemaFetcher.
+	localSchemas, err := filepath.Abs(filepath.Join("..", "..", "rules"))
+	if err != nil {
+		panic(err)
+	}
+	newSchemaFetcher = func(opts ...schema.Option) *schema.Fetcher {
+		return newCachedSchemaFetcher(append(opts, schema.WithLocalDir(localSchemas))...)
+	}
+	newValidationSchemaFetcher = newSchemaFetcher
 	newConfigSchemaFetcher = func(string) *schema.Fetcher { return nil }
 	_ = os.Unsetenv(addedByEnv)
 	realGitUserEmail = gitUserEmail
@@ -1061,8 +1073,8 @@ func TestCheckExplicitEmptyEvaluateOnEvaluatesNothing(t *testing.T) {
 func TestCheckSubRealmDependenciesValidated(t *testing.T) {
 	dir, diff := setupCheckProject(t, "null", []string{"I"})
 	rules := filepath.Join(dir, "rules")
-	parent := `{"realm":{"id":"test","title":"t","version":"0.1.0"},"sub_realms":["child"]}`
-	child := `{"realm":{"id":"test.child","title":"c","version":"0.1.0"},` +
+	parent := `{"$schema": "./_schema/realm.v1.schema.json", "realm":{"id":"test","title":"t","version":"0.1.0"},"sub_realms":["child"]}`
+	child := `{"$schema": "./_schema/realm.v1.schema.json", "realm":{"id":"test.child","title":"c","version":"0.1.0"},` +
 		`"dependencies":[{"realm_id":"dev.missing","version":"1.0.0","source":"../../nowhere/"}]}`
 	if err := os.WriteFile(filepath.Join(rules, "realm.json"), []byte(parent), 0o644); err != nil {
 		t.Fatal(err)

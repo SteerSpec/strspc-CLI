@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 
@@ -16,7 +17,7 @@ type ruleTransitionFunc func(f *entity.File, ruleID string) error
 // w, as text or as JSON. Nothing is written when op fails. action names the
 // transition in errors ("retiring", "terminating"), each wrapped with %w
 // (CONV-004).
-func runRuleTransition(w io.Writer, dir, ruleID, action string, jsonOut bool, op ruleTransitionFunc) error {
+func runRuleTransition(ctx context.Context, w io.Writer, dir, ruleID, action string, jsonOut bool, op ruleTransitionFunc) error {
 	entityID, err := entityIDFromRuleID(ruleID)
 	if err != nil {
 		return fmt.Errorf("%s %s: %w", action, ruleID, err)
@@ -30,7 +31,7 @@ func runRuleTransition(w io.Writer, dir, ruleID, action string, jsonOut bool, op
 	var oldVersion, version string
 	var oldState, newState string
 
-	err = modifyEntity(target, func(f *entity.File) error {
+	err = modifyEntity(ctx, target, func(f *entity.File) error {
 		oldVersion = f.RuleSet.Version
 		if r := findRule(f, ruleID); r != nil {
 			oldState = r.State

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -173,7 +174,7 @@ func editRealmJSON(t *testing.T, dir string, edit func(manifest map[string]any))
 
 func setRealmStandards(t *testing.T, dir string, refs ...entity.StandardRef) {
 	t.Helper()
-	if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+	if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 		rf.Realm.Standards = refs
 		return nil
 	}); err != nil {

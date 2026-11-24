@@ -315,7 +315,9 @@ func TestRealmDepUpgradeSkipsNonTagRefs(t *testing.T) {
 func TestRealmDepUpgradeNeutralisesRealmValues(t *testing.T) {
 	dir := setupUpgradeTest(t, "v9.9.9", nil)
 	writeRealmDeps(t, dir,
-		entity.RealmDep{RealmID: "::stop-commands::x", Version: "1.0.0\x1b[2J\n::stop-commands::y", Source: "../sibling"},
+		// The version stays SemVer: the schema check (SEC-004) refuses a manifest
+		// whose version holds control characters before upgrade reads it.
+		entity.RealmDep{RealmID: "::stop-commands::x\x1b[2J", Version: "1.0.0", Source: "../sibling"},
 		entity.RealmDep{RealmID: "::add-mask::z", Version: "1.8.0", Source: "github://SteerSpec/strspc-rules@v1.8.0/rules/core"},
 	)
 
@@ -331,7 +333,7 @@ func TestRealmDepUpgradeNeutralisesRealmValues(t *testing.T) {
 			t.Errorf("line starts a workflow command: %q", line)
 		}
 	}
-	testutil.AssertContains(t, out, `"::stop-commands::x"@1.0.0`)
+	testutil.AssertContains(t, out, `"::stop-commands::x\x1b[2J"@1.0.0`)
 	testutil.AssertContains(t, out, `"::add-mask::z": 1.8.0 -> 9.9.9`)
 }
 
@@ -352,7 +354,9 @@ func TestRealmDepUpgradeErrorsNeutraliseRealmValues(t *testing.T) {
 			dir := setupUpgradeTest(t, "v9.9.9", nil)
 			writeRealmDeps(t, dir, tt.dep)
 
-			_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
+			// --check plans without validating; an upgrade refuses such a
+			// manifest against its schema before it plans (SEC-004).
+			_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--check", "--dir", dir)
 			if err == nil {
 				t.Fatal("expected an error")
 			}

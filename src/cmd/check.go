@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -192,6 +194,9 @@ func runCheck(ctx context.Context, out, errOut io.Writer, cwd string, o *checkOp
 		return r.fail(code, err)
 	}
 	if err := r.resolveRules(); err != nil {
+		return r.fail(exitConfig, err)
+	}
+	if err := r.validateRuleSchemas(); err != nil {
 		return r.fail(exitConfig, err)
 	}
 	if !r.static {
@@ -400,6 +405,95 @@ func (r *checkRun) resolveSources() error {
 	return nil
 }
 
+// validateRuleSchemas checks what the evaluation reads against its schemas
+// before any of it is used (SEC-004). check and rule verify call it after
+// resolving; the reporting commands that share resolveSources don't. It
+// validates every resolved entity file and the manifest governing it, the
+// manifests of each source realm and its sub-realms, and the tree of each
+// realm they depend on, directly or through an inherited or extended rule.
+// What the resolvers returned must then equal what was validated, and
+// resolving again must give the same.
+func (r *checkRun) validateRuleSchemas() error {
+	v := newSchemaValidator(r.ctx)
+	for _, rf := range r.resolved {
+		data, err := os.ReadFile(rf.Path)
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", rf.Path, err)
+		}
+		if err := v.validateEntityFile(rf.Path, data); err != nil {
+			return fmt.Errorf("validating a rule file: %w", err)
+		}
+	}
+	deps := map[string][]depRealm{} // by source
+	for _, s := range slices.Sorted(maps.Keys(r.realmTrees)) {
+		t := r.realmTrees[s]
+		if err := v.validateManifestIn(t.dir); err != nil {
+			return fmt.Errorf("validating a source realm: %w", err)
+		}
+		if err := v.checkManifest(t.dir, t.manifest, nil); err != nil {
+			return fmt.Errorf("checking a source realm: %w", err)
+		}
+		var subs []*realmresolve.ResolvedRealm
+		if t.resolved != nil {
+			subs = t.resolved.SubRealms
+		}
+		if err := v.indexRealm(s, t.dir, t.manifest, subs...); err != nil {
+			return fmt.Errorf("indexing a source realm: %w", err)
+		}
+		if t.resolved == nil {
+			continue
+		}
+		for _, sub := range t.resolved.SubRealms {
+			if err := v.validateManifestIn(sub.Dir); err != nil {
+				return fmt.Errorf("validating a sub-realm: %w", err)
+			}
+			if err := v.checkManifest(sub.Dir, sub.Realm, t.manifest); err != nil {
+				return fmt.Errorf("checking a sub-realm: %w", err)
+			}
+		}
+		deps[s] = sourceDependencies(s, t)
+	}
+	for _, s := range slices.Sorted(maps.Keys(deps)) {
+		if err := r.validateDependencies(v, s, deps[s]); err != nil {
+			return fmt.Errorf("validating the dependencies of %s: %w", s, err)
+		}
+	}
+	// Last: the validations above all add to the manifests that chose a schema.
+	if err := v.validateGoverning(); err != nil {
+		return fmt.Errorf("validating the manifests that chose schemas: %w", err)
+	}
+	if err := r.checkConsumed(v); err != nil {
+		return fmt.Errorf("checking what will be evaluated: %w", err)
+	}
+	if err := r.checkExtendsCopies(v); err != nil {
+		return fmt.Errorf("checking the copies of extended rules: %w", err)
+	}
+	// After those two, whose errors say which entity or rule it is.
+	if err := r.checkResolutionCurrent(); err != nil {
+		return fmt.Errorf("checking that the resolution is current: %w", err)
+	}
+	r.verbosef("schemas: %d file(s) validated", len(v.done))
+	return nil
+}
+
+// realmResolver returns a resolver that fetches through the run's cache, for
+// a realm fetched from origin, or a local one when origin is nil. The extra
+// options come last, so they win.
+func (r *checkRun) realmResolver(cacheDir string, origin *remote.Ref, extra ...realmresolve.Option) *realmresolve.RealmResolver {
+	opts := []realmresolve.Option{
+		realmresolve.WithCacheDir(cacheDir),
+		realmresolve.WithRemoteFetcher(r.fetcher),
+		realmresolve.WithCacheTTL(r.ttl),
+	}
+	if origin != nil {
+		// The cache holds only the fetched subtree; the origin lets
+		// realmresolve rebase relative dependencies (`../core/`, also those of
+		// sub-realms) onto the repository at the same ref.
+		opts = append(opts, realmresolve.WithOrigin(*origin))
+	}
+	return realmresolve.New(append(opts, extra...)...)
+}
+
 // resolveRealmDeps validates realm.json dependencies of every source that
 // has a manifest. Dependencies are read-only references for the realm's
 // own authoring (SPEC §2.8); their rules are not evaluated here, only
@@ -436,20 +530,13 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 			continue
 		}
 		r.sourceRealms[e.Source] = rf.Realm.ID
-		rrOpts := []realmresolve.Option{
-			realmresolve.WithCacheDir(cacheDir),
-			realmresolve.WithRemoteFetcher(r.fetcher),
-			realmresolve.WithCacheTTL(r.ttl),
-		}
+		var origin *remote.Ref
 		if strings.HasPrefix(e.Source, remote.Scheme) {
-			// The cache holds only this source's subtree; the origin lets
-			// realmresolve rebase relative dependencies (`../core/`, also
-			// those of sub-realms) onto the repository at the same ref.
 			if ref, err := remote.ParseGitHub(e.Source); err == nil {
-				rrOpts = append(rrOpts, realmresolve.WithOrigin(ref))
+				origin = &ref
 			}
 		}
-		rr := realmresolve.New(rrOpts...)
+		rr := r.realmResolver(cacheDir, origin)
 		out, res := rr.Resolve(r.ctx, rf, dir)
 		diags = append(diags, res.Diagnostics...)
 		r.realmTrees[e.Source] = &realmTree{dir: dir, manifest: rf, resolved: out}

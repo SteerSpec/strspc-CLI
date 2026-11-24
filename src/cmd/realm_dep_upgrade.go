@@ -193,7 +193,18 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			rf, err := entity.LoadRealm(realmPath)
+			manifest, err := os.ReadFile(realmPath)
+			if err != nil {
+				return fmt.Errorf("loading realm.json: %w", err)
+			}
+			// SEC-004: before anything is planned or looked up from it. --check
+			// only reports, like realm dep list, so it doesn't validate.
+			if !check {
+				if err := newSchemaValidator(cmd.Context()).validateRealmManifest(realmPath, manifest); err != nil {
+					return fmt.Errorf("validating before planning: %w", err)
+				}
+			}
+			rf, err := entity.ParseRealm(manifest)
 			if err != nil {
 				return fmt.Errorf("loading realm.json: %w", err)
 			}
@@ -240,7 +251,7 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("reading realm.json: %w", err)
 			}
-			err = loadAndWriteRealm(realmPath, func(cur []entity.RealmDep) ([]entity.RealmDep, error) {
+			err = loadAndWriteRealm(cmd.Context(), realmPath, func(cur []entity.RealmDep) ([]entity.RealmDep, error) {
 				for _, up := range ups {
 					for i := range cur {
 						if cur[i].RealmID == up.realmID {

@@ -50,7 +50,7 @@ func isSubRealmName(name string) bool {
 // res.Links and not followed. visited holds the directories entered, so one
 // swapped for a link to another directory of the tree is skipped rather than
 // walked again, and the walk can't loop.
-func rehashRealmTree(root *os.Root, top, rel string, res *realmRehashResult, visited *[]os.FileInfo) error {
+func rehashRealmTree(v *schemaValidator, root *os.Root, top, rel string, res *realmRehashResult, visited *[]os.FileInfo) error {
 	here, err := root.Stat(rel)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", filepath.Join(top, rel), err)
@@ -81,6 +81,10 @@ func rehashRealmTree(root *os.Root, top, rel string, res *realmRehashResult, vis
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", path, err)
 	}
+	// SEC-004: the manifest is checked against its schema before it is changed.
+	if err := v.validateRealmManifest(path, data); err != nil {
+		return fmt.Errorf("validating before rehashing: %w", err)
+	}
 	rf, err := entity.ParseRealm(data)
 	if err != nil {
 		return fmt.Errorf("parsing %s: %w", path, err)
@@ -107,6 +111,9 @@ func rehashRealmTree(root *os.Root, top, rel string, res *realmRehashResult, vis
 		if err != nil {
 			return err
 		}
+		if err := v.ctx.Err(); err != nil {
+			return fmt.Errorf("interrupted before writing %s: %w", path, err)
+		}
 		if err := replaceFileIn(root, manifest, out, "realm.json"); err != nil {
 			return err
 		}
@@ -131,7 +138,7 @@ func rehashRealmTree(root *os.Root, top, rel string, res *realmRehashResult, vis
 		if !fi.IsDir() {
 			return fmt.Errorf("%s lists sub-realm %q, which is not a directory", path, name)
 		}
-		if err := rehashRealmTree(root, top, subRel, res, visited); err != nil {
+		if err := rehashRealmTree(v, root, top, subRel, res, visited); err != nil {
 			return err
 		}
 	}
@@ -175,7 +182,7 @@ Examples:
 			}
 			defer func() { _ = root.Close() }()
 			res := realmRehashResult{}
-			if err := rehashRealmTree(root, dir, ".", &res, &[]os.FileInfo{}); err != nil {
+			if err := rehashRealmTree(newSchemaValidator(cmd.Context()), root, dir, ".", &res, &[]os.FileInfo{}); err != nil {
 				return err
 			}
 
