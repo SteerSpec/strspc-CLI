@@ -28,7 +28,7 @@ fail_on:
 
 | Field | Meaning |
 | ----- | ------- |
-| `rules[].source` | A local directory or a [`github://` reference](reference.md#github-sources). At least one is required (SPCFG-004) |
+| `rules[].source` | A local directory or a [`github://` reference](reference.md#github-sources). At least one is required (SPCFG-004). A local directory must not be a network or device path (`\\host\share`), nor, on Windows, reached through a symbolic link or junction; the same holds for the local `source` of a realm dependency |
 | `rules[].scope` | `global` applies to the whole repository, `local` only to files under the source's own directory |
 | `evaluator.provider` | `claude`, or `null` for structural checks only (`static` and `static-only` are aliases). `openai` and `ollama` are reserved and fail with a not-implemented error |
 | `evaluator.endpoint` | Provider endpoint, subject to [endpoint safety](check.md#safety-and-configuration-checks) |

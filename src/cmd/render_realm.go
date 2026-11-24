@@ -168,6 +168,9 @@ func (c *chainResolver) resolve(root locatedRealm) (map[string]render.Chain, err
 	if err != nil {
 		return nil, fmt.Errorf("resolving cache directory: %w", err)
 	}
+	if err := checkDependencySources(root.dir, root.RealmFile, &dirSet{}); err != nil {
+		return nil, fmt.Errorf("realm %s: %w", root.Realm.ID, err)
+	}
 	out, res := realmresolve.New(realmresolve.WithCacheDir(cacheDir)).Resolve(c.ctx, root.RealmFile, root.dir)
 	for _, d := range res.Diagnostics {
 		if d.Severity == result.Error {

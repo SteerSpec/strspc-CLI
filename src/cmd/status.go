@@ -197,9 +197,10 @@ func sourceStatus(cwd string, fetcher *remote.Fetcher, source string) (s statusS
 		s.State = sourceUnsupported
 		return s, ""
 	}
-	dir = source
-	if !filepath.IsAbs(dir) {
-		dir = filepath.Join(cwd, dir)
+	dir, err := projectPath(cwd, source)
+	if err != nil {
+		s.State, s.Error = sourceInvalid, err.Error()
+		return s, ""
 	}
 	info, err := os.Stat(dir)
 	switch {

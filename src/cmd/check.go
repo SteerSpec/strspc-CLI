@@ -253,6 +253,9 @@ func (r *checkRun) loadConfig() error {
 	if err != nil {
 		return err
 	}
+	if err := checkLocalSources(r.cwd, r.entries); err != nil {
+		return err
+	}
 	if len(r.entries) == 0 {
 		// `strspc init` has written a core source since 1.15, so an empty
 		// list is a broken configuration, not a fresh project.
@@ -383,6 +386,9 @@ func (r *checkRun) resolveSources() error {
 	resolved, res := resolver.Resolve(r.ctx)
 	diags := append([]result.Diagnostic(nil), res.Diagnostics...)
 	if res.OK() {
+		if err := r.checkDependencySources(); err != nil {
+			return err
+		}
 		// Only once every source is in place: a failed download must not be
 		// retried here (and time out twice).
 		diags = append(diags, r.resolveRealmDeps(cacheDir)...)
@@ -547,6 +553,27 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 		r.verbosef("realm %s: %d dependency(ies) resolved, %d inheritance chain(s)", rf.Realm.ID, len(out.Dependencies), len(out.Inheritance))
 	}
 	return diags
+}
+
+// checkDependencySources refuses, before resolveRealmDeps opens them, the
+// local dependency sources that checkDependencySources refuses in the
+// manifest of each source realm.
+func (r *checkRun) checkDependencySources() error {
+	seen := &dirSet{}
+	for _, e := range r.entries {
+		dir, err := r.sourceDir(e)
+		if err != nil || dir == "" {
+			continue // as resolveRealmDeps does
+		}
+		rf, err := loadRealmIfAny(dir)
+		if err == nil && rf != nil {
+			err = checkDependencySources(dir, rf, seen)
+		}
+		if err != nil {
+			return fmt.Errorf("source %s: %w", printableText(e.Source), err)
+		}
+	}
+	return nil
 }
 
 // sourceDir returns the local directory holding a source: the path itself
