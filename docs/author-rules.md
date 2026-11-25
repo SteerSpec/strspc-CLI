@@ -283,3 +283,10 @@ rules with one clause and one set of profiles. Outside a Standard Realm both fla
 prints both. A Standard Realm's rules are Published once the transcription is checked, and never
 Implemented (STDRLM-010). The clause and profiles of an existing Draft rule can't be changed: abandon
 it and add another.
+
+`check` and `rule verify` never send a Standard Realm's rules to the AI provider (STDRLM-011), whether
+the Realm is a configured rule source or a dependency. Each skip is reported: as warning `RE005`, or as
+error `RE006` when skipping would switch off enforcement, for a rule that is Implemented, in both
+`evaluate_on` and `fail_on`, has `overrides` or is live without a `clause`. `rule verify` judges the
+rules it's given whatever their state, so naming a Standard Realm rule makes it exit 1 with `RE006`: a
+transcribed standard is measured with `strspc standards`, not audited.
