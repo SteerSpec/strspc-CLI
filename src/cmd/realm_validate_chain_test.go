@@ -1,12 +1,17 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/realmlint"
 	"github.com/SteerSpec/strspc-manager/src/result"
 )
 
@@ -119,10 +124,18 @@ func TestRealmValidateUnloadableDependencyWarns(t *testing.T) {
 	}
 }
 
-// The resolver opens dependency directories only once projectPath accepts
-// them, as in check.
+// Neither realm-lint nor the resolver opens a dependency directory before
+// projectPath accepts it, as in check.
 func TestRealmValidateRefusesLinkedDependency(t *testing.T) {
 	rules, _ := setupValidateInherit(t)
+	newRealmValidator = func(string, bool, bool, bool) *realmValidatorSet {
+		return &realmValidatorSet{realmLinter: realmlint.New(realmlint.WithDependencyFetcher(
+			func(context.Context, string, entity.RealmDep) (string, error) {
+				t.Error("realm-lint fetched a dependency before the path check")
+				return "", errors.New("not fetched")
+			},
+		))}
+	}
 	refuseLinks(t)
 	relink(t, filepath.Dir(rules), "lib")
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", rules)
@@ -131,4 +144,38 @@ func TestRealmValidateRefusesLinkedDependency(t *testing.T) {
 	}
 	testutil.AssertContains(t, err.Error(), "dependency dev.lib of dev.app")
 	testutil.AssertContains(t, err.Error(), "is a link")
+}
+
+// Without a user cache a local realm is still validated.
+func TestRealmValidateWithoutUserCache(t *testing.T) {
+	rules, _ := setupValidateInherit(t)
+	for _, v := range []string{"HOME", "XDG_CACHE_HOME", "LocalAppData"} {
+		t.Setenv(v, "")
+	}
+	if _, err := os.UserCacheDir(); err == nil {
+		t.Skip("this system has a user cache without HOME")
+	}
+	writeInheritEntity(t, rules, "SAVACCT", "dev.lib:ACCT", inheritRule{id: "SAVACCT-001", state: "P", overrides: "dev.lib:ACCT-009"})
+	codes, err := validateCodes(t, rules)
+	if err == nil || codes["RR015"] != result.Error {
+		t.Errorf("err %v, codes %v; want RR015 reported", err, codes)
+	}
+}
+
+// Only a dependency's diagnostics are warnings: the resolver reports a root
+// entity file it can't read as RR002 too.
+func TestUnloadableDependency(t *testing.T) {
+	for msg, want := range map[string]bool{
+		`dependency "dev.lib": resolved directory "/x" does not exist or is not a directory`: true,
+		`dependency "dev.lib" has empty source`:                                              true,
+		`cannot parse /r/ACCT.json: unexpected end of JSON input`:                            false,
+		`failed to walk directory "/r": permission denied`:                                   false,
+	} {
+		if got := unloadableDependency(&result.Diagnostic{Code: "RR002", Message: msg}); got != want {
+			t.Errorf("%q: %v, want %v", msg, got, want)
+		}
+	}
+	if unloadableDependency(&result.Diagnostic{Code: "RR015", Message: `dependency "dev.lib"`}) {
+		t.Error("RR015 counted as an unloadable dependency")
+	}
 }
