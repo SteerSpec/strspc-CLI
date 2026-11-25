@@ -265,6 +265,30 @@ func TestDiffLinksThroughLinkedDirectories(t *testing.T) {
 			t.Errorf("err = %v, want errDiffUnreadLink", err)
 		}
 	})
+	// Through a link D, which a case-insensitive system would take d for, and
+	// through a directory the base doesn't hold: unread.
+	for name, c := range map[string]struct{ link, realDir string }{
+		"another case":                    {link: "rules/D"},
+		"another case beside a directory": {link: "rules/D", realDir: "rules/d/y.txt"},
+		"no such directory":               {},
+	} {
+		t.Run("base "+name, func(t *testing.T) {
+			dir := newPublishedRepo(t, "rules/ENT.json", "rules/real/sub/x.txt")
+			if c.link != "" {
+				commitBlob(t, dir, "120000", c.link, "real/sub")
+			}
+			if c.realDir != "" {
+				commitBlob(t, dir, "100644", c.realDir, "y")
+			}
+			commitBlob(t, dir, "120000", "rules/L.json", "d/../ENT.json")
+			gitRun(t, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "links")
+			gitRun(t, dir, "rm", "-q", "--cached", "--ignore-unmatch", "rules/L.json", "rules/D", "rules/d/y.txt")
+			writeFile(t, dir, "rules/L.json", string(entityV1("LNK2")))
+			if _, err := runDiff(t, filepath.Join(dir, "rules")); !errors.Is(err, errDiffUnreadLink) {
+				t.Errorf("err = %v, want errDiffUnreadLink", err)
+			}
+		})
+	}
 	// d/../ENT.json names ENT.json lexically, but through the linked d a
 	// system would resolve it elsewhere: unread too.
 	t.Run("base out of it again", func(t *testing.T) {

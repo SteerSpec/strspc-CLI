@@ -199,7 +199,7 @@ func baseLinkTarget(base map[string]baseEntry, from, text, relDir string) (strin
 		if cur != relDir && !inBaseTree(cur, relDir) {
 			return "", false
 		}
-		if i < len(segs)-1 && base[cur].mode == "120000" {
+		if i < len(segs)-1 && !realBaseDir(base, cur) {
 			return "", false
 		}
 	}
@@ -207,6 +207,20 @@ func baseLinkTarget(base map[string]baseEntry, from, text, relDir string) (strin
 		return "", false
 	}
 	return cur, true
+}
+
+// realBaseDir reports whether dir, a slash path, is a real directory of
+// base: some entry is below it, and no link has its name in any case, which a
+// case-insensitive file system would follow instead.
+func realBaseDir(base map[string]baseEntry, dir string) bool {
+	below := false
+	for p, e := range base {
+		if e.mode == "120000" && strings.EqualFold(p, dir) {
+			return false
+		}
+		below = below || strings.HasPrefix(p, dir+"/")
+	}
+	return below
 }
 
 // inBaseTree reports whether the slash path p, from the repository root, is
