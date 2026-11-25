@@ -290,8 +290,8 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 	// Report files deleted from headDir: in the base but absent from the walk.
 	for _, full := range slices.Sorted(maps.Keys(baseFiles.read)) {
 		bf := baseFiles.read[full]
-		if headFiles[full] || (bf.target != "" && headFiles[bf.target]) {
-			continue // still there, or a link whose file still is
+		if headFiles[full] || comparedInBoth(baseFiles, headFiles, bf.target) {
+			continue // still there, or a link to a file compared on both sides
 		}
 		data, err := readBlob(bf.sha, repoDir)
 		if err != nil {
@@ -331,6 +331,18 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		res.Add(d)
 	}
 	return res, nil
+}
+
+// comparedInBoth reports whether target, the file a deleted base link led
+// to, is a regular entity file that diff compares in both versions: then
+// deleting the link deletes no rules, as any change to the file itself is
+// compared.
+func comparedInBoth(base baseFiles, head map[string]bool, target string) bool {
+	if target == "" || !head[target] {
+		return false
+	}
+	t, ok := base.read[target]
+	return ok && t.target == ""
 }
 
 // gitRoot returns the root of the git repository that contains path.

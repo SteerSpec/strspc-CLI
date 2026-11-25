@@ -235,3 +235,82 @@ func TestDiffRepositoryRootSpelledLoosely(t *testing.T) {
 		}
 	}
 }
+
+// A link is read only through real directories: one whose text passes
+// through a linked directory is refused in head and unread at the base.
+func TestDiffLinksThroughLinkedDirectories(t *testing.T) {
+	for name, text := range map[string]string{"into it": "d/docs.txt", "out of it again": "d/../docs.txt"} {
+		t.Run("head "+name, func(t *testing.T) {
+			dir := newPublishedRepo(t, "rules/ENT.json", "rules/docs.txt", "rules/real/docs.txt")
+			linkOrSkip(t, "real", filepath.Join(dir, "rules", "d"))
+			linkOrSkip(t, text, filepath.Join(dir, "rules", "README.md"))
+			// The directory link d is refused on its own too; README.md is
+			// reached first or not, but the walk must fail either way.
+			if _, err := runDiff(t, filepath.Join(dir, "rules")); !errors.Is(err, errDiffLink) {
+				t.Errorf("err = %v, want errDiffLink", err)
+			}
+			if err := checkHeadLink(filepath.Join(dir, "rules", "README.md"), filepath.Join(dir, "rules")); !errors.Is(err, errDiffLink) {
+				t.Errorf("checkHeadLink = %v, want errDiffLink", err)
+			}
+		})
+	}
+	t.Run("base", func(t *testing.T) {
+		dir := newPublishedRepo(t, "rules/ENT.json", "rules/real/LNK.json")
+		commitBlob(t, dir, "120000", "rules/d", "real")
+		commitBlob(t, dir, "120000", "rules/L.json", "d/LNK.json")
+		gitRun(t, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "links")
+		gitRun(t, dir, "rm", "-q", "--cached", "rules/L.json", "rules/d")
+		writeFile(t, dir, "rules/L.json", string(entityV1("LNK2")))
+		if _, err := runDiff(t, filepath.Join(dir, "rules")); !errors.Is(err, errDiffUnreadLink) {
+			t.Errorf("err = %v, want errDiffUnreadLink", err)
+		}
+	})
+	// d/../ENT.json names ENT.json lexically, but through the linked d a
+	// system would resolve it elsewhere: unread too.
+	t.Run("base out of it again", func(t *testing.T) {
+		dir := newPublishedRepo(t, "rules/ENT.json", "rules/real/sub/x.txt")
+		commitBlob(t, dir, "120000", "rules/d", "real/sub")
+		commitBlob(t, dir, "120000", "rules/L.json", "d/../ENT.json")
+		gitRun(t, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "links")
+		gitRun(t, dir, "rm", "-q", "--cached", "rules/L.json", "rules/d")
+		writeFile(t, dir, "rules/L.json", string(entityV1("LNK2")))
+		if _, err := runDiff(t, filepath.Join(dir, "rules")); !errors.Is(err, errDiffUnreadLink) {
+			t.Errorf("err = %v, want errDiffUnreadLink", err)
+		}
+	})
+}
+
+// Deleting a base link is exempt from RD005 only when the file it led to is
+// compared on both sides; a link to a file diff doesn't compare is RD005.
+func TestDiffDeletedLinkToUncomparedFile(t *testing.T) {
+	dir := newPublishedRepo(t, "rules/ENT.json")
+	commitBlob(t, dir, "100644", "rules/data/lnk.txt", string(entityV2Promote("LNK")))
+	commitBlob(t, dir, "120000", "rules/L.json", "data/lnk.txt")
+	gitRun(t, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "link")
+	gitRun(t, dir, "reset", "-q", "--hard")
+	if err := os.Remove(filepath.Join(dir, "rules", "L.json")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runDiff(t, filepath.Join(dir, "rules"))
+	assertExit(t, err, exitViolations)
+	testutil.AssertContains(t, out, "RD005")
+}
+
+// A repository whose root holds no .git entry (GIT_DIR) is still one: a link
+// in it is refused.
+func TestDiffRefusesLinkInRepositoryWithoutGitEntry(t *testing.T) {
+	dir := newPublishedRepo(t, "rules/ENT.json", "elsewhere/ENT.json")
+	gitDir := filepath.Join(t.TempDir(), "git")
+	if err := os.Rename(filepath.Join(dir, ".git"), gitDir); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_DIR", gitDir)
+	t.Setenv("GIT_WORK_TREE", dir)
+	if err := os.RemoveAll(filepath.Join(dir, "rules")); err != nil {
+		t.Fatal(err)
+	}
+	linkOrSkip(t, "elsewhere", filepath.Join(dir, "rules"))
+	if _, err := runDiff(t, filepath.Join(dir, "rules")+string(filepath.Separator)); !errors.Is(err, errDiffLink) {
+		t.Errorf("err = %v, want errDiffLink", err)
+	}
+}

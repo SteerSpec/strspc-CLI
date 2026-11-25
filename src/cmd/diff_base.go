@@ -175,16 +175,38 @@ func regularBaseFile(base map[string]baseEntry, p, relDir, repoDir string) (e ba
 		if err != nil {
 			return baseEntry{}, "", false, fmt.Errorf("reading the link %s at the base: %w", p, err)
 		}
-		t := string(text)
-		if path.IsAbs(t) || strings.Contains(t, `\`) {
+		next, ok := baseLinkTarget(base, p, string(text), relDir)
+		if !ok {
 			return baseEntry{}, "", false, nil
 		}
-		p = path.Join(path.Dir(p), t)
-		if !inBaseTree(p, relDir) {
-			return baseEntry{}, "", false, nil
-		}
+		p = next
 	}
 	return baseEntry{}, "", false, nil
+}
+
+// baseLinkTarget returns the slash path that the link at from in base, the
+// tree under relDir, names by its text. ok is false when the text is
+// absolute, leaves the tree, or passes through a directory that is a link at
+// the base: a link is read only through real directories.
+func baseLinkTarget(base map[string]baseEntry, from, text, relDir string) (string, bool) {
+	if path.IsAbs(text) || strings.Contains(text, `\`) {
+		return "", false
+	}
+	segs := strings.Split(text, "/")
+	var cur string
+	for i := range segs {
+		cur = path.Join(path.Dir(from), strings.Join(segs[:i+1], "/"))
+		if cur != relDir && !inBaseTree(cur, relDir) {
+			return "", false
+		}
+		if i < len(segs)-1 && base[cur].mode == "120000" {
+			return "", false
+		}
+	}
+	if cur == relDir {
+		return "", false
+	}
+	return cur, true
 }
 
 // inBaseTree reports whether the slash path p, from the repository root, is
@@ -205,7 +227,7 @@ func repoPath(p, repoDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolving %s: %w", p, err)
 	}
-	if err := refuseLinksInRepository(abs); err != nil {
+	if err := refuseLinksInRepository(abs, repoDir); err != nil {
 		return "", fmt.Errorf("path %s: %w", p, err)
 	}
 	root, err := os.Stat(repoDir)
@@ -246,26 +268,53 @@ func checkHeadLink(p, headDir string) error {
 	if filepath.IsAbs(text) || filepath.VolumeName(text) != "" || strings.HasPrefix(text, "/") || strings.HasPrefix(text, `\`) {
 		return fmt.Errorf("%s %w", p, errDiffLink)
 	}
-	target := filepath.Join(filepath.Dir(p), text)
-	if rel, err := filepath.Rel(headDir, target); err != nil || !filepath.IsLocal(rel) {
+	// Each directory on the way must be a real one: nothing below a linked
+	// directory is looked at.
+	segs := strings.Split(filepath.ToSlash(text), "/")
+	var target string
+	for i := range segs {
+		target = filepath.Join(filepath.Dir(p), filepath.FromSlash(strings.Join(segs[:i+1], "/")))
+		rel, err := filepath.Rel(headDir, target)
+		if err != nil || (rel != "." && !filepath.IsLocal(rel)) {
+			return fmt.Errorf("%s %w", p, errDiffLink)
+		}
+		fi, err := os.Lstat(target)
+		if err != nil {
+			return nil // to nothing: nothing the resolver reads
+		}
+		if fi.Mode()&fs.ModeSymlink != 0 || (i == len(segs)-1 && fi.IsDir()) {
+			return fmt.Errorf("%s %w", p, errDiffLink)
+		}
+	}
+	if target == headDir {
 		return fmt.Errorf("%s %w", p, errDiffLink)
 	}
-	if fi, err := os.Lstat(target); err == nil && (fi.Mode()&fs.ModeSymlink != 0 || fi.IsDir()) {
-		return fmt.Errorf("%s %w", p, errDiffLink)
-	}
-	return nil // a link to a file the resolver doesn't read, or to nothing
+	return nil // a link to a file the resolver doesn't read
 }
 
 // refuseLinksInRepository refuses abs when one of its components is a link
 // below a repository root: a link in the repository, including one to another
 // repository's root. A repository root is a directory with a .git entry, read
-// from the file system alone: git is never asked, so neither its errors (an
-// unsafe directory) nor its discovery decide. A link above every repository
+// from the file system alone so that no git error lets a link through, or
+// repoDir, the root git named, which needn't have one. A link above every repository
 // root, such as macOS's /var, leads to the repository rather than inside it.
-func refuseLinksInRepository(abs string) error {
+func refuseLinksInRepository(abs, repoDir string) error {
+	root, err := os.Stat(repoDir)
+	if err != nil {
+		return fmt.Errorf("accessing %s: %w", repoDir, err)
+	}
+	// isRoot reports whether dir is a repository root: one with a .git entry,
+	// or the one git named, which may have none (GIT_DIR, core.worktree).
+	isRoot := func(dir string) bool {
+		if hasGitEntry(dir) {
+			return true
+		}
+		fi, err := os.Stat(dir)
+		return err == nil && os.SameFile(fi, root)
+	}
 	vol := filepath.VolumeName(abs)
 	cur := vol + string(filepath.Separator)
-	inRepo := hasGitEntry(cur)
+	inRepo := isRoot(cur)
 	for _, name := range strings.Split(abs[len(vol):], string(filepath.Separator)) {
 		if name == "" {
 			continue
@@ -279,7 +328,7 @@ func refuseLinksInRepository(abs string) error {
 			return fmt.Errorf("%s %w", next, errDiffLink)
 		}
 		cur = next
-		inRepo = inRepo || hasGitEntry(cur)
+		inRepo = inRepo || isRoot(cur)
 	}
 	return nil
 }
