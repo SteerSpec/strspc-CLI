@@ -68,7 +68,7 @@ func listBase(ref, rel, repoDir string) (map[string]baseEntry, error) {
 		if isExitError(err, &exitErr) && bytes.Contains(exitErr.Stderr, []byte("Not a valid object name")) {
 			return nil, fmt.Errorf("invalid git ref %q: %s", ref, strings.TrimSpace(string(exitErr.Stderr)))
 		}
-		return nil, err
+		return nil, fmt.Errorf("listing %s at %s: %w", rel, ref, err)
 	}
 	entries := map[string]baseEntry{}
 	for _, rec := range bytes.Split(out, []byte{0}) {
@@ -102,38 +102,81 @@ func underSchemaDir(p string) bool {
 	return slices.Contains(strings.Split(path.Dir(p), "/"), "_schema")
 }
 
-// baseEntityFiles keeps of base the entity files under the compared
-// directory, and refuses what the head side can't be compared with: a
-// submodule anywhere, and an entity file that is a link.
-func baseEntityFiles(base map[string]baseEntry) (map[string]baseEntry, error) {
+// baseEntityFiles keeps of base, the tree under relDir, the entity files,
+// and refuses a submodule anywhere: the head side can't be compared with
+// what it holds. A link is read as the regular file it leads to inside the
+// tree, so that the change replacing it is compared with what it held, and
+// as absent otherwise, as rulediff reads a base.
+func baseEntityFiles(base map[string]baseEntry, relDir, repoDir string) (map[string]baseEntry, error) {
 	files := map[string]baseEntry{}
 	for p, e := range base {
-		if underSchemaDir(p) {
-			continue
-		}
 		if e.kind == "commit" {
 			return nil, fmt.Errorf("%s at the base %w", p, errDiffSubmodule)
 		}
-		if e.kind != "blob" || !isEntityFileName(path.Base(p)) {
+		if underSchemaDir(p) || !isEntityFileName(path.Base(p)) {
 			continue
 		}
-		if e.mode == "120000" {
-			return nil, fmt.Errorf("%s at the base %w", p, errDiffLink)
+		e, ok, err := regularBaseFile(base, p, relDir, repoDir)
+		if err != nil {
+			return nil, fmt.Errorf("base entity files: %w", err)
 		}
-		files[p] = e
+		if ok {
+			files[p] = e
+		}
 	}
 	return files, nil
 }
 
+// regularBaseFile returns the regular file that the entry at p of base, the
+// tree under relDir, is or leads to by links inside the tree. ok is false for
+// a link that leads elsewhere, dangles or loops, and for anything else.
+func regularBaseFile(base map[string]baseEntry, p, relDir, repoDir string) (baseEntry, bool, error) {
+	for range 8 {
+		e, ok := base[p]
+		switch {
+		case !ok || e.kind != "blob":
+			return baseEntry{}, false, nil
+		case e.mode == "100644" || e.mode == "100755":
+			return e, true, nil
+		case e.mode != "120000":
+			return baseEntry{}, false, nil
+		}
+		target, err := readBlob(e.sha, repoDir)
+		if err != nil {
+			return baseEntry{}, false, fmt.Errorf("reading the link %s at the base: %w", p, err)
+		}
+		t := string(target)
+		if path.IsAbs(t) || strings.Contains(t, `\`) {
+			return baseEntry{}, false, nil
+		}
+		p = path.Join(path.Dir(p), t)
+		if !inBaseTree(p, relDir) {
+			return baseEntry{}, false, nil
+		}
+	}
+	return baseEntry{}, false, nil
+}
+
+// inBaseTree reports whether the slash path p, from the repository root, is
+// in the tree under relDir.
+func inBaseTree(p, relDir string) bool {
+	if relDir == "." {
+		return p != ".." && !strings.HasPrefix(p, "../")
+	}
+	return strings.HasPrefix(p, relDir+"/")
+}
+
 // repoPath returns p relative to the repository root repoDir, as a slash
-// path, from p as given: only the part leading to the root is resolved, so a
-// link inside the repository is never followed. Each component from the root
-// down to p must not be a link, or the base would be read at the link's
-// target rather than at p.
+// path, from p as given. No component of p may be a link inside a git work
+// tree (refuseLinksInRepository), or the base would be read at the link's
+// target, possibly another repository, rather than at p.
 func repoPath(p, repoDir string) (string, error) {
 	abs, err := filepath.Abs(p)
 	if err != nil {
 		return "", fmt.Errorf("resolving %s: %w", p, err)
+	}
+	if err := refuseLinksInRepository(abs); err != nil {
+		return "", fmt.Errorf("path %s: %w", p, err)
 	}
 	root, err := os.Stat(repoDir)
 	if err != nil {
@@ -151,21 +194,40 @@ func repoPath(p, repoDir string) (string, error) {
 		rest = append([]string{filepath.Base(d)}, rest...)
 		d = parent
 	}
-	cur := strings.TrimSuffix(abs, filepath.Join(rest...))
-	for _, name := range rest {
-		cur = filepath.Join(cur, name)
-		fi, err := os.Lstat(cur)
-		if err != nil {
-			return "", fmt.Errorf("accessing %s: %w", cur, err)
-		}
-		if fi.Mode()&fs.ModeSymlink != 0 {
-			return "", fmt.Errorf("%s %w", cur, errDiffLink)
-		}
-	}
 	if len(rest) == 0 {
 		return ".", nil
 	}
 	return strings.Join(rest, "/"), nil
+}
+
+// refuseLinksInRepository refuses abs when one of its components is a link
+// whose directory is inside a git work tree: a link in the repository,
+// including one to another repository's root. A link outside any work tree,
+// such as macOS's /var, leads to the repository rather than inside it.
+func refuseLinksInRepository(abs string) error {
+	vol := filepath.VolumeName(abs)
+	cur := vol + string(filepath.Separator)
+	for _, name := range strings.Split(abs[len(vol):], string(filepath.Separator)) {
+		if name == "" {
+			continue
+		}
+		next := filepath.Join(cur, name)
+		fi, err := os.Lstat(next)
+		if err != nil {
+			return fmt.Errorf("accessing %s: %w", next, err)
+		}
+		if fi.Mode()&fs.ModeSymlink != 0 && insideWorkTree(cur) {
+			return fmt.Errorf("%s %w", next, errDiffLink)
+		}
+		cur = next
+	}
+	return nil
+}
+
+// insideWorkTree reports whether dir is inside a git work tree.
+func insideWorkTree(dir string) bool {
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "--is-inside-work-tree").Output()
+	return err == nil && strings.TrimSpace(string(out)) == "true"
 }
 
 // compareBaseRealms compares the Realms of the base tree of headDir, the
@@ -187,12 +249,17 @@ func compareBaseRealms(base map[string]baseEntry, relDir, headDir, repoDir strin
 	defer func() { _ = root.Close() }()
 
 	for _, full := range slices.Sorted(maps.Keys(base)) {
-		e := base[full]
-		if e.kind == "commit" {
+		if base[full].kind == "commit" {
 			return nil, fmt.Errorf("%s at the base %w", full, errDiffSubmodule)
 		}
-		if e.kind != "blob" || (e.mode != "100644" && e.mode != "100755") {
-			continue // a link or anything else: read as absent
+		// A link is written as the regular file it leads to inside the tree,
+		// and not at all otherwise: no link is recreated.
+		e, ok, err := regularBaseFile(base, full, relDir, repoDir)
+		if err != nil {
+			return nil, fmt.Errorf("writing the base tree: %w", err)
+		}
+		if !ok {
+			continue
 		}
 		rel := full
 		if relDir != "." {
@@ -200,7 +267,7 @@ func compareBaseRealms(base map[string]baseEntry, relDir, headDir, repoDir strin
 		}
 		data, err := readBlob(e.sha, repoDir)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("reading %s at the base: %w", full, err)
 		}
 		name := filepath.FromSlash(rel)
 		if err := root.MkdirAll(filepath.Dir(name), 0o700); err != nil {
@@ -213,7 +280,7 @@ func compareBaseRealms(base map[string]baseEntry, relDir, headDir, repoDir strin
 
 	contributors, err := realmContributorsOf(filepath.Join(headDir, "realm.json"), repoDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("contributors of %s: %w", headDir, err)
 	}
 	return rulediff.CompareRealms(tmp, headDir, diffOpts(strict, contributors)...), nil
 }

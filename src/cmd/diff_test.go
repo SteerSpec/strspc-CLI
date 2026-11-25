@@ -569,7 +569,7 @@ func TestDiffDirSubdirectorySkipsUnderscoreDirs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files, err := baseEntityFiles(base)
+	files, err := baseEntityFiles(base, "rules", dir)
 	if err != nil {
 		t.Fatal(err)
 	}

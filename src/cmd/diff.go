@@ -109,9 +109,10 @@ func newDiffCmd() *cobra.Command {
 // diffFile compares a single entity file against its version at baseRef.
 // If the file is absent at baseRef it is validated as a new entity.
 func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, error) {
+	headPath = filepath.Clean(headPath)
 	rel, err := repoPath(headPath, repoDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("diff %s: %w", headPath, err)
 	}
 	headData, err := os.ReadFile(headPath)
 	if err != nil {
@@ -119,24 +120,33 @@ func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, e
 	}
 	base, err := listBase(baseRef, rel, repoDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("listing the base of %s: %w", headPath, err)
 	}
-	files, err := baseEntityFiles(base)
+	if base[rel].kind == "commit" {
+		return nil, fmt.Errorf("%s at the base %w", rel, errDiffSubmodule)
+	}
+	if base[rel].mode == "120000" {
+		// The link may lead anywhere in the repository.
+		if base, err = listBase(baseRef, ".", repoDir); err != nil {
+			return nil, fmt.Errorf("listing the base of %s: %w", headPath, err)
+		}
+	}
+	e, inBase, err := regularBaseFile(base, rel, ".", repoDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("diff %s: %w", headPath, err)
 	}
 
 	contributors, err := realmContributorsOf(headPath, repoDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("diff %s: %w", headPath, err)
 	}
 	opts := diffOpts(strict, contributors)
 
 	var res *result.Result
-	if e, ok := files[rel]; ok {
+	if inBase {
 		baseData, err := readBlob(e.sha, repoDir)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("reading %s at the base: %w", rel, err)
 		}
 		res = rulediff.Compare(baseData, headData, opts...)
 	} else {
@@ -163,17 +173,18 @@ func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, e
 // content differs from the base (or are new) are validated, and files deleted
 // from headDir are reported as RD005 unless they held no entity.
 func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, error) {
+	headDir = filepath.Clean(headDir)
 	relDir, err := repoPath(headDir, repoDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("diff %s: %w", headDir, err)
 	}
 	base, err := listBase(baseRef, relDir, repoDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("listing the base of %s: %w", headDir, err)
 	}
-	baseFiles, err := baseEntityFiles(base)
+	baseFiles, err := baseEntityFiles(base, relDir, repoDir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("diff %s: %w", headDir, err)
 	}
 
 	res := &result.Result{}
@@ -187,7 +198,7 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		if !seen {
 			var err error
 			if list, err = realmContributorsOf(file, repoDir); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("diff %s: %w", file, err)
 			}
 			contributors[dir] = list
 		}
@@ -243,7 +254,7 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		var baseData []byte
 		if inBase {
 			if baseData, err = readBlob(e.sha, repoDir); err != nil {
-				return err
+				return fmt.Errorf("reading %s at the base: %w", full, err)
 			}
 			if bytes.Equal(baseData, headData) {
 				return nil // file unchanged — nothing to validate
@@ -281,7 +292,7 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		}
 		data, err := readBlob(baseFiles[full].sha, repoDir)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("reading %s at the base: %w", full, err)
 		}
 		if rulediff.DeletionAllowed(data) {
 			continue // it held no entity
