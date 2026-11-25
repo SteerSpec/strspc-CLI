@@ -122,21 +122,12 @@ func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, e
 	if err != nil {
 		return nil, fmt.Errorf("listing the base of %s: %w", headPath, err)
 	}
-	if base[rel].kind == "commit" {
+	e, inBase := base[rel]
+	switch {
+	case inBase && e.kind == "commit":
 		return nil, fmt.Errorf("%s at the base %w", rel, errDiffSubmodule)
-	}
-	if base[rel].mode == "120000" {
-		// The link may lead anywhere in the repository.
-		if base, err = listBase(baseRef, ".", repoDir); err != nil {
-			return nil, fmt.Errorf("listing the base of %s: %w", headPath, err)
-		}
-	}
-	e, _, inBase, err := regularBaseFile(base, rel, ".", repoDir)
-	if err != nil {
-		return nil, fmt.Errorf("diff %s: %w", headPath, err)
-	}
-	if !inBase && base[rel].mode == "120000" {
-		return nil, fmt.Errorf("%s replaces a link at the base that %w", rel, errDiffUnreadLink)
+	case inBase && e.mode != "100644" && e.mode != "100755":
+		return nil, fmt.Errorf("%s at the base %w", rel, errDiffLink)
 	}
 
 	contributors, err := realmContributorsOf(headPath, repoDir)
@@ -185,7 +176,7 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 	if err != nil {
 		return nil, fmt.Errorf("listing the base of %s: %w", headDir, err)
 	}
-	baseFiles, err := baseEntityFiles(base, relDir, repoDir)
+	baseFiles, err := baseEntityFiles(base)
 	if err != nil {
 		return nil, fmt.Errorf("diff %s: %w", headDir, err)
 	}
@@ -229,7 +220,10 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 			return nil
 		}
 		if d.Type()&fs.ModeSymlink != 0 {
-			return checkHeadLink(p, headDir)
+			return checkHeadLink(p)
+		}
+		if !d.Type().IsRegular() && isJSONName(d.Name()) {
+			return fmt.Errorf("%s is not a regular file", p)
 		}
 		if !isEntityFileName(d.Name()) {
 			return nil
@@ -244,15 +238,12 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		}
 		full := joinRepo(relDir, filepath.ToSlash(rel))
 		headFiles[full] = true
-		if baseFiles.unread[full] {
-			return fmt.Errorf("%s replaces a link at the base that %w", p, errDiffUnreadLink)
-		}
 
 		headData, readErr := os.ReadFile(p)
 		if readErr != nil {
 			return fmt.Errorf("reading %s: %w", p, readErr)
 		}
-		e, inBase := baseFiles.read[full]
+		e, inBase := baseFiles[full]
 		var baseData []byte
 		if inBase {
 			if baseData, err = readBlob(e.sha, repoDir); err != nil {
@@ -288,12 +279,11 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 	}
 
 	// Report files deleted from headDir: in the base but absent from the walk.
-	for _, full := range slices.Sorted(maps.Keys(baseFiles.read)) {
-		bf := baseFiles.read[full]
-		if headFiles[full] || comparedInBoth(baseFiles, headFiles, bf.target) {
-			continue // still there, or a link to a file compared on both sides
+	for _, full := range slices.Sorted(maps.Keys(baseFiles)) {
+		if headFiles[full] {
+			continue
 		}
-		data, err := readBlob(bf.sha, repoDir)
+		data, err := readBlob(baseFiles[full].sha, repoDir)
 		if err != nil {
 			return nil, fmt.Errorf("reading %s at the base: %w", full, err)
 		}
@@ -313,7 +303,7 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		})
 	}
 
-	if len(headFiles) == 0 && len(baseFiles.read) == 0 {
+	if len(headFiles) == 0 && len(baseFiles) == 0 {
 		res.Add(result.Diagnostic{
 			Module:   "rule-diff",
 			Code:     "RD000",
@@ -331,18 +321,6 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		res.Add(d)
 	}
 	return res, nil
-}
-
-// comparedInBoth reports whether target, the file a deleted base link led
-// to, is a regular entity file that diff compares in both versions: then
-// deleting the link deletes no rules, as any change to the file itself is
-// compared.
-func comparedInBoth(base baseFiles, head map[string]bool, target string) bool {
-	if target == "" || !head[target] {
-		return false
-	}
-	t, ok := base.read[target]
-	return ok && t.target == ""
 }
 
 // gitRoot returns the root of the git repository that contains path.

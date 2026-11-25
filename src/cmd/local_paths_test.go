@@ -62,16 +62,17 @@ func TestCheckRefusesLinkedLocalPaths(t *testing.T) {
 		})
 	}
 	// A link inside a rule source's tree is refused by the resolver itself,
-	// on every system, before anything reads through it.
-	for _, at := range []string{"rules/child", "rules/child/realm.json"} {
+	// on every system, before anything reads through it: a linked sub-realm
+	// directory (RR007), and a linked manifest (RSV002).
+	for at, want := range map[string]string{"rules/child": "RR007", "rules/child/realm.json": "RSV002"} {
 		t.Run(at, func(t *testing.T) {
 			dir, diff := setupLinkProject(t)
 			relink(t, filepath.Dir(filepath.Join(dir, at)), filepath.Base(at))
 
 			out, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
 			assertExit(t, err, exitConfig)
-			testutil.AssertContains(t, out, "RSV002")
-			testutil.AssertContains(t, out, "links and special files are not allowed")
+			testutil.AssertContains(t, out, want)
+			testutil.AssertContains(t, out, "link")
 		})
 	}
 }

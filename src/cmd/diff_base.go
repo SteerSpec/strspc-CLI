@@ -26,9 +26,6 @@ type baseEntry struct {
 var (
 	errDiffLink      = errors.New("is a link, which strspc diff doesn't follow")
 	errDiffSubmodule = errors.New("is a submodule, whose files strspc diff can't compare")
-	// errDiffUnreadLink refuses a file replacing a base link diff can't read:
-	// what the link held can't be compared with it.
-	errDiffUnreadLink = errors.New("strspc diff can't read, so the change can't be compared with what it held")
 )
 
 // gitError is a failed git command with what git printed.
@@ -105,131 +102,37 @@ func underSchemaDir(p string) bool {
 	return slices.Contains(strings.Split(path.Dir(p), "/"), "_schema")
 }
 
-// baseFile is an entity file of the base tree, as diff reads it.
-type baseFile struct {
-	baseEntry
-	// target is the slash path of the regular file a link leads to, empty
-	// when the entry is itself a regular file.
-	target string
+// isJSONName reports whether name ends in .json in any case. A link or
+// special file of such a name is refused below a tree's root: no reader
+// follows it, so what it holds can't be compared.
+func isJSONName(name string) bool {
+	return strings.HasSuffix(strings.ToLower(name), ".json")
 }
 
-// baseFiles holds the entity files of a base tree.
-type baseFiles struct {
-	// read are the files diff compares, keyed by slash path from the
-	// repository root: regular files, and links read as the regular file they
-	// lead to inside the tree, so that the change replacing one is compared
-	// with what it held, as rulediff reads a base.
-	read map[string]baseFile
-	// unread are the entity files that are links diff can't read: leading
-	// elsewhere, dangling or looping. Deleting one deletes no rules diff could
-	// compare, but a file replacing one can't be compared with what the link
-	// held, so it is refused rather than checked as new.
-	unread map[string]bool
-}
-
-// baseEntityFiles returns the entity files of base, the tree under relDir,
-// and refuses a submodule anywhere: the head side can't be compared with
-// what it holds.
-func baseEntityFiles(base map[string]baseEntry, relDir, repoDir string) (baseFiles, error) {
-	files := baseFiles{read: map[string]baseFile{}, unread: map[string]bool{}}
+// baseEntityFiles returns the entity files of base, regular files keyed by
+// their slash path from the repository root. It refuses a submodule, whose
+// files the head side can't be compared with, and a link named *.json:
+// keeping, deleting, replacing or renaming it can't be compared with what it
+// held, as rulediff refuses it (RD000). Other links are never read.
+func baseEntityFiles(base map[string]baseEntry) (map[string]baseEntry, error) {
+	files := map[string]baseEntry{}
 	for p, e := range base {
-		if e.kind == "commit" {
-			return baseFiles{}, fmt.Errorf("%s at the base %w", p, errDiffSubmodule)
-		}
-		if underSchemaDir(p) || !isEntityFileName(path.Base(p)) {
+		switch {
+		case e.kind == "commit":
+			return nil, fmt.Errorf("%s at the base %w", p, errDiffSubmodule)
+		case e.kind != "blob":
+			continue
+		case e.mode != "100644" && e.mode != "100755":
+			if isJSONName(path.Base(p)) {
+				return nil, fmt.Errorf("%s at the base %w", p, errDiffLink)
+			}
+			continue
+		case underSchemaDir(p) || !isEntityFileName(path.Base(p)):
 			continue
 		}
-		e, target, ok, err := regularBaseFile(base, p, relDir, repoDir)
-		switch {
-		case err != nil:
-			return baseFiles{}, fmt.Errorf("base entity files: %w", err)
-		case ok:
-			files.read[p] = baseFile{baseEntry: e, target: target}
-		case base[p].mode == "120000":
-			files.unread[p] = true
-		}
+		files[p] = e
 	}
 	return files, nil
-}
-
-// regularBaseFile returns the regular file that the entry at p of base, the
-// tree under relDir, is or leads to by links inside the tree, and the path of
-// that file when p is a link. ok is false for a link that leads elsewhere,
-// dangles or loops, and for anything else.
-func regularBaseFile(base map[string]baseEntry, p, relDir, repoDir string) (e baseEntry, target string, ok bool, err error) {
-	start := p
-	for range 8 {
-		e, found := base[p]
-		switch {
-		case !found || e.kind != "blob":
-			return baseEntry{}, "", false, nil
-		case e.mode == "100644" || e.mode == "100755":
-			if p == start {
-				return e, "", true, nil
-			}
-			return e, p, true, nil
-		case e.mode != "120000":
-			return baseEntry{}, "", false, nil
-		}
-		text, err := readBlob(e.sha, repoDir)
-		if err != nil {
-			return baseEntry{}, "", false, fmt.Errorf("reading the link %s at the base: %w", p, err)
-		}
-		next, ok := baseLinkTarget(base, p, string(text), relDir)
-		if !ok {
-			return baseEntry{}, "", false, nil
-		}
-		p = next
-	}
-	return baseEntry{}, "", false, nil
-}
-
-// baseLinkTarget returns the slash path that the link at from in base, the
-// tree under relDir, names by its text. ok is false when the text is
-// absolute, leaves the tree, or passes through a directory that is a link at
-// the base: a link is read only through real directories.
-func baseLinkTarget(base map[string]baseEntry, from, text, relDir string) (string, bool) {
-	if path.IsAbs(text) || strings.Contains(text, `\`) {
-		return "", false
-	}
-	segs := strings.Split(text, "/")
-	var cur string
-	for i := range segs {
-		cur = path.Join(path.Dir(from), strings.Join(segs[:i+1], "/"))
-		if cur != relDir && !inBaseTree(cur, relDir) {
-			return "", false
-		}
-		if i < len(segs)-1 && !realBaseDir(base, cur) {
-			return "", false
-		}
-	}
-	if cur == relDir {
-		return "", false
-	}
-	return cur, true
-}
-
-// realBaseDir reports whether dir, a slash path, is a real directory of
-// base: some entry is below it, and no link has its name in any case, which a
-// case-insensitive file system would follow instead.
-func realBaseDir(base map[string]baseEntry, dir string) bool {
-	below := false
-	for p, e := range base {
-		if e.mode == "120000" && strings.EqualFold(p, dir) {
-			return false
-		}
-		below = below || strings.HasPrefix(p, dir+"/")
-	}
-	return below
-}
-
-// inBaseTree reports whether the slash path p, from the repository root, is
-// in the tree under relDir.
-func inBaseTree(p, relDir string) bool {
-	if relDir == "." {
-		return p != ".." && !strings.HasPrefix(p, "../")
-	}
-	return strings.HasPrefix(p, relDir+"/")
 }
 
 // repoPath returns p relative to the repository root repoDir, as a slash
@@ -266,44 +169,15 @@ func repoPath(p, repoDir string) (string, error) {
 	return strings.Join(rest, "/"), nil
 }
 
-// checkHeadLink refuses the link p in the head tree under headDir as the
-// resolver's walk does, and ignores it otherwise. Refused are a link named
-// *.json in any case, a link to a directory, and one whose text is absolute,
-// names a volume, leaves the tree or leads to another link. Only the text is
-// read, and only a target inside the tree is looked at.
-func checkHeadLink(p, headDir string) error {
-	if strings.HasSuffix(strings.ToLower(filepath.Base(p)), ".json") {
+// checkHeadLink refuses the link p in the head tree when it is named *.json
+// in any case, as the resolver's walk does, and leaves any other link alone:
+// it is never followed, read or looked at, and whatever is behind it doesn't
+// count.
+func checkHeadLink(p string) error {
+	if isJSONName(filepath.Base(p)) {
 		return fmt.Errorf("%s %w", p, errDiffLink)
 	}
-	text, err := os.Readlink(p)
-	if err != nil {
-		return fmt.Errorf("reading the link %s: %w", p, err)
-	}
-	if filepath.IsAbs(text) || filepath.VolumeName(text) != "" || strings.HasPrefix(text, "/") || strings.HasPrefix(text, `\`) {
-		return fmt.Errorf("%s %w", p, errDiffLink)
-	}
-	// Each directory on the way must be a real one: nothing below a linked
-	// directory is looked at.
-	segs := strings.Split(filepath.ToSlash(text), "/")
-	var target string
-	for i := range segs {
-		target = filepath.Join(filepath.Dir(p), filepath.FromSlash(strings.Join(segs[:i+1], "/")))
-		rel, err := filepath.Rel(headDir, target)
-		if err != nil || (rel != "." && !filepath.IsLocal(rel)) {
-			return fmt.Errorf("%s %w", p, errDiffLink)
-		}
-		fi, err := os.Lstat(target)
-		if err != nil {
-			return nil // to nothing: nothing the resolver reads
-		}
-		if fi.Mode()&fs.ModeSymlink != 0 || (i == len(segs)-1 && fi.IsDir()) {
-			return fmt.Errorf("%s %w", p, errDiffLink)
-		}
-	}
-	if target == headDir {
-		return fmt.Errorf("%s %w", p, errDiffLink)
-	}
-	return nil // a link to a file the resolver doesn't read
+	return nil
 }
 
 // refuseLinksInRepository refuses abs when one of its components is a link
@@ -376,13 +250,9 @@ func compareBaseRealms(base map[string]baseEntry, relDir, headDir, repoDir strin
 		if base[full].kind == "commit" {
 			return nil, fmt.Errorf("%s at the base %w", full, errDiffSubmodule)
 		}
-		// A link is written as the regular file it leads to inside the tree,
-		// and not at all otherwise: no link is recreated.
-		e, _, ok, err := regularBaseFile(base, full, relDir, repoDir)
-		if err != nil {
-			return nil, fmt.Errorf("writing the base tree: %w", err)
-		}
-		if !ok {
+		// Regular files only: no link is recreated or followed.
+		e := base[full]
+		if e.kind != "blob" || (e.mode != "100644" && e.mode != "100755") {
 			continue
 		}
 		rel := full
