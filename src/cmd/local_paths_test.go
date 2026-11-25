@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/entity"
 )
 
 // relink moves dir/name to dir/name.real and leaves a link to it in its place.
@@ -254,4 +255,20 @@ func TestCheckRefusesNetworkPaths(t *testing.T) {
 		assertExit(t, err, exitConfig)
 		testutil.AssertContains(t, err.Error(), "is a network or device path")
 	})
+}
+
+// A local dependency source holding a backslash is refused on every system,
+// as the resolver refuses it (RR001): only Windows reads it as a separator.
+func TestDependencySourceWithBackslash(t *testing.T) {
+	dir, diff := setupInheritProject(t, "null", "./rules/")
+	writeRealmManifest(t, filepath.Join(dir, "rules"), "dev.app",
+		`{"realm_id": "dev.lib", "version": "1.0.0", "source": "..\\lib"}`)
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitConfig)
+	if !errors.Is(err, errBackslashSource) {
+		t.Errorf("check: err = %v, want errBackslashSource", err)
+	}
+	if _, err := fetchRealmDependency(t.Context(), dir, entity.RealmDep{RealmID: "dev.lib", Source: `..\lib`}); !errors.Is(err, errBackslashSource) {
+		t.Errorf("realm validate: err = %v, want errBackslashSource", err)
+	}
 }
