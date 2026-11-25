@@ -54,7 +54,7 @@ type checkOutput struct {
 	RuleCount  int    `json:"rule_count"`
 	// StandardSkipped counts the rules of RuleCount that are a Standard
 	// Realm's, which are never evaluated (STDRLM-011, RE005 or RE006).
-	StandardSkipped int                   `json:"standard_skipped,omitempty"`
+	StandardSkipped int                   `json:"standard_skipped"`
 	SourceCount     int                   `json:"source_count"`
 	Diff            string                `json:"diff,omitempty"`
 	Usage           *ruleeval.Usage       `json:"usage,omitempty"`

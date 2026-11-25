@@ -146,6 +146,20 @@ func TestRuleVerifySkipsStandardRealmSource(t *testing.T) {
 	}
 }
 
+// The count is in every report, 0 without a Standard Realm.
+func TestCheckJSONAlwaysCountsStandardSkips(t *testing.T) {
+	dir, _ := setupCheckProject(t, "null", nil)
+	out, err := runCheckCmd(t, dir, "--format", "json")
+	assertExit(t, err, exitOK)
+	var rep map[string]any
+	if jerr := json.Unmarshal([]byte(out), &rep); jerr != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", jerr, out)
+	}
+	if v, ok := rep["standard_skipped"]; !ok || v != float64(0) {
+		t.Errorf("standard_skipped = %v (present %v), want 0", v, ok)
+	}
+}
+
 func TestCheckSummaryCountsStandardSkips(t *testing.T) {
 	r := &checkRun{}
 	line := r.summaryLine(&checkOutput{RuleCount: 5, SourceCount: 2, StaticOnly: true, StandardSkipped: 2})
