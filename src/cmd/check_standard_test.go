@@ -166,4 +166,8 @@ func TestCheckSummaryCountsStandardSkips(t *testing.T) {
 	if want := "Checked 5 rule(s) from 2 source(s), 2 of a Standard Realm not evaluated (static-only)"; line != want {
 		t.Errorf("summary = %q, want %q", line, want)
 	}
+	md := githubStepSummary(&checkOutput{OK: true, RuleCount: 5, SourceCount: 2, StaticOnly: true, StandardSkipped: 2})
+	if want := "**Rules:** 5 from 2 source(s), 2 of a Standard Realm not evaluated  \n"; !strings.Contains(md, want) {
+		t.Errorf("step summary lacks %q:\n%s", want, md)
+	}
 }

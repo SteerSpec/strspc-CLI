@@ -98,7 +98,11 @@ func githubStepSummary(out *checkOutput) string {
 		status = fmt.Sprintf("failed (exit %d)", out.ExitCode)
 	}
 	fmt.Fprintf(&b, "**Status:** %s  \n", status)
-	fmt.Fprintf(&b, "**Rules:** %d from %d source(s)  \n", out.RuleCount, out.SourceCount)
+	fmt.Fprintf(&b, "**Rules:** %d from %d source(s)", out.RuleCount, out.SourceCount)
+	if out.StandardSkipped > 0 {
+		fmt.Fprintf(&b, ", %d of a Standard Realm not evaluated", out.StandardSkipped)
+	}
+	b.WriteString("  \n")
 	switch {
 	case out.StaticOnly:
 		b.WriteString("**Evaluation:** static-only (AI evaluation skipped)  \n")
