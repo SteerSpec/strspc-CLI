@@ -157,6 +157,13 @@ func newRealmValidateCmd() *cobra.Command {
 				realmRes := vs.ruleLinter.LintRealm(cmd.Context(), dir)
 				mergeDiagnostics(res, realmRes)
 			}
+			resolved, err := resolveValidatedRealm(cmd.Context(), dir, strict)
+			if err != nil {
+				return err
+			}
+			if resolved != nil {
+				mergeDiagnostics(res, resolved)
+			}
 
 			w := cmd.OutOrStdout()
 
