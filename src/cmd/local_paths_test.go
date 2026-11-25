@@ -172,7 +172,6 @@ func TestCheckFollowsLinkedLocalPathsElsewhere(t *testing.T) {
 	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
 	assertExit(t, err, exitOK)
 
-	// The transitive dependency base/ isn't refused yet: asked of the manager.
 	for _, at := range []string{"lib", "other"} {
 		t.Run(at, func(t *testing.T) {
 			dir, diff := setupLinkProject(t)
@@ -182,6 +181,21 @@ func TestCheckFollowsLinkedLocalPathsElsewhere(t *testing.T) {
 			testutil.AssertContains(t, out, "RR002")
 		})
 	}
+	// A dependency's own dependency is resolved when an inheritance chain
+	// reaches it: here lib's ACCT inherits base's BASE.
+	t.Run("base", func(t *testing.T) {
+		dir, diff := setupLinkProject(t)
+		writeInheritEntity(t, filepath.Join(dir, "base"), "BASE", "", inheritRule{id: "BASE-001", state: "P"})
+		writeInheritEntity(t, filepath.Join(dir, "lib"), "ACCT", "dev.base:BASE",
+			inheritRule{id: "ACCT-001", state: "P"}, inheritRule{id: "ACCT-002", state: "I"})
+		_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+		assertExit(t, err, exitOK) // the chain resolves while base/ is a directory
+
+		relink(t, dir, "base")
+		out, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+		assertExit(t, err, exitConfig)
+		testutil.AssertContains(t, out, "RR002")
+	})
 }
 
 func TestSyncRefusesLinkedSource(t *testing.T) {
