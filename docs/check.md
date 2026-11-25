@@ -48,6 +48,7 @@ The flow follows
 1. Resolve the rule sources and collect the rules in `evaluate_on` states. The rules of a Standard Realm
    are never evaluated (STDRLM-011): `RE005` reports them, or `RE006`, which blocks, when skipping one
    would switch off enforcement ([Author a Standard Realm](author-rules.md#author-a-standard-realm)).
+   `rule_count` includes them and `standard_skipped` counts them.
 2. Collect the diff. An empty diff ends evaluation with `RE004`.
 3. Look each rule up in the cache, and send only the misses, one request per owning entity.
 4. Get one verdict per rule, then re-read the diff for each violated rule to confirm it or withdraw it.

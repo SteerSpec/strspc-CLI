@@ -46,16 +46,19 @@ const (
 // checkOutput is the JSON representation of a check run; it also feeds the
 // GitHub step summary.
 type checkOutput struct {
-	OK          bool                  `json:"ok"`
-	ExitCode    int                   `json:"exit_code"`
-	StaticOnly  bool                  `json:"static_only"`
-	Provider    string                `json:"provider,omitempty"`
-	Model       string                `json:"model,omitempty"`
-	RuleCount   int                   `json:"rule_count"`
-	SourceCount int                   `json:"source_count"`
-	Diff        string                `json:"diff,omitempty"`
-	Usage       *ruleeval.Usage       `json:"usage,omitempty"`
-	Diagnostics []explainedDiagnostic `json:"diagnostics"`
+	OK         bool   `json:"ok"`
+	ExitCode   int    `json:"exit_code"`
+	StaticOnly bool   `json:"static_only"`
+	Provider   string `json:"provider,omitempty"`
+	Model      string `json:"model,omitempty"`
+	RuleCount  int    `json:"rule_count"`
+	// StandardSkipped counts the rules of RuleCount that are a Standard
+	// Realm's, which are never evaluated (STDRLM-011, RE005 or RE006).
+	StandardSkipped int                   `json:"standard_skipped,omitempty"`
+	SourceCount     int                   `json:"source_count"`
+	Diff            string                `json:"diff,omitempty"`
+	Usage           *ruleeval.Usage       `json:"usage,omitempty"`
+	Diagnostics     []explainedDiagnostic `json:"diagnostics"`
 	// Error carries the fatal cause (configuration, resolution, provider) so
 	// JSON consumers do not have to parse stderr.
 	Error string `json:"error,omitempty"`
@@ -836,12 +839,13 @@ func (r *checkRun) evaluate() error {
 
 func (r *checkRun) output(code int, diags []result.Diagnostic) checkOutput {
 	out := checkOutput{
-		OK:          code == exitOK,
-		ExitCode:    code,
-		StaticOnly:  r.static,
-		RuleCount:   len(r.inputs),
-		SourceCount: len(r.entries),
-		Diagnostics: explainDiagnostics(diags, r.opts.explain),
+		OK:              code == exitOK,
+		ExitCode:        code,
+		StaticOnly:      r.static,
+		RuleCount:       len(r.inputs),
+		StandardSkipped: len(r.inputs) - len(evaluableInputs(r.inputs)),
+		SourceCount:     len(r.entries),
+		Diagnostics:     explainDiagnostics(diags, r.opts.explain),
 	}
 	if !r.static {
 		out.Provider = r.providerName
@@ -853,8 +857,23 @@ func (r *checkRun) output(code int, diags []result.Diagnostic) checkOutput {
 	return out
 }
 
+// evaluableInputs returns the inputs the evaluator may send to a provider:
+// all but a Standard Realm's rules (STDRLM-011).
+func evaluableInputs(inputs []ruleeval.RuleInput) []ruleeval.RuleInput {
+	var out []ruleeval.RuleInput
+	for i := range inputs {
+		if inputs[i].RealmKind != entity.KindStandard {
+			out = append(out, inputs[i])
+		}
+	}
+	return out
+}
+
 func (r *checkRun) summaryLine(out *checkOutput) string {
 	s := fmt.Sprintf("Checked %d rule(s) from %d source(s)", out.RuleCount, out.SourceCount)
+	if out.StandardSkipped > 0 {
+		s += fmt.Sprintf(", %d of a Standard Realm not evaluated", out.StandardSkipped)
+	}
 	if out.StaticOnly {
 		return s + " (static-only)"
 	}

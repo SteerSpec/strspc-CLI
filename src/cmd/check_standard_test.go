@@ -112,6 +112,9 @@ func TestCheckSkipsStandardRealmSource(t *testing.T) {
 			if !hasCode(rep.Diagnostics, c.wantCode) {
 				t.Errorf("no %s in %+v", c.wantCode, rep.Diagnostics)
 			}
+			if want := 1 + strings.Count(c.more, `"id"`); rep.StandardSkipped != want {
+				t.Errorf("standard_skipped = %d, want %d", rep.StandardSkipped, want)
+			}
 		})
 	}
 }
@@ -133,5 +136,20 @@ func TestRuleVerifySkipsStandardRealmSource(t *testing.T) {
 	}
 	if vo := decodeVerify(t, out); !hasCode(vo.Diagnostics, ruleeval.CodeUnsafeSkip) {
 		t.Errorf("no RE006 in %+v", vo.Diagnostics)
+	}
+
+	// The estimate leaves out what won't be sent.
+	out, err = runVerifyCmd(t, "STD-001", "--project", dir, "--format", "json", "--dry-run")
+	assertExit(t, err, exitOK)
+	if est := decodeVerify(t, out).Estimate; est.RuleGroups != 0 || est.EstRequests != 0 {
+		t.Errorf("estimate = %+v, want no rule group and no request", est)
+	}
+}
+
+func TestCheckSummaryCountsStandardSkips(t *testing.T) {
+	r := &checkRun{}
+	line := r.summaryLine(&checkOutput{RuleCount: 5, SourceCount: 2, StaticOnly: true, StandardSkipped: 2})
+	if want := "Checked 5 rule(s) from 2 source(s), 2 of a Standard Realm not evaluated (static-only)"; line != want {
+		t.Errorf("summary = %q, want %q", line, want)
 	}
 }

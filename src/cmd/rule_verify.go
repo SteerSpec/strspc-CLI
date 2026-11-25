@@ -223,7 +223,7 @@ func (r *verifyRun) run(ids []string, o *verifyOptions) error {
 		return r.verifyFail(exitConfig, err)
 	}
 	r.inputs = oneVerifyGroup(selected)
-	est := estimateVerify(r.files, r.inputs)
+	est := estimateVerify(r.files, evaluableInputs(r.inputs))
 
 	if o.dryRun {
 		vo := r.verifyOutput(exitOK, est, nil)
