@@ -18,8 +18,11 @@ import (
 // that loads, which realm-lint reports.
 func checkValidatedRealm(dir string) (*entity.RealmFile, error) {
 	rf, err := loadRealmIfAny(dir)
-	if err != nil || rf == nil {
-		return nil, err
+	if err != nil {
+		return nil, fmt.Errorf("realm manifest: %w", err)
+	}
+	if rf == nil {
+		return nil, nil
 	}
 	if err := checkDependencySources(dir, rf, &dirSet{}); err != nil {
 		return nil, fmt.Errorf("realm %s: %w", rf.Realm.ID, err)

@@ -152,7 +152,7 @@ func newRealmValidateCmd() *cobra.Command {
 
 			rf, err := checkValidatedRealm(dir)
 			if err != nil {
-				return err
+				return fmt.Errorf("realm validate: %w", err)
 			}
 
 			vs := newRealmValidator(dir, strict, recursive, core)
