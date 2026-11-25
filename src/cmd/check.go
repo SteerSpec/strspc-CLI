@@ -649,6 +649,7 @@ func (r *checkRun) buildInputs() {
 	for _, rf := range r.resolved {
 		label := r.sourceLabel(rf, labelBase)
 		ins := r.entityInputs(rf.File, rf.Path, effective)
+		ruleeval.AnnotateRealmKind(ins, rf.RealmKind)
 		for i := range ins {
 			ins[i].Source = label
 			ins[i].Scope = string(rf.Origin.Scope)
