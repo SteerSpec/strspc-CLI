@@ -124,6 +124,17 @@ func TestRealmValidateUnloadableDependencyWarns(t *testing.T) {
 	}
 }
 
+// A dependency that is reached but holds an entity file that doesn't load is
+// an error, as in check: that isn't being offline.
+func TestRealmValidateBrokenDependencyFileFails(t *testing.T) {
+	rules, lib := setupValidateInherit(t)
+	writeFile(t, lib, "BROKEN.json", "{")
+	codes, err := validateCodes(t, rules)
+	if err == nil || codes["RR002"] != result.Error {
+		t.Errorf("err %v, codes %v; want a failing RR002 error", err, codes)
+	}
+}
+
 // Neither realm-lint nor the resolver opens a dependency directory before
 // projectPath accepts it, as in check.
 func TestRealmValidateRefusesLinkedDependency(t *testing.T) {

@@ -33,8 +33,10 @@ the dependency's manifest, and a `_schema/` file that differs from the pinned `d
 **Inheritance.** `realm validate` also resolves the realm as `check` does, with or without
 `--recursive`, and reports what only resolving it finds: an `inherits` or `overrides` that names nothing
 (RR013, RR015), an override visibility forbids (RR023), an entity wider than the one it inherits
-(RR024), and the other realm-resolve codes. A dependency it can't load (RR001, RR002, RR012) stays a
-warning, as realm-lint's RM016 does, so that it still runs offline, and `--strict` makes every
+(RR024), and the other realm-resolve codes. A dependency it can't reach (an invalid source, a missing
+directory or manifest, a failed fetch: RR001, RR002, RR012) stays a warning, as realm-lint's RM016
+does, so that it still runs offline. A dependency it reaches but whose files don't load is an error,
+as in `check`, and `--strict` makes every
 resolver warning an error. `lint` checks each file alone, so it reports none of these.
 
 **Core realm.** The core realm defines the schemas, so it has nothing to pin. Pass `--core` to validate

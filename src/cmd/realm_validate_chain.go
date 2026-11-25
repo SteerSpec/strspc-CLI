@@ -30,7 +30,7 @@ func checkValidatedRealm(dir string) (*entity.RealmFile, error) {
 // resolveValidatedRealm runs realm-resolve on rf, the realm in dir, as check
 // does, so that realm validate reports what only resolving the realm finds:
 // the inheritance chains and overrides that cross into its dependencies
-// (RR013 to RR025). A dependency it can't load is a warning; with strict,
+// (RR013 to RR025). A dependency it can't reach is a warning; with strict,
 // the resolver's warnings are errors, as the linters' are.
 func resolveValidatedRealm(ctx context.Context, dir string, rf *entity.RealmFile, strict bool) *result.Result {
 	var opts []realmresolve.Option
@@ -53,11 +53,14 @@ func resolveValidatedRealm(ctx context.Context, dir string, rf *entity.RealmFile
 	return res
 }
 
-// unloadableDependency reports whether d says a dependency can't be loaded.
-// realm validate keeps those warnings, as realm-lint's RM016 for the same
-// dependency, so that it still runs offline: check is the gate on them. The
-// resolver also reports a root entity file it can't read as RR002, which
-// stays an error: only its dependency messages name a dependency.
+// unloadableDependency reports whether d says a dependency can't be reached:
+// its source is invalid, its directory or manifest is missing, or it can't be
+// fetched. realm validate keeps those warnings, as realm-lint's RM016 for the
+// same dependency, so that it still runs offline: check is the gate on them.
+// The resolver reports an entity file it can't read as RR002 too, in the
+// realm or in a dependency it reached; that is a defect of the files, not of
+// being offline, so it stays an error. Only the messages of an unreached
+// dependency name it.
 func unloadableDependency(d *result.Diagnostic) bool {
 	switch d.Code {
 	case "RR001", "RR002", "RR012":
