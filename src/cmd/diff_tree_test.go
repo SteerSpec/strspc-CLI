@@ -40,6 +40,22 @@ func TestDiffBaseTreeStaysInItsDirectory(t *testing.T) {
 	}
 }
 
+// A JSON file named in another case, which the resolver's walk refuses
+// rather than skips, fails diff too.
+func TestDiffRefusesJSONNameInAnotherCase(t *testing.T) {
+	for _, name := range []string{"X.JSON", "realm.JSON"} {
+		t.Run(name, func(t *testing.T) {
+			dir := newPublishedRepo(t, "rules/ENT.json")
+			writeFile(t, dir, "rules/"+name, string(entityV1("X")))
+			_, err := runDiff(t, filepath.Join(dir, "rules"))
+			if err == nil {
+				t.Fatal("diff passed")
+			}
+			testutil.AssertContains(t, err.Error(), "must end in .json")
+		})
+	}
+}
+
 // diff refuses a link or special file named *.json, in any case, in the
 // head tree, and leaves any other link alone: never followed, so nothing
 // behind it is compared.

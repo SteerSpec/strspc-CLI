@@ -225,6 +225,10 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		if !d.Type().IsRegular() && isJSONName(d.Name()) {
 			return fmt.Errorf("%s is not a regular file", p)
 		}
+		if isJSONName(d.Name()) && !strings.HasSuffix(d.Name(), ".json") {
+			// The resolver's walk refuses it rather than skip it.
+			return fmt.Errorf("%s: a JSON file name must end in .json", p)
+		}
 		if !isEntityFileName(d.Name()) {
 			return nil
 		}

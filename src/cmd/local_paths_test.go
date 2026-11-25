@@ -160,17 +160,28 @@ func TestCheckDependencySourcesHasNoDepthLimit(t *testing.T) {
 	}
 }
 
-// Elsewhere than on Windows links are followed, as before.
+// Elsewhere than on Windows a linked rule source is followed, as before; a
+// dependency reached through a link is refused by the resolver on every
+// system (RR002).
 func TestCheckFollowsLinkedLocalPathsElsewhere(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("links are refused on Windows")
 	}
 	dir, diff := setupLinkProject(t)
-	for _, at := range []string{"rules", "lib", "base", "other"} {
-		relink(t, dir, at)
-	}
+	relink(t, dir, "rules")
 	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
 	assertExit(t, err, exitOK)
+
+	// The transitive dependency base/ isn't refused yet: asked of the manager.
+	for _, at := range []string{"lib", "other"} {
+		t.Run(at, func(t *testing.T) {
+			dir, diff := setupLinkProject(t)
+			relink(t, dir, at)
+			out, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+			assertExit(t, err, exitConfig)
+			testutil.AssertContains(t, out, "RR002")
+		})
+	}
 }
 
 func TestSyncRefusesLinkedSource(t *testing.T) {
