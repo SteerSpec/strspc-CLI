@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -106,9 +109,21 @@ func newDiffCmd() *cobra.Command {
 // diffFile compares a single entity file against its version at baseRef.
 // If the file is absent at baseRef it is validated as a new entity.
 func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, error) {
+	rel, err := repoPath(headPath, repoDir)
+	if err != nil {
+		return nil, err
+	}
 	headData, err := os.ReadFile(headPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", headPath, err)
+	}
+	base, err := listBase(baseRef, rel, repoDir)
+	if err != nil {
+		return nil, err
+	}
+	files, err := baseEntityFiles(base)
+	if err != nil {
+		return nil, err
 	}
 
 	contributors, err := realmContributorsOf(headPath, repoDir)
@@ -116,17 +131,16 @@ func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, e
 		return nil, err
 	}
 	opts := diffOpts(strict, contributors)
-	baseData, err := gitShow(baseRef, headPath, repoDir)
 
 	var res *result.Result
-	if err != nil {
-		if isGitNotFound(err) {
-			res = rulediff.CompareNew(headData, opts...)
-		} else {
+	if e, ok := files[rel]; ok {
+		baseData, err := readBlob(e.sha, repoDir)
+		if err != nil {
 			return nil, err
 		}
-	} else {
 		res = rulediff.Compare(baseData, headData, opts...)
+	} else {
+		res = rulediff.CompareNew(headData, opts...)
 	}
 
 	// Attach file path context to each diagnostic (matching lintDirPerFile pattern).
@@ -140,75 +154,119 @@ func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, e
 	return res, nil
 }
 
-// diffDir compares entity JSON files in headDir against their versions at baseRef.
-// Walks the directory tree recursively, skipping _-prefixed dirs/files and realm.json.
-// Only files whose content differs from the base (or are new) are validated.
-// Files deleted from headDir are reported as RD005.
+// diffDir compares the entity files in the tree of headDir against their
+// versions at baseRef, and the Realms of the two trees (rulediff.CompareRealms).
+// The entity files are those the resolver reads: every .json file but
+// realm.json, outside _schema directories. The base is read at headDir as
+// given, and a link on the way, a linked entity file or directory, or a
+// submodule is refused: diff couldn't compare what they hold. Only files whose
+// content differs from the base (or are new) are validated, and files deleted
+// from headDir are reported as RD005 unless they held no entity.
 func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, error) {
+	relDir, err := repoPath(headDir, repoDir)
+	if err != nil {
+		return nil, err
+	}
+	base, err := listBase(baseRef, relDir, repoDir)
+	if err != nil {
+		return nil, err
+	}
+	baseFiles, err := baseEntityFiles(base)
+	if err != nil {
+		return nil, err
+	}
+
 	res := &result.Result{}
 	// The contributors of each file's Realm, by directory: a walk from a
 	// parent Realm reaches its sub-realms, and one from above reaches several
 	// Realms.
 	contributors := map[string][]entity.Contributor{}
+	contributorsOf := func(file string) ([]entity.Contributor, error) {
+		dir := filepath.Dir(file)
+		list, seen := contributors[dir]
+		if !seen {
+			var err error
+			if list, err = realmContributorsOf(file, repoDir); err != nil {
+				return nil, err
+			}
+			contributors[dir] = list
+		}
+		return list, nil
+	}
 
-	// Walk headDir to find entity JSON files and compare each against baseRef.
-	headRelPaths := make(map[string]bool)
-	walkErr := filepath.WalkDir(headDir, func(path string, d os.DirEntry, err error) error {
+	headFiles := map[string]bool{}
+	walkErr := filepath.WalkDir(headDir, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
+		if p == headDir {
+			return nil
+		}
+		if d.Name() == ".git" {
+			if relDir == "." && filepath.Dir(p) == headDir {
+				return filepath.SkipDir // the repository's own
+			}
+			return fmt.Errorf("%s %w", filepath.Dir(p), errDiffSubmodule)
+		}
 		if d.IsDir() {
-			if strings.HasPrefix(d.Name(), "_") {
+			if d.Name() == "_schema" {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if strings.HasPrefix(d.Name(), "_") || !strings.HasSuffix(d.Name(), ".json") || d.Name() == "realm.json" {
+		if d.Type()&fs.ModeSymlink != 0 {
+			fi, statErr := os.Stat(p)
+			if isEntityFileName(d.Name()) || (statErr == nil && fi.IsDir()) {
+				return fmt.Errorf("%s %w", p, errDiffLink)
+			}
+			return nil // not something the resolver reads
+		}
+		if !isEntityFileName(d.Name()) {
 			return nil
 		}
+		if !d.Type().IsRegular() {
+			return fmt.Errorf("%s is not a regular file", p)
+		}
 
-		rel, relErr := filepath.Rel(headDir, path)
+		rel, relErr := filepath.Rel(headDir, p)
 		if relErr != nil {
 			return relErr
 		}
-		headRelPaths[rel] = true
+		full := joinRepo(relDir, filepath.ToSlash(rel))
+		headFiles[full] = true
 
-		headData, readErr := os.ReadFile(path)
+		headData, readErr := os.ReadFile(p)
 		if readErr != nil {
-			return fmt.Errorf("reading %s: %w", path, readErr)
+			return fmt.Errorf("reading %s: %w", p, readErr)
 		}
-
-		baseData, showErr := gitShow(baseRef, path, repoDir)
-		if showErr != nil && !isGitNotFound(showErr) {
-			return showErr
-		}
-		if showErr == nil && bytes.Equal(baseData, headData) {
-			return nil // file unchanged — nothing to validate
-		}
-		fileDir := filepath.Dir(path)
-		list, seen := contributors[fileDir]
-		if !seen {
-			var listErr error
-			if list, listErr = realmContributorsOf(path, repoDir); listErr != nil {
-				return listErr
+		e, inBase := baseFiles[full]
+		var baseData []byte
+		if inBase {
+			if baseData, err = readBlob(e.sha, repoDir); err != nil {
+				return err
 			}
-			contributors[fileDir] = list
+			if bytes.Equal(baseData, headData) {
+				return nil // file unchanged — nothing to validate
+			}
+		}
+		list, listErr := contributorsOf(p)
+		if listErr != nil {
+			return listErr
 		}
 		opts := diffOpts(strict, list)
-		addWithPath := func(diags []result.Diagnostic) {
-			for _, diag := range diags {
-				if diag.Path == "" {
-					diag.Path = path
-				} else {
-					diag.Path = path + ": " + diag.Path
-				}
-				res.Add(diag)
-			}
-		}
-		if showErr == nil {
-			addWithPath(rulediff.Compare(baseData, headData, opts...).Diagnostics)
+		var diags []result.Diagnostic
+		if inBase {
+			diags = rulediff.Compare(baseData, headData, opts...).Diagnostics
 		} else {
-			addWithPath(rulediff.CompareNew(headData, opts...).Diagnostics)
+			diags = rulediff.CompareNew(headData, opts...).Diagnostics
+		}
+		for _, diag := range diags {
+			if diag.Path == "" {
+				diag.Path = p
+			} else {
+				diag.Path = p + ": " + diag.Path
+			}
+			res.Add(diag)
 		}
 		return nil
 	})
@@ -216,24 +274,32 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		return nil, fmt.Errorf("walking %s: %w", headDir, walkErr)
 	}
 
-	// Report files deleted from headDir (exist at baseRef but absent from the walk).
-	baseRelPaths, err := gitListRelPaths(baseRef, headDir, repoDir)
-	if err != nil {
-		return nil, err
-	}
-	for _, rel := range baseRelPaths {
-		if !headRelPaths[rel] {
-			res.Add(result.Diagnostic{
-				Module:   "rule-diff",
-				Code:     "RD005",
-				Severity: result.Error,
-				Message:  "entity file deleted: " + rel,
-				Path:     filepath.Join(headDir, rel),
-			})
+	// Report files deleted from headDir: in the base but absent from the walk.
+	for _, full := range slices.Sorted(maps.Keys(baseFiles)) {
+		if headFiles[full] {
+			continue
 		}
+		data, err := readBlob(baseFiles[full].sha, repoDir)
+		if err != nil {
+			return nil, err
+		}
+		if rulediff.DeletionAllowed(data) {
+			continue // it held no entity
+		}
+		rel := strings.TrimPrefix(full, relDir+"/")
+		if relDir == "." {
+			rel = full
+		}
+		res.Add(result.Diagnostic{
+			Module:   "rule-diff",
+			Code:     "RD005",
+			Severity: result.Error,
+			Message:  "entity file deleted: " + rel,
+			Path:     filepath.Join(headDir, filepath.FromSlash(rel)),
+		})
 	}
 
-	if len(headRelPaths) == 0 && len(baseRelPaths) == 0 {
+	if len(headFiles) == 0 && len(baseFiles) == 0 {
 		res.Add(result.Diagnostic{
 			Module:   "rule-diff",
 			Code:     "RD000",
@@ -243,6 +309,13 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		})
 	}
 
+	realms, err := compareBaseRealms(base, relDir, headDir, repoDir, strict)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range realms.Diagnostics {
+		res.Add(d)
+	}
 	return res, nil
 }
 
@@ -261,30 +334,6 @@ func gitRoot(path string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// gitShow returns the content of path at the given git ref, running from repoDir.
-func gitShow(ref, path, repoDir string) ([]byte, error) {
-	// Resolve symlinks on both sides so filepath.Rel works correctly on macOS
-	// (where /var is a symlink to /private/var and git may return /private/var paths).
-	realFile, err := realAbs(path)
-	if err != nil {
-		return nil, fmt.Errorf("resolving path %s: %w", path, err)
-	}
-	realRepo, err := filepath.EvalSymlinks(repoDir)
-	if err != nil {
-		return nil, fmt.Errorf("resolving repo dir: %w", err)
-	}
-	relPath, err := filepath.Rel(realRepo, realFile)
-	if err != nil {
-		return nil, fmt.Errorf("computing relative path from %s to %s: %w", realRepo, realFile, err)
-	}
-	arg := ref + ":" + filepath.ToSlash(relPath)
-	out, err := exec.Command("git", "-C", repoDir, "show", arg).Output()
-	if err != nil {
-		return nil, &gitShowError{ref: ref, path: path, cause: err}
-	}
-	return out, nil
-}
-
 // realAbs returns the absolute real path of p, resolving symlinks on the parent
 // directory. This handles files that may not yet exist in the working tree.
 func realAbs(p string) (string, error) {
@@ -297,71 +346,6 @@ func realAbs(p string) (string, error) {
 		return abs, nil // fall back to non-symlink-resolved path
 	}
 	return filepath.Join(dir, filepath.Base(abs)), nil
-}
-
-// gitListRelPaths returns entity JSON paths (relative to headDir) tracked at ref under headDir.
-// Uses git ls-tree -r for recursive traversal. Skips _-prefixed files and realm.json.
-// Returns nil when headDir is absent at ref (all files are new).
-// Returns an error when ref is not a valid git object name.
-func gitListRelPaths(ref, headDir, repoDir string) ([]string, error) {
-	// Compute headDir relative to the repo root for git ls-tree.
-	realDir, _ := realAbs(headDir)
-	realRepo, repoErr := filepath.EvalSymlinks(repoDir)
-	if repoErr != nil {
-		realRepo = repoDir
-	}
-	relDir := headDir
-	if rel, err := filepath.Rel(realRepo, realDir); err == nil {
-		relDir = filepath.ToSlash(rel)
-	}
-
-	out, err := exec.Command("git", "-C", repoDir, "ls-tree", "-r", "--name-only", ref, "--", relDir).Output()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if isExitError(err, &exitErr) {
-			stderr := exitErr.Stderr
-			// Invalid ref (typo, unknown commit) — fail fast.
-			if bytes.Contains(stderr, []byte("Not a valid object name")) {
-				return nil, fmt.Errorf("invalid git ref %q: %s", ref, strings.TrimSpace(string(stderr)))
-			}
-			// Path not found at this ref — treat all files as new.
-			return nil, nil
-		}
-		return nil, fmt.Errorf("git ls-tree %s %s: %w", ref, headDir, err)
-	}
-
-	// git ls-tree returns paths relative to repoDir. Strip the headDir prefix
-	// to get paths relative to headDir.
-	prefix := relDir + "/"
-	var files []string
-	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		rel := line
-		if strings.HasPrefix(line, prefix) {
-			rel = line[len(prefix):]
-		}
-		rel = filepath.FromSlash(rel)
-		base := filepath.Base(rel)
-		if !strings.HasSuffix(base, ".json") || base == "realm.json" {
-			continue
-		}
-		// Skip paths where any segment starts with _ (mirrors WalkDir SkipDir logic).
-		skip := false
-		for _, seg := range strings.Split(filepath.ToSlash(rel), "/") {
-			if strings.HasPrefix(seg, "_") {
-				skip = true
-				break
-			}
-		}
-		if skip {
-			continue
-		}
-		files = append(files, rel)
-	}
-	return files, nil
 }
 
 // prBaseSHA returns the base commit SHA for a GitHub PR using the gh CLI.
@@ -393,42 +377,6 @@ func diffOpts(strict bool, contributors []entity.Contributor) []rulediff.Option 
 		opts = append(opts, rulediff.WithStrict(true))
 	}
 	return opts
-}
-
-// gitShowError wraps a git-show failure so callers can distinguish "not found" from real errors.
-type gitShowError struct {
-	ref   string
-	path  string
-	cause error
-}
-
-// Unwrap returns the git failure, so callers can inspect it with errors.Is and
-// errors.As (CONV-004).
-func (e *gitShowError) Unwrap() error { return e.cause }
-
-func (e *gitShowError) Error() string {
-	var exitErr *exec.ExitError
-	if isExitError(e.cause, &exitErr) {
-		if msg := strings.TrimSpace(string(exitErr.Stderr)); msg != "" {
-			return fmt.Sprintf("git show %s:%s: %s", e.ref, e.path, msg)
-		}
-	}
-	return fmt.Sprintf("git show %s:%s: %s", e.ref, e.path, e.cause)
-}
-
-// isGitNotFound returns true when err represents a file that does not exist at the given ref.
-func isGitNotFound(err error) bool {
-	var gse *gitShowError
-	if !errors.As(err, &gse) {
-		return false
-	}
-	var exitErr *exec.ExitError
-	if !isExitError(gse.cause, &exitErr) {
-		return false
-	}
-	// git-show exits 128 with "does not exist" / "exists on disk, but not in" in stderr.
-	return bytes.Contains(exitErr.Stderr, []byte("does not exist")) ||
-		bytes.Contains(exitErr.Stderr, []byte("exists on disk"))
 }
 
 // isExitError reports whether err is or wraps an *exec.ExitError and sets

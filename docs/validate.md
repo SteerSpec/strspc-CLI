@@ -30,6 +30,12 @@ parent's.
 and needs network access unless they're cached. It reports a pin that disagrees with its source tag or
 the dependency's manifest, and a `_schema/` file that differs from the pinned `dev.steerspec.core`.
 
+**Diff.** `diff` compares the files the resolver reads: every `.json` file but `realm.json`, outside
+`_schema/` directories, whatever their name. It reads the base at the path as given and refuses a
+link on the way to it, a linked entity file or directory in the tree, on either side, and a submodule.
+In directory mode it also compares the Realms of the two trees: their kinds, Realm Notes and
+dependency sources (RD028 to RD031). Deleting a file that holds no entity isn't RD005.
+
 **Core realm.** The core realm defines the schemas, so it has nothing to pin. Pass `--core` to validate
 it against its own `_schema/`:
 

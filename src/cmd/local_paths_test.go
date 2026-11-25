@@ -47,8 +47,6 @@ func TestCheckRefusesLinkedLocalPaths(t *testing.T) {
 		"rule source":              {"rules", "rule source"},
 		"dependency":               {"lib", "dependency dev.lib of dev.app"},
 		"transitive dependency":    {"base", "dependency dev.base of dev.lib"},
-		"sub-realm":                {"rules/child", "sub-realm of dev.app"},
-		"a sub-realm's manifest":   {"rules/child/realm.json", "sub-realm of dev.app"},
 		"a dependency's manifest":  {"lib/realm.json", "dependency dev.lib of dev.app"},
 		"a sub-realm's dependency": {"other", "dependency dev.other of dev.app"},
 	} {
@@ -61,6 +59,19 @@ func TestCheckRefusesLinkedLocalPaths(t *testing.T) {
 			assertExit(t, err, exitConfig)
 			testutil.AssertContains(t, err.Error(), c.want)
 			testutil.AssertContains(t, err.Error(), "is a link")
+		})
+	}
+	// A link inside a rule source's tree is refused by the resolver itself,
+	// on every system, before anything reads through it.
+	for _, at := range []string{"rules/child", "rules/child/realm.json"} {
+		t.Run(at, func(t *testing.T) {
+			dir, diff := setupLinkProject(t)
+			relink(t, filepath.Dir(filepath.Join(dir, at)), filepath.Base(at))
+
+			out, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+			assertExit(t, err, exitConfig)
+			testutil.AssertContains(t, out, "RSV002")
+			testutil.AssertContains(t, out, "links and special files are not allowed")
 		})
 	}
 }

@@ -3,10 +3,12 @@ package cmd
 import (
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -483,15 +485,13 @@ func TestDiffInvalidBaseRef(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error for an unknown base ref")
 	}
-	// gitShowError carries git's own message.
-	testutil.AssertContains(t, err.Error(), "git show nosuchref:")
-	testutil.AssertContains(t, err.Error(), "nosuchref")
+	testutil.AssertContains(t, err.Error(), `invalid git ref "nosuchref"`)
 
 	_, err = testutil.ExecuteCommand(NewRootCmd(), "diff", dir, "--base", "nosuchref")
 	if err == nil {
 		t.Fatal("expected an error for an unknown base ref in directory mode")
 	}
-	testutil.AssertContains(t, err.Error(), "walking "+dir)
+	testutil.AssertContains(t, err.Error(), `invalid git ref "nosuchref"`)
 }
 
 func TestDiffDirInvalidBaseRefWithoutEntities(t *testing.T) {
@@ -565,31 +565,32 @@ func TestDiffDirSubdirectorySkipsUnderscoreDirs(t *testing.T) {
 	testutil.AssertNotContains(t, out, "RD005")
 	testutil.AssertNotContains(t, out, "_schema")
 
-	files, err := gitListRelPaths("HEAD", filepath.Join(dir, "rules"), dir)
+	base, err := listBase("HEAD", "rules", dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(files, ",") != "ENT.json" {
-		t.Errorf("gitListRelPaths = %v, want [ENT.json]", files)
+	files, err := baseEntityFiles(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(slices.Sorted(maps.Keys(files)), ","); got != "rules/ENT.json" {
+		t.Errorf("base entity files = %v, want [rules/ENT.json]", got)
 	}
 }
 
-func TestGitListRelPaths(t *testing.T) {
+func TestListBase(t *testing.T) {
 	dir := makeGitRepo(t, "ENT.json", entityV1("ENT"), entityV1("ENT"))
 
 	// A directory absent at the ref: everything is new.
-	if err := os.MkdirAll(filepath.Join(dir, "fresh"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	files, err := gitListRelPaths("HEAD", filepath.Join(dir, "fresh"), dir)
-	if err != nil || files != nil {
-		t.Errorf("absent directory: %v, %v; want nil, nil", files, err)
+	files, err := listBase("HEAD", "fresh", dir)
+	if err != nil || len(files) != 0 {
+		t.Errorf("absent directory: %v, %v; want none", files, err)
 	}
 
-	// git can't run in the repository: treated as absent, not as a bad ref.
-	files, err = gitListRelPaths("HEAD", dir, filepath.Join(dir, "missing"))
-	if err != nil || files != nil {
-		t.Errorf("missing repository: %v, %v; want nil, nil", files, err)
+	// git can't run in the repository: an error, not an empty base, which
+	// would check every file as new.
+	if _, err := listBase("HEAD", ".", filepath.Join(dir, "missing")); err == nil {
+		t.Error("missing repository: no error")
 	}
 }
 
@@ -604,19 +605,13 @@ func TestRealAbsMissingParent(t *testing.T) {
 	}
 }
 
-func TestIsGitNotFound(t *testing.T) {
-	if isGitNotFound(errors.New("plain")) {
-		t.Error("a plain error is not a git not-found")
-	}
-	if isGitNotFound(&gitShowError{ref: "HEAD", path: "x", cause: errors.New("no exit")}) {
-		t.Error("a git-show error without an exit status is not a not-found")
-	}
-	e := &gitShowError{ref: "HEAD", path: "x", cause: errors.New("boom")}
-	if got := e.Error(); got != "git show HEAD:x: boom" {
+func TestGitErrorMessage(t *testing.T) {
+	e := &gitError{args: "ls-tree HEAD", cause: errors.New("boom")}
+	if got := e.Error(); got != "git ls-tree HEAD: boom" {
 		t.Errorf("Error() = %q", got)
 	}
 	if !errors.Is(e, e.cause) {
-		t.Error("gitShowError must unwrap to its cause")
+		t.Error("gitError must unwrap to its cause")
 	}
 }
 
