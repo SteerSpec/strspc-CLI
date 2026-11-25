@@ -59,12 +59,28 @@ func TestDiffRefusesLinksInTree(t *testing.T) {
 			t.Errorf("err = %v, want errDiffLink", err)
 		}
 	})
-	t.Run("other file", func(t *testing.T) {
-		dir := newPublishedRepo(t, "rules/ENT.json", "README.md")
-		linkOrSkip(t, filepath.Join(dir, "README.md"), filepath.Join(dir, "rules", "README.md"))
+	t.Run("other file in the tree", func(t *testing.T) {
+		dir := newPublishedRepo(t, "rules/ENT.json", "rules/docs.txt")
+		linkOrSkip(t, "docs.txt", filepath.Join(dir, "rules", "README.md"))
 		_, err := runDiff(t, filepath.Join(dir, "rules"))
 		assertExit(t, err, exitOK)
 	})
+	// As the resolver's walk: refused without following.
+	for name, c := range map[string]struct{ link, target string }{
+		"other file outside the tree": {"README.md", "../README.md"},
+		"absolute":                    {"README.md", "/etc/hosts"},
+		"to another link":             {"README.md", "hop.txt"},
+		"*.JSON in another case":      {"X.JSON", "docs.txt"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := newPublishedRepo(t, "rules/ENT.json", "rules/docs.txt", "README.md")
+			linkOrSkip(t, "docs.txt", filepath.Join(dir, "rules", "hop.txt"))
+			linkOrSkip(t, c.target, filepath.Join(dir, "rules", c.link))
+			if _, err := runDiff(t, filepath.Join(dir, "rules")); !errors.Is(err, errDiffLink) {
+				t.Errorf("err = %v, want errDiffLink", err)
+			}
+		})
+	}
 	t.Run("file mode", func(t *testing.T) {
 		dir := newPublishedRepo(t, "rules/ENT.json", "elsewhere/ENT.json")
 		if err := os.RemoveAll(filepath.Join(dir, "rules")); err != nil {
@@ -176,6 +192,31 @@ func TestDiffReadsBaseLinksInTheTree(t *testing.T) {
 	t.Run("elsewhere", func(t *testing.T) {
 		dir := newPublishedRepo(t, "rules/ENT.json")
 		commitBlob(t, dir, "120000", "rules/L.json", "../../outside.json")
+		gitRun(t, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "link")
+		out, err := runDiff(t, filepath.Join(dir, "rules"))
+		assertExit(t, err, exitOK)
+		testutil.AssertNotContains(t, out, "RD005")
+	})
+	// A file replacing a link diff can't read can't be compared with what the
+	// link held, so it is refused rather than checked as new.
+	t.Run("replaced elsewhere link", func(t *testing.T) {
+		dir := newPublishedRepo(t, "rules/ENT.json", "vendor/LNK.json")
+		commitBlob(t, dir, "120000", "rules/L.json", "../vendor/LNK.json")
+		gitRun(t, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "link")
+		gitRun(t, dir, "rm", "-q", "--cached", "rules/L.json")
+		writeFile(t, dir, "rules/L.json", string(entityV1("LNK")))
+		if _, err := runDiff(t, filepath.Join(dir, "rules")); !errors.Is(err, errDiffUnreadLink) {
+			t.Errorf("err = %v, want errDiffUnreadLink", err)
+		}
+		// For one file the tree is the repository, so the link is read and
+		// the file is compared with what it held.
+		_, err := runDiff(t, filepath.Join(dir, "rules", "L.json"))
+		assertExit(t, err, exitViolations)
+	})
+	// Deleting a link whose file is still there deletes no rules.
+	t.Run("deleted link to a kept file", func(t *testing.T) {
+		dir := newPublishedRepo(t, "rules/ENT.json")
+		commitBlob(t, dir, "120000", "rules/L.json", "ENT.json")
 		gitRun(t, dir, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "link")
 		out, err := runDiff(t, filepath.Join(dir, "rules"))
 		assertExit(t, err, exitOK)

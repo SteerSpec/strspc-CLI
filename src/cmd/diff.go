@@ -131,9 +131,12 @@ func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, e
 			return nil, fmt.Errorf("listing the base of %s: %w", headPath, err)
 		}
 	}
-	e, inBase, err := regularBaseFile(base, rel, ".", repoDir)
+	e, _, inBase, err := regularBaseFile(base, rel, ".", repoDir)
 	if err != nil {
 		return nil, fmt.Errorf("diff %s: %w", headPath, err)
+	}
+	if !inBase && base[rel].mode == "120000" {
+		return nil, fmt.Errorf("%s replaces a link at the base that %w", rel, errDiffUnreadLink)
 	}
 
 	contributors, err := realmContributorsOf(headPath, repoDir)
@@ -226,11 +229,7 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 			return nil
 		}
 		if d.Type()&fs.ModeSymlink != 0 {
-			fi, statErr := os.Stat(p)
-			if isEntityFileName(d.Name()) || (statErr == nil && fi.IsDir()) {
-				return fmt.Errorf("%s %w", p, errDiffLink)
-			}
-			return nil // not something the resolver reads
+			return checkHeadLink(p, headDir)
 		}
 		if !isEntityFileName(d.Name()) {
 			return nil
@@ -245,12 +244,15 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		}
 		full := joinRepo(relDir, filepath.ToSlash(rel))
 		headFiles[full] = true
+		if baseFiles.unread[full] {
+			return fmt.Errorf("%s replaces a link at the base that %w", p, errDiffUnreadLink)
+		}
 
 		headData, readErr := os.ReadFile(p)
 		if readErr != nil {
 			return fmt.Errorf("reading %s: %w", p, readErr)
 		}
-		e, inBase := baseFiles[full]
+		e, inBase := baseFiles.read[full]
 		var baseData []byte
 		if inBase {
 			if baseData, err = readBlob(e.sha, repoDir); err != nil {
@@ -286,11 +288,12 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 	}
 
 	// Report files deleted from headDir: in the base but absent from the walk.
-	for _, full := range slices.Sorted(maps.Keys(baseFiles)) {
-		if headFiles[full] {
-			continue
+	for _, full := range slices.Sorted(maps.Keys(baseFiles.read)) {
+		bf := baseFiles.read[full]
+		if headFiles[full] || (bf.target != "" && headFiles[bf.target]) {
+			continue // still there, or a link whose file still is
 		}
-		data, err := readBlob(baseFiles[full].sha, repoDir)
+		data, err := readBlob(bf.sha, repoDir)
 		if err != nil {
 			return nil, fmt.Errorf("reading %s at the base: %w", full, err)
 		}
@@ -310,7 +313,7 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		})
 	}
 
-	if len(headFiles) == 0 && len(baseFiles) == 0 {
+	if len(headFiles) == 0 && len(baseFiles.read) == 0 {
 		res.Add(result.Diagnostic{
 			Module:   "rule-diff",
 			Code:     "RD000",

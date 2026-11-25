@@ -573,7 +573,7 @@ func TestDiffDirSubdirectorySkipsUnderscoreDirs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(slices.Sorted(maps.Keys(files)), ","); got != "rules/ENT.json" {
+	if got := strings.Join(slices.Sorted(maps.Keys(files.read)), ","); got != "rules/ENT.json" {
 		t.Errorf("base entity files = %v, want [rules/ENT.json]", got)
 	}
 }
