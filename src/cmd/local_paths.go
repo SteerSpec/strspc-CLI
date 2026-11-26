@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -16,6 +17,11 @@ import (
 func isLocalSource(source string) bool {
 	return strings.TrimSpace(source) != "" && !strings.HasPrefix(source, remote.Scheme) && !strings.Contains(source, "://")
 }
+
+// errBackslashSource refuses a local dependency source holding a backslash:
+// a separator on Windows only, so the directory it names would depend on the
+// system, as strspc-manager refuses it (RR001).
+var errBackslashSource = errors.New(`source holds a backslash: use / to separate directories`)
 
 // checkLocalSources refuses each local source of entries that projectPath
 // refuses, before anything opens it: project content chooses them.
@@ -79,7 +85,10 @@ func checkDependencySources(dir string, rf *entity.RealmFile, seen *dirSet) erro
 			if !isLocalSource(dep.Source) {
 				continue
 			}
-			p, err := projectPath(d.dir, dep.Source)
+			p, err := "", errBackslashSource
+			if !strings.Contains(dep.Source, `\`) {
+				p, err = projectPath(d.dir, dep.Source)
+			}
 			if err == nil {
 				var drf *entity.RealmFile
 				if drf, err = loadRealmIfAny(p); err == nil && drf != nil {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
+	"github.com/SteerSpec/strspc-manager/src/entity"
 )
 
 // relink moves dir/name to dir/name.real and leaves a link to it in its place.
@@ -47,8 +48,6 @@ func TestCheckRefusesLinkedLocalPaths(t *testing.T) {
 		"rule source":              {"rules", "rule source"},
 		"dependency":               {"lib", "dependency dev.lib of dev.app"},
 		"transitive dependency":    {"base", "dependency dev.base of dev.lib"},
-		"sub-realm":                {"rules/child", "sub-realm of dev.app"},
-		"a sub-realm's manifest":   {"rules/child/realm.json", "sub-realm of dev.app"},
 		"a dependency's manifest":  {"lib/realm.json", "dependency dev.lib of dev.app"},
 		"a sub-realm's dependency": {"other", "dependency dev.other of dev.app"},
 	} {
@@ -61,6 +60,26 @@ func TestCheckRefusesLinkedLocalPaths(t *testing.T) {
 			assertExit(t, err, exitConfig)
 			testutil.AssertContains(t, err.Error(), c.want)
 			testutil.AssertContains(t, err.Error(), "is a link")
+		})
+	}
+	// A link inside a rule source's tree is refused before anything reads
+	// through it. The resolver refuses a linked manifest (RSV002) on every
+	// system, and a linked sub-realm directory (RR007) where strspc doesn't
+	// refuse it first: on Windows strspc refuses links itself.
+	for at, want := range map[string]string{"rules/child": "RR007", "rules/child/realm.json": "RSV002"} {
+		t.Run(at, func(t *testing.T) {
+			dir, diff := setupLinkProject(t)
+			relink(t, filepath.Dir(filepath.Join(dir, at)), filepath.Base(at))
+
+			out, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+			assertExit(t, err, exitConfig)
+			if refuseProjectLinks && want == "RR007" {
+				testutil.AssertContains(t, err.Error(), "sub-realm of dev.app")
+				testutil.AssertContains(t, err.Error(), "is a link")
+				return
+			}
+			testutil.AssertContains(t, out, want)
+			testutil.AssertContains(t, out, "link")
 		})
 	}
 }
@@ -148,17 +167,42 @@ func TestCheckDependencySourcesHasNoDepthLimit(t *testing.T) {
 	}
 }
 
-// Elsewhere than on Windows links are followed, as before.
+// Elsewhere than on Windows a linked rule source is followed, as before; a
+// dependency reached through a link is refused by the resolver on every
+// system (RR002).
 func TestCheckFollowsLinkedLocalPathsElsewhere(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("links are refused on Windows")
 	}
 	dir, diff := setupLinkProject(t)
-	for _, at := range []string{"rules", "lib", "base", "other"} {
-		relink(t, dir, at)
-	}
+	relink(t, dir, "rules")
 	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
 	assertExit(t, err, exitOK)
+
+	for _, at := range []string{"lib", "other"} {
+		t.Run(at, func(t *testing.T) {
+			dir, diff := setupLinkProject(t)
+			relink(t, dir, at)
+			out, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+			assertExit(t, err, exitConfig)
+			testutil.AssertContains(t, out, "RR002")
+		})
+	}
+	// A dependency's own dependency is resolved when an inheritance chain
+	// reaches it: here lib's ACCT inherits base's BASE.
+	t.Run("base", func(t *testing.T) {
+		dir, diff := setupLinkProject(t)
+		writeInheritEntity(t, filepath.Join(dir, "base"), "BASE", "", inheritRule{id: "BASE-001", state: "P"})
+		writeInheritEntity(t, filepath.Join(dir, "lib"), "ACCT", "dev.base:BASE",
+			inheritRule{id: "ACCT-001", state: "P"}, inheritRule{id: "ACCT-002", state: "I"})
+		_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+		assertExit(t, err, exitOK) // the chain resolves while base/ is a directory
+
+		relink(t, dir, "base")
+		out, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+		assertExit(t, err, exitConfig)
+		testutil.AssertContains(t, out, "RR002")
+	})
 }
 
 func TestSyncRefusesLinkedSource(t *testing.T) {
@@ -209,12 +253,30 @@ func TestCheckRefusesNetworkPaths(t *testing.T) {
 		assertExit(t, err, exitConfig)
 		testutil.AssertContains(t, err.Error(), "is a network or device path")
 	})
+	// Written with /: a backslash in a dependency source is refused first, on
+	// every system (TestDependencySourceWithBackslash).
 	t.Run("dependency", func(t *testing.T) {
 		dir, diff := setupInheritProject(t, "null", "./rules/")
 		writeRealmManifest(t, filepath.Join(dir, "rules"), "dev.app",
-			`{"realm_id": "dev.lib", "version": "1.0.0", "source": "\\\\127.0.0.1\\share\\lib"}`)
+			`{"realm_id": "dev.lib", "version": "1.0.0", "source": "//127.0.0.1/share/lib"}`)
 		_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
 		assertExit(t, err, exitConfig)
 		testutil.AssertContains(t, err.Error(), "is a network or device path")
 	})
+}
+
+// A local dependency source holding a backslash is refused on every system,
+// as the resolver refuses it (RR001): only Windows reads it as a separator.
+func TestDependencySourceWithBackslash(t *testing.T) {
+	dir, diff := setupInheritProject(t, "null", "./rules/")
+	writeRealmManifest(t, filepath.Join(dir, "rules"), "dev.app",
+		`{"realm_id": "dev.lib", "version": "1.0.0", "source": "..\\lib"}`)
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitConfig)
+	if !errors.Is(err, errBackslashSource) {
+		t.Errorf("check: err = %v, want errBackslashSource", err)
+	}
+	if _, err := fetchRealmDependency(t.Context(), dir, entity.RealmDep{RealmID: "dev.lib", Source: `..\lib`}); !errors.Is(err, errBackslashSource) {
+		t.Errorf("realm validate: err = %v, want errBackslashSource", err)
+	}
 }

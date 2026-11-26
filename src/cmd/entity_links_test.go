@@ -94,16 +94,18 @@ func TestEntityTargetRefusesLinks(t *testing.T) {
 		if err == nil {
 			t.Fatal("want an error, got none")
 		}
-		testutil.AssertContains(t, err.Error(), "symbolic link")
+		// The walk doesn't read a linked entity file, so its sub-entity isn't found.
+		testutil.AssertContains(t, err.Error(), "TSTSUB")
 		if !bytes.Equal(readFiles(t, outside, "TST.json")["TST.json"], before["TST.json"]) {
 			t.Error("the file outside --dir was written through the link")
 		}
 	})
 }
 
-// TestEntityStandardsListFollowsLinks checks that the read-only list command
-// still reads a linked entity file, top-level or holding a sub-entity.
-func TestEntityStandardsListFollowsLinks(t *testing.T) {
+// TestEntityStandardsListRefusesLinks checks that the read-only list command
+// doesn't read a linked entity file either, top-level or holding a sub-entity:
+// a Realm tree holds no links.
+func TestEntityStandardsListRefusesLinks(t *testing.T) {
 	outside := t.TempDir()
 	setupEntityFileWithSub(t, outside, "TST", "TSTSUB")
 	dir := t.TempDir()
@@ -111,10 +113,8 @@ func TestEntityStandardsListFollowsLinks(t *testing.T) {
 		t.Skipf("cannot create a symlink here: %v", err)
 	}
 	for _, euid := range []string{"TST", "TSTSUB"} {
-		out, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "standards", "list", euid, "--json", "--dir", dir)
-		if err != nil {
-			t.Fatalf("list %s: %v", euid, err)
+		if _, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "standards", "list", euid, "--json", "--dir", dir); err == nil {
+			t.Errorf("list %s read a linked entity file", euid)
 		}
-		testutil.AssertContains(t, out, `"entity": "`+euid+`"`)
 	}
 }
