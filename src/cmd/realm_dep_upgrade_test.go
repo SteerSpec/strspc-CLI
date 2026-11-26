@@ -762,3 +762,41 @@ func TestRealmDepUpgradeFailsOnConfigLayoutItCannotRewrite(t *testing.T) {
 		t.Errorf("config.yaml changed: %q", got)
 	}
 }
+
+func TestRealmDepUpgradeLeavesCommentedConfigSources(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg := withRepoConfig(t, dir)
+	in := "# source: github://SteerSpec/strspc-rules@v1.8.0/rules/core\nrules:\n  - source: ./rules/   # was source: github://SteerSpec/strspc-rules@v1.8.0/rules/core\n    scope: global\n"
+	if err := os.WriteFile(cfg, []byte(in), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--json", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r := decodeUpgradeReport(t, out); len(r.Config) != 0 {
+		t.Errorf("config = %v, want none", r.Config)
+	}
+	if got := readFile(t, cfg); got != in {
+		t.Errorf("commented sources were rewritten: %q", got)
+	}
+}
+
+func TestRealmDepUpgradeCheckJSONReportsUnrewritableConfig(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg := withRepoConfig(t, dir)
+	folded := "rules:\n  - source: >-\n      github://SteerSpec/strspc-rules@v1.8.0/rules/core\n"
+	if err := os.WriteFile(cfg, []byte(folded), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--check", "--json", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	r := decodeUpgradeReport(t, out)
+	if len(r.Errors) != 1 || !strings.Contains(r.Errors[0], "update it by hand") {
+		t.Errorf("unexpected report: %+v", r)
+	}
+}

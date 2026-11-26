@@ -306,7 +306,8 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			}
 			if check {
 				if cfg, err := planConfigPin(dir, ups); err != nil {
-					return err
+					report.Errors = append(report.Errors, sanitizeLine(err.Error()))
+					return errors.Join(err, emit())
 				} else if cfg != nil {
 					writeln(text, cmdStyle.Render(sanitizeLine("  would update "+cfg.path)))
 					report.Config = append(report.Config, sanitizeLine(cfg.path))

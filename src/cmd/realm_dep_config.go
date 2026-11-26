@@ -135,9 +135,9 @@ func planConfigPin(dir string, ups []depUpgrade) (*configPin, error) {
 		}
 		// The key may start a block line ("source:", "- source:") or sit in a
 		// flow mapping ("{source: ..., scope: global}"); the value ends at
-		// whitespace, a comma, a closing brace, a comment or the line's end.
-		re := regexp.MustCompile(`(?m)((?:^|[\s{,])source:\s*["']?)` + regexp.QuoteMeta(up.oldSource) + `(["']?(?:[\s,}#]|$))`)
-		updated = re.ReplaceAll(updated, []byte("${1}"+up.source+"${2}"))
+		// whitespace, a comma, a closing brace or the end of the code part.
+		re := regexp.MustCompile(`((?:^|[\s{,])source:\s*["']?)` + regexp.QuoteMeta(up.oldSource) + `(["']?(?:[\s,}]|$))`)
+		updated = rewriteCodeLines(updated, re, []byte("${1}"+up.source+"${2}"))
 	}
 	if err := checkConfigPinsMoved(updated, ups); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
@@ -170,4 +170,29 @@ func checkConfigPinsMoved(data []byte, ups []depUpgrade) error {
 		}
 	}
 	return nil
+}
+
+// rewriteCodeLines applies re to the code part of each line only: text from a
+// comment start (a # at the line's start or after whitespace) on is kept as it
+// is, so a commented-out or annotated source is never rewritten.
+func rewriteCodeLines(data []byte, re *regexp.Regexp, repl []byte) []byte {
+	lines := bytes.SplitAfter(data, []byte("\n"))
+	for i, line := range lines {
+		cut := len(line)
+		for k := range line {
+			if line[k] == '#' && (k == 0 || line[k-1] == ' ' || line[k-1] == '\t') {
+				cut = k
+				break
+			}
+		}
+		code, comment := line[:cut], line[cut:]
+		// A line break belongs after the code, not inside a match's tail.
+		nl := []byte(nil)
+		if bytes.HasSuffix(code, []byte("\n")) {
+			code, nl = code[:len(code)-1], []byte("\n")
+		}
+		out := append(re.ReplaceAll(code, repl), nl...)
+		lines[i] = append(out, comment...)
+	}
+	return bytes.Join(lines, nil)
 }
