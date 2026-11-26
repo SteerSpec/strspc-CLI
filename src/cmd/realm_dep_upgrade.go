@@ -332,10 +332,15 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 				s, serr := syncCoreSchemas(cmd.Context(), dir, up, rf.SubRealms)
 				synced = append(synced, s...)
 				if serr != nil {
-					if rerr := rollback(); rerr != nil {
-						return fmt.Errorf("syncing schemas failed (%w) and restoring files failed: %w", serr, rerr)
+					// Roll back first, then report: an output failure must not
+					// leave the upgraded files behind.
+					rerr := rollback()
+					report.Errors = append(report.Errors, sanitizeLine(serr.Error()))
+					eerr := emit()
+					if rerr != nil {
+						return errors.Join(fmt.Errorf("syncing schemas failed (%w) and restoring files failed: %w", serr, rerr), eerr)
 					}
-					return fmt.Errorf("%w; files left unchanged", serr)
+					return errors.Join(fmt.Errorf("%w; files left unchanged", serr), eerr)
 				}
 			}
 			for _, s := range synced {
@@ -349,16 +354,17 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 					for _, d := range res.Errors() {
 						report.Errors = append(report.Errors, sanitizeLine(d.Message))
 					}
-					if err := emit(); err != nil {
-						return err
-					}
 				} else {
 					outputText(w, res)
 				}
-				if rerr := rollback(); rerr != nil {
-					return fmt.Errorf("upgrade breaks the realm and restoring files failed: %w", rerr)
+				// Roll back before reporting, so a failing output stream cannot
+				// bypass the all-or-nothing guarantee.
+				rerr := rollback()
+				eerr := emit()
+				if rerr != nil {
+					return errors.Join(fmt.Errorf("upgrade breaks the realm and restoring files failed: %w", rerr), eerr)
 				}
-				return fmt.Errorf("upgrade breaks the realm (%d error(s)); files left unchanged", len(res.Errors()))
+				return errors.Join(fmt.Errorf("upgrade breaks the realm (%d error(s)); files left unchanged", len(res.Errors())), eerr)
 			}
 
 			writeln(text, brandStyle.Render(fmt.Sprintf("Upgraded %d dependency(ies); realm validates", len(ups))))

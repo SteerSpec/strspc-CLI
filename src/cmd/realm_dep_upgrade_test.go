@@ -450,3 +450,52 @@ func TestRealmDepUpgradeJSONReportsValidationFailure(t *testing.T) {
 		t.Errorf("realm.json not restored: version %s", got)
 	}
 }
+
+func TestRealmDepUpgradeJSONOutputFailureStillRollsBack(t *testing.T) {
+	failing := func() *result.Result {
+		res := &result.Result{}
+		res.Add(result.Diagnostic{Code: "RM099", Severity: result.Error, Message: "breaks"})
+		return res
+	}
+	dir := setupUpgradeTest(t, "v9.9.9", failing)
+	before, err := os.ReadFile(filepath.Join(dir, "realm.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	root := NewRootCmd()
+	root.SetOut(failingWriter{})
+	root.SetArgs([]string{"realm", "dep", "upgrade", "--json", "--dir", dir})
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected an error")
+	}
+
+	after, _ := os.ReadFile(filepath.Join(dir, "realm.json"))
+	if !bytes.Equal(after, before) {
+		t.Errorf("realm.json not restored after output failure:\n%s", after)
+	}
+}
+
+func TestRealmDepUpgradeJSONReportsSyncFailure(t *testing.T) {
+	dir := setupSchemaSyncTest(t, nil, map[string]string{"entity.v1.schema.json": `{"v":1}`}, nil)
+	before, err := os.ReadFile(filepath.Join(dir, "realm.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetchUpgradeDep = func(context.Context, string, entity.RealmDep) (string, error) {
+		return "", errors.New("fetch failed")
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--json", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected an error when the schema sync fails")
+	}
+	r := decodeUpgradeReport(t, out)
+	if r.Applied || len(r.Errors) != 1 || !strings.Contains(r.Errors[0], "fetch failed") {
+		t.Errorf("unexpected report: %+v", r)
+	}
+	after, _ := os.ReadFile(filepath.Join(dir, "realm.json"))
+	if !bytes.Equal(after, before) {
+		t.Errorf("realm.json not restored:\n%s", after)
+	}
+}
