@@ -86,10 +86,10 @@ func addVerifyFlags(f *pflag.FlagSet, o *verifyOptions) {
 	f.StringVar(&o.project, "project", ".", "project directory holding .strspc/config.yaml")
 	f.StringArrayVar(&o.paths, "path", nil, "only read tracked files matching this glob, relative to the project (repeatable)")
 	f.StringArrayVar(&o.excludes, "exclude", nil, "skip tracked files matching this glob, relative to the project (repeatable), e.g. '**/*_test.go'")
-	f.StringVar(&o.check.provider, "provider", "", "AI provider (overrides evaluator.provider): claude")
+	f.StringVar(&o.check.provider, "provider", "", "AI provider (overrides evaluator.provider): "+strings.Join(aiProviderNames(), "|"))
 	f.StringVar(&o.check.model, "model", "", "model identifier (overrides evaluator.model)")
-	f.StringVar(&o.check.effort, "effort", "", "reasoning effort (overrides evaluator.effort): low|medium|high|xhigh|max")
-	f.StringVar(&o.check.endpoint, "endpoint", "", "provider endpoint URL; opts in to a non-Anthropic host (also $"+envEvaluatorEndpoint+")")
+	f.StringVar(&o.check.effort, "effort", "", effortChoices)
+	f.StringVar(&o.check.endpoint, "endpoint", "", endpointFlagHelp)
 	f.BoolVar(&o.check.verbose, "verbose", false, "print resolution and usage details to stderr")
 	f.BoolVar(&o.check.noCache, "no-cache", false, "do not read or write the evaluation cache (.strspc/cache.db)")
 }
@@ -198,7 +198,7 @@ func (r *verifyRun) run(ids []string, o *verifyOptions) error {
 			return r.verifyFail(code, err)
 		}
 		if r.static {
-			return r.verifyFail(exitConfig, errors.New("rule verify needs an AI provider: evaluator.provider is null (or --static-only); set it to claude or pass --provider claude"))
+			return r.verifyFail(exitConfig, fmt.Errorf("rule verify needs an AI provider: evaluator.provider is null (or --static-only); set it to %s or pass --provider %s", aiProviderChoices(), defaultEvalProvider))
 		}
 	}
 	if err := r.resolveSources(); err != nil {

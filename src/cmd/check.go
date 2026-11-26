@@ -51,6 +51,7 @@ type checkOutput struct {
 	StaticOnly bool   `json:"static_only"`
 	Provider   string `json:"provider,omitempty"`
 	Model      string `json:"model,omitempty"`
+	Effort     string `json:"effort,omitempty"`
 	RuleCount  int    `json:"rule_count"`
 	// StandardSkipped counts the rules of RuleCount that are a Standard
 	// Realm's, which are never evaluated (STDRLM-011, RE005 or RE006).
@@ -70,7 +71,7 @@ type checkOptions struct {
 	format     string
 	provider   string
 	model      string
-	effort     string // overrides evaluator.effort (rule verify only for now)
+	effort     string // overrides evaluator.effort
 	endpoint   string
 	staticOnly bool
 	noCache    bool
@@ -120,9 +121,10 @@ func newCheckCmd() *cobra.Command {
 	f.IntVar(&o.diff.PR, "pr", 0, "GitHub PR number: diff against its base (requires gh CLI)")
 	f.StringVar(&o.diff.DiffFile, "diff-file", "", "read a unified diff from this file instead of git")
 	f.StringVar(&o.format, "format", formatHuman, "output format: human|json|github")
-	f.StringVar(&o.provider, "provider", "", "AI provider (overrides evaluator.provider): claude|null")
+	f.StringVar(&o.provider, "provider", "", "AI provider (overrides evaluator.provider): "+providerChoices())
 	f.StringVar(&o.model, "model", "", "model identifier (overrides evaluator.model)")
-	f.StringVar(&o.endpoint, "endpoint", "", "provider endpoint URL; opts in to a non-Anthropic host (also $"+envEvaluatorEndpoint+")")
+	f.StringVar(&o.effort, "effort", "", effortChoices)
+	f.StringVar(&o.endpoint, "endpoint", "", endpointFlagHelp)
 	f.BoolVar(&o.staticOnly, "static-only", false, "skip AI evaluation; resolve sources and run structural checks only")
 	f.BoolVar(&o.noCache, "no-cache", false, "do not read or write the evaluation cache (.strspc/cache.db)")
 	f.BoolVar(&o.verbose, "verbose", false, "print resolution, cache and usage details to stderr")
@@ -322,8 +324,11 @@ func (r *checkRun) buildProvider() (int, error) {
 	if err := rejectControlChars("evaluator.effort", r.effort); err != nil {
 		return exitConfig, err
 	}
+	if err := checkEffort(r.providerName, r.effort); err != nil {
+		return exitConfig, err
+	}
 
-	endpoint, err := resolveEndpoint(r.cfg.Evaluator.Endpoint, r.opts.endpoint, os.Getenv(envEvaluatorEndpoint))
+	endpoint, err := resolveEndpoint(r.providerName, r.cfg.Evaluator.Endpoint, r.opts.endpoint, os.Getenv(envEvaluatorEndpoint))
 	if err != nil {
 		return exitConfig, err
 	}
@@ -349,9 +354,9 @@ func (r *checkRun) buildProvider() (int, error) {
 	case errors.Is(err, ruleeval.ErrUnavailable):
 		return exitUnavailable, fmt.Errorf("provider %q unavailable: %w (run with --static-only to skip AI evaluation)", r.providerName, err)
 	case errors.Is(err, providers.ErrProviderNotImplemented):
-		return exitConfig, fmt.Errorf("evaluator.provider %q is not implemented yet; use claude, or null for static checks: %w", r.providerName, err)
+		return exitConfig, fmt.Errorf("evaluator.provider %q is not implemented yet; use %s, or null for static checks: %w", r.providerName, aiProviderChoices(), err)
 	case errors.Is(err, providers.ErrUnknownProvider):
-		return exitConfig, fmt.Errorf("evaluator.provider %q is not a known provider (claude|null): %w", r.providerName, err)
+		return exitConfig, fmt.Errorf("evaluator.provider %q is not a known provider (%s): %w", r.providerName, providerChoices(), err)
 	default:
 		return exitConfig, fmt.Errorf("configuring evaluator %q: %w", r.providerName, err)
 	}
@@ -850,6 +855,7 @@ func (r *checkRun) output(code int, diags []result.Diagnostic) checkOutput {
 	if !r.static {
 		out.Provider = r.providerName
 		out.Model = r.model
+		out.Effort = r.effort
 		if r.diffSource.Kind != "" {
 			out.Diff = r.diffSource.String()
 		}
@@ -1082,17 +1088,16 @@ func validateStateCodes(field string, codes []string) error {
 // provider endpoint. Precedence: env > --endpoint > evaluator.endpoint.
 const envEvaluatorEndpoint = "STRSPC_EVALUATOR_ENDPOINT"
 
-// anthropicHostSuffix bounds the endpoints a repository config may set on
-// its own.
-const anthropicHostSuffix = "anthropic.com"
-
-// resolveEndpoint picks the provider endpoint. The repository config is
+// resolveEndpoint picks the endpoint of provider. The repository config is
 // untrusted input (a PR can edit .strspc/config.yaml), and the API key is
 // sent to whatever host the endpoint names, so a config endpoint is
-// accepted only on an Anthropic host; anything else needs an explicit
-// opt-in from outside the repo: the environment variable or the flag. An
-// opted-in endpoint must still be https, or http to a loopback host (SEC-001).
-func resolveEndpoint(fromConfig, fromFlag, fromEnv string) (string, error) {
+// accepted only where the provider's row allows it (evalProvider.
+// configEndpoint: an Anthropic host for claude, loopback for ollama);
+// anything else, and any endpoint for a provider without a row, needs an
+// explicit opt-in from outside the repo: the environment variable or the
+// flag. An opted-in endpoint must still be https, or http to a loopback host
+// (SEC-001).
+func resolveEndpoint(provider, fromConfig, fromFlag, fromEnv string) (string, error) {
 	if e := strings.TrimSpace(fromEnv); e != "" {
 		if err := validateHTTPS(e); err != nil {
 			return "", fmt.Errorf("%s: %w", envEvaluatorEndpoint, err)
@@ -1109,17 +1114,25 @@ func resolveEndpoint(fromConfig, fromFlag, fromEnv string) (string, error) {
 	if cfg == "" || strings.EqualFold(cfg, "null") {
 		return "", nil
 	}
+	optIn := fmt.Sprintf("opt in explicitly from outside the repository with %s=<url> or --endpoint <url>", envEvaluatorEndpoint)
+	p := lookupEvalProvider(provider)
+	if p == nil {
+		// Without a row there is no policy, so no config endpoint: the
+		// provider is unknown, as strspc-manager would report it.
+		return "", fmt.Errorf("evaluator.provider %q is not a known provider (%s)", strings.TrimSpace(provider), providerChoices())
+	}
 	u, err := url.Parse(cfg)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" {
+	if err != nil || u.Hostname() == "" || (p.keyEnv != "" && !isHTTPS(u)) {
 		return "", fmt.Errorf("evaluator.endpoint %q is not an https URL", cfg)
 	}
-	host := strings.ToLower(u.Hostname())
-	if host == anthropicHostSuffix || strings.HasSuffix(host, "."+anthropicHostSuffix) {
+	if p.configEndpoint(u) {
 		return cfg, nil
 	}
-	return "", fmt.Errorf("evaluator.endpoint %q points outside %s: the API key would be sent to that host; "+
-		"opt in explicitly from outside the repository with %s=<url> or --endpoint <url>",
-		cfg, anthropicHostSuffix, envEvaluatorEndpoint)
+	sent := "the API key would be sent to that host"
+	if p.keyEnv == "" {
+		sent = "the code under evaluation would be sent to that host"
+	}
+	return "", fmt.Errorf("evaluator.endpoint %q points outside %s: %s; %s", cfg, p.endpointHosts, sent, optIn)
 }
 
 func orDefault(s, def string) string {

@@ -19,18 +19,19 @@ const defaultCoreSource = "github://SteerSpec/strspc-rules@v1.25.0/rules/core"
 const readmeURL = "https://github.com/SteerSpec/strspc-CLI#readme"
 
 // initProviders lists the evaluator providers `strspc init --provider` accepts.
-var initProviders = []string{"claude", "null"}
+var initProviders = availableProviderNames()
 
 // defaultConfigTemplate is the config.yaml written by `strspc init`. It satisfies
-// core rule SPCFG-004 (at least one rule source) out of the box. The two %s slots
-// are the core source and the evaluator provider.
+// core rule SPCFG-004 (at least one rule source) out of the box. The slots
+// are the core source, the evaluator provider, what the provider needs (its
+// API key) and its default model: see renderConfig.
 const defaultConfigTemplate = `# SteerSpec configuration
 # Reference: ` + readmeURL + `
 
 # Rule sources — where to fetch rules from
 rules:
   # Core rules from the SteerSpec specification
-  - source: %s
+  - source: %[1]s
     scope: global
 
   # Local rules (uncomment after strspc realm init)
@@ -39,8 +40,8 @@ rules:
 
 # AI evaluator settings
 evaluator:
-  provider: %s          # requires ANTHROPIC_API_KEY; use "null" to skip AI evaluation
-  # model: claude-haiku-5-5    # model override (the default)
+  provider: %[2]s          # %[3]s; use "null" to skip AI evaluation
+  # model: %[4]s    # model override (the default)
   # effort: medium             # low | medium | high
 
 # Local cache settings
@@ -58,7 +59,22 @@ fail_on:
 
 // renderDefaultConfig returns the config.yaml content for the given provider.
 func renderDefaultConfig(provider string) string {
-	return fmt.Sprintf(defaultConfigTemplate, defaultCoreSource, provider)
+	return renderConfig(defaultCoreSource, provider)
+}
+
+// renderConfig fills defaultConfigTemplate with source and provider. The
+// comments name what the provider needs and its default model; for null,
+// those of the default provider, which uncommenting the provider brings back.
+func renderConfig(source, provider string) string {
+	p := lookupEvalProvider(provider)
+	if p == nil {
+		p = lookupEvalProvider(defaultEvalProvider)
+	}
+	needs := "needs no API key"
+	if p.keyEnv != "" {
+		needs = "requires " + p.keyEnv
+	}
+	return fmt.Sprintf(defaultConfigTemplate, source, provider, needs, p.defaultModel)
 }
 
 // strspcGitignore keeps cache artifacts out of version control.
@@ -76,7 +92,7 @@ func newInitCmd() *cobra.Command {
 		Long: `Bootstrap a .strspc/ directory with a default config.yaml for rule evaluation.
 
 The generated config declares the SteerSpec core rules as a global source,
-enables the Claude evaluator and fails on violated Implemented rules.
+enables the ` + defaultEvalProvider + ` evaluator and fails on violated Implemented rules.
 
 Examples:
   strspc init
@@ -137,7 +153,7 @@ Examples:
 	}
 
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing configuration")
-	cmd.Flags().StringVar(&provider, "provider", "claude", "evaluator provider to write: claude|null (null = static checks only)")
+	cmd.Flags().StringVar(&provider, "provider", defaultEvalProvider, "evaluator provider to write: "+providerChoices()+" (null = static checks only)")
 
 	return cmd
 }
