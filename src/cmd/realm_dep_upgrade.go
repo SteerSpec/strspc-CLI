@@ -275,7 +275,9 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			for _, d := range deps {
 				up, note, err := planDepUpgrade(cmd.Context(), d, to)
 				if err != nil {
-					return err
+					// Nothing is written yet; report what was planned so far.
+					report.Errors = append(report.Errors, sanitizeLine(err.Error()))
+					return errors.Join(err, emit())
 				}
 				// As in realm dep list, realm.json isn't validated yet.
 				id := printableRealmID(d.RealmID)

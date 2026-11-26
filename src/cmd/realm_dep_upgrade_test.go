@@ -499,3 +499,22 @@ func TestRealmDepUpgradeJSONReportsSyncFailure(t *testing.T) {
 		t.Errorf("realm.json not restored:\n%s", after)
 	}
 }
+
+func TestRealmDepUpgradeJSONReportsPlanningFailure(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) {
+		return "", errors.New("lookup failed")
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--json", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected an error when planning fails")
+	}
+	r := decodeUpgradeReport(t, out)
+	if r.Applied || len(r.Errors) != 1 || !strings.Contains(r.Errors[0], "lookup failed") {
+		t.Errorf("unexpected report: %+v", r)
+	}
+	if got := readRealmDeps(t, dir)[0].Version; got != "1.8.0" {
+		t.Errorf("realm.json was modified: version %s", got)
+	}
+}
