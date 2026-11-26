@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/fs"
 	"maps"
 	"os"
 	"os/exec"
@@ -114,6 +113,10 @@ func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, e
 	if err != nil {
 		return nil, fmt.Errorf("diff %s: %w", headPath, err)
 	}
+	if name := filepath.Base(headPath); isJSONName(name) && !strings.HasSuffix(name, ".json") {
+		// The resolver's walk refuses it rather than skip it.
+		return nil, fmt.Errorf("%s: a JSON file name must end in .json", headPath)
+	}
 	headData, err := os.ReadFile(headPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", headPath, err)
@@ -209,18 +212,29 @@ func diffDir(headDir, baseRef, repoDir string, strict bool) (*result.Result, err
 		}
 		if d.Name() == ".git" {
 			if relDir == "." && filepath.Dir(p) == headDir {
-				return filepath.SkipDir // the repository's own
+				// The repository's own: a directory, or a file in a linked
+				// worktree, where SkipDir would skip the rest of the root.
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
 			}
 			return fmt.Errorf("%s %w", filepath.Dir(p), errDiffSubmodule)
+		}
+		if isLinkOrJunction(p, d.Type()) {
+			if err := checkHeadLink(p); err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return filepath.SkipDir // never followed
+			}
+			return nil
 		}
 		if d.IsDir() {
 			if d.Name() == "_schema" {
 				return filepath.SkipDir
 			}
 			return nil
-		}
-		if d.Type()&fs.ModeSymlink != 0 {
-			return checkHeadLink(p)
 		}
 		if !d.Type().IsRegular() && isJSONName(d.Name()) {
 			return fmt.Errorf("%s is not a regular file", p)

@@ -59,10 +59,11 @@ func gitOutput(repoDir string, args ...string) ([]byte, error) {
 
 // listBase returns the files of ref's tree under rel, a slash path relative
 // to the repository root, keyed by their path from that root, byte for byte:
-// -z keeps git from quoting a name. A path absent at ref gives no entry, and
-// an unknown ref is an error.
+// -z keeps git from quoting a name, and rel is a path, not a pattern. A path
+// absent at ref gives no entry, and an unknown ref is an error, as is a link
+// or a submodule on the way to rel or at rel (baseOnTheWay).
 func listBase(ref, rel, repoDir string) (map[string]baseEntry, error) {
-	out, err := gitOutput(repoDir, "ls-tree", "-r", "-z", ref, "--", rel)
+	out, err := gitOutput(repoDir, "--literal-pathspecs", "ls-tree", "-r", "-z", ref, "--", rel)
 	if err != nil {
 		var exitErr *exec.ExitError
 		if isExitError(err, &exitErr) && bytes.Contains(exitErr.Stderr, []byte("Not a valid object name")) {
@@ -70,6 +71,54 @@ func listBase(ref, rel, repoDir string) (map[string]baseEntry, error) {
 		}
 		return nil, fmt.Errorf("listing %s at %s: %w", rel, ref, err)
 	}
+	entries, err := parseLsTree(ref, out)
+	if err != nil {
+		return nil, err
+	}
+	if err := baseOnTheWay(ref, rel, repoDir); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+// baseOnTheWay refuses a link or a submodule at ref on the way to rel, the
+// path diff compares, or at rel: what the base held behind it can't be
+// listed at rel, so nothing would be compared with it. A path absent at ref,
+// or under a regular file there, is new.
+func baseOnTheWay(ref, rel, repoDir string) error {
+	if rel == "." {
+		return nil
+	}
+	parts := strings.Split(rel, "/")
+	for i := range parts {
+		p := strings.Join(parts[:i+1], "/")
+		out, err := gitOutput(repoDir, "--literal-pathspecs", "ls-tree", "-z", ref, "--", p)
+		if err != nil {
+			return fmt.Errorf("listing %s at %s: %w", p, ref, err)
+		}
+		entries, err := parseLsTree(ref, out)
+		if err != nil {
+			return err
+		}
+		e, ok := entries[p]
+		switch {
+		case !ok:
+			return nil
+		case e.kind == "commit":
+			return fmt.Errorf("%s at the base %w", p, errDiffSubmodule)
+		case e.kind == "tree":
+			continue
+		case e.mode == "120000":
+			return fmt.Errorf("%s at the base %w", p, errDiffLink)
+		default:
+			return nil
+		}
+	}
+	return nil
+}
+
+// parseLsTree parses the -z output of git ls-tree, keyed by path.
+func parseLsTree(ref string, out []byte) (map[string]baseEntry, error) {
 	entries := map[string]baseEntry{}
 	for _, rec := range bytes.Split(out, []byte{0}) {
 		if len(rec) == 0 {
@@ -212,7 +261,7 @@ func refuseLinksInRepository(abs, repoDir string) error {
 		if err != nil {
 			return fmt.Errorf("accessing %s: %w", next, err)
 		}
-		if fi.Mode()&fs.ModeSymlink != 0 && inRepo {
+		if inRepo && isLinkOrJunction(next, fi.Mode()) {
 			return fmt.Errorf("%s %w", next, errDiffLink)
 		}
 		cur = next
