@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.44.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.43.0...v1.44.0) (2026-11-26)
+
+
+### Features
+
+* **ci:** attest release archives and verify provenance in setup-strspc ([#352](https://github.com/SteerSpec/strspc-CLI/issues/352)) ([e439592](https://github.com/SteerSpec/strspc-CLI/commit/e4395924531c57ff20bb1962858b76c26fc5508e))
+* **realm:** add --json output to realm dep upgrade ([#354](https://github.com/SteerSpec/strspc-CLI/issues/354)) ([a62b5a3](https://github.com/SteerSpec/strspc-CLI/commit/a62b5a382e03280848536f93ca94154f855a11a6))
+
+
+### Bug Fixes
+
+* **verify:** confirm evidence excerpts the model returned HTML-escaped ([#351](https://github.com/SteerSpec/strspc-CLI/issues/351)) ([1111dda](https://github.com/SteerSpec/strspc-CLI/commit/1111dda57c25ab759fa54d41d063d78f4a88ee21))
+* **verify:** keep verdicts when the API refuses a rule's schema as too large ([#355](https://github.com/SteerSpec/strspc-CLI/issues/355)) ([f96c934](https://github.com/SteerSpec/strspc-CLI/commit/f96c934a6f95c514165a727e3c4f8114064172e5))
+
 ## [1.43.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.42.0...v1.43.0) (2026-11-26)
 
 
