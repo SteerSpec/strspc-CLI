@@ -24,6 +24,7 @@ func newNoteUpdateCmd() *cobra.Command {
 		noteType string
 		body     string
 		dir      string
+		baseRef  string
 		jsonOut  bool
 	)
 
@@ -38,11 +39,17 @@ the diff. Notes are never removed (NTE-009).
 Notes of type changelog, supersedes, extends or related cannot change once added,
 and no note can be retyped into one of them: add a new note instead (NTE-010).
 
+With --base <ref>, the revision is set against the entity file at that git ref,
+the base strspc diff compares with: 0 for a note the base doesn't hold, so that
+a note added in a branch can be revised before it merges (RD015), and one more
+than the base revision for a note the base holds (RD013).
+
 Types: ` + strings.Join(entity.NoteTypes(), ", ") + `
 
 Examples:
   strspc note update TST-001/01 --body "Superseded by TST-008 split rules."
-  strspc note update TST-001/02 --type clarification --json`,
+  strspc note update TST-001/02 --type clarification --json
+  strspc note update TST-001/03 --body "Reworded." --base origin/develop`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -68,6 +75,12 @@ Examples:
 			if err != nil {
 				return err
 			}
+			var baseFile *entity.File
+			if baseRef != "" {
+				if baseFile, err = baseEntityFile(baseRef, target.path); err != nil {
+					return err
+				}
+			}
 			var (
 				oldVersion, version string
 				revision            int
@@ -87,6 +100,11 @@ Examples:
 				oldVersion = f.RuleSet.Version
 				if updErr := entityops.UpdateNote(f, noteID, body, noteType); updErr != nil {
 					return updErr
+				}
+				if baseRef != "" {
+					if err := setNoteRevisionFromBase(f, baseFile, noteID); err != nil {
+						return err
+					}
 				}
 				version = f.RuleSet.Version
 				for _, n := range f.Notes {
@@ -122,6 +140,7 @@ Examples:
 	cmd.Flags().StringVar(&body, "body", "", "new note content")
 	cmd.Flags().StringVar(&noteType, "type", "", "new note type: "+strings.Join(entity.NoteTypes(), "|"))
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
+	cmd.Flags().StringVar(&baseRef, "base", "", "git ref to set the revision against: 0 for a note the ref doesn't hold")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 
 	return cmd
