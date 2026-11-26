@@ -17,6 +17,15 @@ inputs:
       limits on busy runners.
     required: false
     default: ${{ github.token }}
+  cache:
+    description: >
+      Keep the downloaded archive in the Actions cache, keyed by version and
+      platform, and download it only on a miss. The checksum and the build
+      provenance are verified on every run, cache hit or not. On by default
+      for SteerSpec repositories, so their CI doesn't dominate the release
+      download counts (scripts/usage-report.sh), and off for others.
+    required: false
+    default: ${{ github.repository_owner == 'SteerSpec' }}
 
 outputs:
   version:
@@ -26,8 +35,8 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Install strspc
-      id: install
+    - name: Resolve strspc version
+      id: resolve
       shell: bash
       # Inputs enter through env, never inline in the script: an input is
       # untrusted text once a caller can set it from an expression.
@@ -41,21 +50,6 @@ runs:
         api() {
           curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}/$1"
-        }
-
-        # Downloads retry: release-please publishes the GitHub release first and
-        # GoReleaser uploads the archives a minute later, so a lookup in that
-        # window sees a release whose assets 404. Eight tries cover ~2 minutes.
-        fetch() {
-          local attempt
-          for attempt in 1 2 3 4 5 6 7 8; do
-            if curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$1" -o "$2"; then
-              return 0
-            fi
-            echo "download failed (attempt ${attempt}/8): $1 — retrying in 15s" >&2
-            sleep 15
-          done
-          return 1
         }
 
         if [ "$REQUESTED" = "latest" ]; then
@@ -95,22 +89,87 @@ runs:
 
         # Asset names come from .goreleaser.yml (project name strspc-CLI).
         ARCHIVE="strspc-CLI_${VERSION}_${OS}_${ARCH}.${EXT}"
+        {
+          echo "version=${VERSION}"
+          echo "archive=${ARCHIVE}"
+          echo "ext=${EXT}"
+          echo "exe=${EXE}"
+        } >> "$GITHUB_OUTPUT"
+
+    # Only the archive is cached. The checksums file is fetched on every run
+    # and the attestation checked, so a cached archive is verified exactly
+    # as a downloaded one.
+    - name: Cache strspc archive
+      # An input default from an expression may be a boolean; compare as text.
+      if: format('{0}', inputs.cache) == 'true'
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/strspc-archive
+        key: strspc-${{ steps.resolve.outputs.archive }}
+
+    - name: Install strspc
+      id: install
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        REPO: SteerSpec/strspc-CLI
+        VERSION: ${{ steps.resolve.outputs.version }}
+        ARCHIVE: ${{ steps.resolve.outputs.archive }}
+        EXT: ${{ steps.resolve.outputs.ext }}
+        EXE: ${{ steps.resolve.outputs.exe }}
+        CACHE_DIR: ${{ runner.temp }}/strspc-archive
+        USE_CACHE: ${{ inputs.cache }}
+      run: |
+        set -euo pipefail
+
+        # Downloads retry: release-please publishes the GitHub release first and
+        # GoReleaser uploads the archives a minute later, so a lookup in that
+        # window sees a release whose assets 404. Eight tries cover ~2 minutes.
+        fetch() {
+          local attempt
+          for attempt in 1 2 3 4 5 6 7 8; do
+            if curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$1" -o "$2"; then
+              return 0
+            fi
+            echo "download failed (attempt ${attempt}/8): $1 — retrying in 15s" >&2
+            sleep 15
+          done
+          return 1
+        }
+
         BASE_URL="https://github.com/${REPO}/releases/download/v${VERSION}"
-
         TMP="$(mktemp -d)"
-        fetch "${BASE_URL}/${ARCHIVE}" "${TMP}/${ARCHIVE}"
         fetch "${BASE_URL}/strspc-CLI_${VERSION}_checksums.txt" "${TMP}/checksums.txt"
-
         EXPECTED="$(grep "  ${ARCHIVE}$" "${TMP}/checksums.txt" | cut -d' ' -f1 || true)"
         if [ -z "$EXPECTED" ]; then
           echo "::error::checksum entry not found for ${ARCHIVE}" >&2
           exit 1
         fi
         # macOS runners ship shasum, not GNU coreutils.
-        if command -v sha256sum >/dev/null 2>&1; then
-          echo "${EXPECTED}  ${TMP}/${ARCHIVE}" | sha256sum -c -
-        else
-          echo "${EXPECTED}  ${TMP}/${ARCHIVE}" | shasum -a 256 -c -
+        checksum_ok() {
+          if command -v sha256sum >/dev/null 2>&1; then
+            echo "${EXPECTED}  ${TMP}/${ARCHIVE}" | sha256sum -c -
+          else
+            echo "${EXPECTED}  ${TMP}/${ARCHIVE}" | shasum -a 256 -c -
+          fi
+        }
+
+        # A cached archive is used only when it matches the checksum of the
+        # release; one that doesn't is dropped and downloaded again.
+        CACHED=0
+        if [ "$USE_CACHE" = true ] && [ -s "${CACHE_DIR}/${ARCHIVE}" ]; then
+          cp "${CACHE_DIR}/${ARCHIVE}" "${TMP}/${ARCHIVE}"
+          if checksum_ok; then
+            echo "using the cached ${ARCHIVE}"
+            CACHED=1
+          else
+            echo "::warning::the cached ${ARCHIVE} doesn't match the release checksum; downloading it again"
+            rm -f "${CACHE_DIR}/${ARCHIVE}" "${TMP}/${ARCHIVE}"
+          fi
+        fi
+        if [ "$CACHED" = 0 ]; then
+          fetch "${BASE_URL}/${ARCHIVE}" "${TMP}/${ARCHIVE}"
+          checksum_ok
         fi
 
         # The checksum comes from the same release as the archive, so it proves
@@ -158,6 +217,12 @@ runs:
             exit 1
           fi
           echo "::warning::strspc ${VERSION} predates build provenance attestations; only the checksum was verified."
+        fi
+
+        # Only a verified archive is kept for the cache to save.
+        if [ "$USE_CACHE" = true ]; then
+          mkdir -p "$CACHE_DIR"
+          cp "${TMP}/${ARCHIVE}" "${CACHE_DIR}/${ARCHIVE}"
         fi
 
         BIN="${RUNNER_TEMP}/strspc-bin"
