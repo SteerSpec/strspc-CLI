@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,7 +23,7 @@ func pinCore(t *testing.T, dir, version string) {
 
 func pinCoreFrom(t *testing.T, dir, version, source string) {
 	t.Helper()
-	err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+	err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 		rf.Dependencies = nil
 		if version != "" {
 			rf.Dependencies = []entity.RealmDep{{RealmID: coreRealmID, Version: version, Source: source}}

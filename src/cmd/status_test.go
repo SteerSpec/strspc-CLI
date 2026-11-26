@@ -282,7 +282,7 @@ func TestStatusRealm(t *testing.T) {
 	dir := statusProject(t, "", "./rules/")
 	rules := filepath.Join(dir, "rules")
 	writeRefsFile(t, dir, "rules/realm.json",
-		`{"realm": {"id": "dev.app", "title": "t", "version": "1.2.3"}, "sub_realms": ["sub"]}`)
+		`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "t", "version": "1.2.3"}, "sub_realms": ["sub"]}`)
 	writeInheritEntity(t, rules, "APP", "", inheritRule{id: "APP-001", state: "I"})
 	writeInheritEntity(t, rules, "ADMIN", "", inheritRule{id: "ADMIN-001", state: "I"})
 	writeRealmManifest(t, filepath.Join(rules, "sub"), "dev.app.sub")
@@ -374,7 +374,7 @@ func TestStatusOutputIsPrintable(t *testing.T) {
 	for name, source := range sources {
 		t.Run(name, func(t *testing.T) {
 			dir := statusProject(t, "", source)
-			writeRefsFile(t, dir, "ok/realm.json", `{"realm": {"id": "::error::a\u001b[31m", "title": "t", "version": "1.0.0"}}`)
+			writeRefsFile(t, dir, "ok/realm.json", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "::error::a\u001b[31m", "title": "t", "version": "1.0.0"}}`)
 			report, err := collectStatus(dir)
 			if err != nil {
 				t.Fatal(err)

@@ -78,7 +78,7 @@ Examples:
 			}
 
 			var oldVersion, version string
-			err = modifyEntity(target, func(p *entity.File) error {
+			err = modifyEntity(cmd.Context(), target, func(p *entity.File) error {
 				oldVersion = p.RuleSet.Version
 				p.SubEntities = append(p.SubEntities, *child)
 				v, bumpErr := entityops.BumpPatch(p.RuleSet.Version)

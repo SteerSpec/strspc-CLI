@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -44,16 +46,19 @@ const (
 // checkOutput is the JSON representation of a check run; it also feeds the
 // GitHub step summary.
 type checkOutput struct {
-	OK          bool                  `json:"ok"`
-	ExitCode    int                   `json:"exit_code"`
-	StaticOnly  bool                  `json:"static_only"`
-	Provider    string                `json:"provider,omitempty"`
-	Model       string                `json:"model,omitempty"`
-	RuleCount   int                   `json:"rule_count"`
-	SourceCount int                   `json:"source_count"`
-	Diff        string                `json:"diff,omitempty"`
-	Usage       *ruleeval.Usage       `json:"usage,omitempty"`
-	Diagnostics []explainedDiagnostic `json:"diagnostics"`
+	OK         bool   `json:"ok"`
+	ExitCode   int    `json:"exit_code"`
+	StaticOnly bool   `json:"static_only"`
+	Provider   string `json:"provider,omitempty"`
+	Model      string `json:"model,omitempty"`
+	RuleCount  int    `json:"rule_count"`
+	// StandardSkipped counts the rules of RuleCount that are a Standard
+	// Realm's, which are never evaluated (STDRLM-011, RE005 or RE006).
+	StandardSkipped int                   `json:"standard_skipped"`
+	SourceCount     int                   `json:"source_count"`
+	Diff            string                `json:"diff,omitempty"`
+	Usage           *ruleeval.Usage       `json:"usage,omitempty"`
+	Diagnostics     []explainedDiagnostic `json:"diagnostics"`
 	// Error carries the fatal cause (configuration, resolution, provider) so
 	// JSON consumers do not have to parse stderr.
 	Error string `json:"error,omitempty"`
@@ -194,6 +199,9 @@ func runCheck(ctx context.Context, out, errOut io.Writer, cwd string, o *checkOp
 	if err := r.resolveRules(); err != nil {
 		return r.fail(exitConfig, err)
 	}
+	if err := r.validateRuleSchemas(); err != nil {
+		return r.fail(exitConfig, err)
+	}
 	if !r.static {
 		if err := r.collectDiff(); err != nil {
 			return r.fail(exitConfig, err)
@@ -246,6 +254,9 @@ func (r *checkRun) loadConfig() error {
 
 	r.entries, err = buildSourceEntries(cfg)
 	if err != nil {
+		return err
+	}
+	if err := checkLocalSources(r.cwd, r.entries); err != nil {
 		return err
 	}
 	if len(r.entries) == 0 {
@@ -378,6 +389,9 @@ func (r *checkRun) resolveSources() error {
 	resolved, res := resolver.Resolve(r.ctx)
 	diags := append([]result.Diagnostic(nil), res.Diagnostics...)
 	if res.OK() {
+		if err := r.checkDependencySources(); err != nil {
+			return err
+		}
 		// Only once every source is in place: a failed download must not be
 		// retried here (and time out twice).
 		diags = append(diags, r.resolveRealmDeps(cacheDir)...)
@@ -398,6 +412,95 @@ func (r *checkRun) resolveSources() error {
 	r.resolved = resolved
 	r.verbosef("sources: %d resolved, %d entity file(s)", len(r.entries), len(resolved))
 	return nil
+}
+
+// validateRuleSchemas checks what the evaluation reads against its schemas
+// before any of it is used (SEC-004). check and rule verify call it after
+// resolving; the reporting commands that share resolveSources don't. It
+// validates every resolved entity file and the manifest governing it, the
+// manifests of each source realm and its sub-realms, and the tree of each
+// realm they depend on, directly or through an inherited or extended rule.
+// What the resolvers returned must then equal what was validated, and
+// resolving again must give the same.
+func (r *checkRun) validateRuleSchemas() error {
+	v := newSchemaValidator(r.ctx)
+	for _, rf := range r.resolved {
+		data, err := os.ReadFile(rf.Path)
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", rf.Path, err)
+		}
+		if err := v.validateEntityFile(rf.Path, data); err != nil {
+			return fmt.Errorf("validating a rule file: %w", err)
+		}
+	}
+	deps := map[string][]depRealm{} // by source
+	for _, s := range slices.Sorted(maps.Keys(r.realmTrees)) {
+		t := r.realmTrees[s]
+		if err := v.validateManifestIn(t.dir); err != nil {
+			return fmt.Errorf("validating a source realm: %w", err)
+		}
+		if err := v.checkManifest(t.dir, t.manifest, nil); err != nil {
+			return fmt.Errorf("checking a source realm: %w", err)
+		}
+		var subs []*realmresolve.ResolvedRealm
+		if t.resolved != nil {
+			subs = t.resolved.SubRealms
+		}
+		if err := v.indexRealm(s, t.dir, t.manifest, subs...); err != nil {
+			return fmt.Errorf("indexing a source realm: %w", err)
+		}
+		if t.resolved == nil {
+			continue
+		}
+		for _, sub := range t.resolved.SubRealms {
+			if err := v.validateManifestIn(sub.Dir); err != nil {
+				return fmt.Errorf("validating a sub-realm: %w", err)
+			}
+			if err := v.checkManifest(sub.Dir, sub.Realm, t.manifest); err != nil {
+				return fmt.Errorf("checking a sub-realm: %w", err)
+			}
+		}
+		deps[s] = sourceDependencies(s, t)
+	}
+	for _, s := range slices.Sorted(maps.Keys(deps)) {
+		if err := r.validateDependencies(v, s, deps[s]); err != nil {
+			return fmt.Errorf("validating the dependencies of %s: %w", s, err)
+		}
+	}
+	// Last: the validations above all add to the manifests that chose a schema.
+	if err := v.validateGoverning(); err != nil {
+		return fmt.Errorf("validating the manifests that chose schemas: %w", err)
+	}
+	if err := r.checkConsumed(v); err != nil {
+		return fmt.Errorf("checking what will be evaluated: %w", err)
+	}
+	if err := r.checkExtendsCopies(v); err != nil {
+		return fmt.Errorf("checking the copies of extended rules: %w", err)
+	}
+	// After those two, whose errors say which entity or rule it is.
+	if err := r.checkResolutionCurrent(); err != nil {
+		return fmt.Errorf("checking that the resolution is current: %w", err)
+	}
+	r.verbosef("schemas: %d file(s) validated", len(v.done))
+	return nil
+}
+
+// realmResolver returns a resolver that fetches through the run's cache, for
+// a realm fetched from origin, or a local one when origin is nil. The extra
+// options come last, so they win.
+func (r *checkRun) realmResolver(cacheDir string, origin *remote.Ref, extra ...realmresolve.Option) *realmresolve.RealmResolver {
+	opts := []realmresolve.Option{
+		realmresolve.WithCacheDir(cacheDir),
+		realmresolve.WithRemoteFetcher(r.fetcher),
+		realmresolve.WithCacheTTL(r.ttl),
+	}
+	if origin != nil {
+		// The cache holds only the fetched subtree; the origin lets
+		// realmresolve rebase relative dependencies (`../core/`, also those of
+		// sub-realms) onto the repository at the same ref.
+		opts = append(opts, realmresolve.WithOrigin(*origin))
+	}
+	return realmresolve.New(append(opts, extra...)...)
 }
 
 // resolveRealmDeps validates realm.json dependencies of every source that
@@ -436,20 +539,13 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 			continue
 		}
 		r.sourceRealms[e.Source] = rf.Realm.ID
-		rrOpts := []realmresolve.Option{
-			realmresolve.WithCacheDir(cacheDir),
-			realmresolve.WithRemoteFetcher(r.fetcher),
-			realmresolve.WithCacheTTL(r.ttl),
-		}
+		var origin *remote.Ref
 		if strings.HasPrefix(e.Source, remote.Scheme) {
-			// The cache holds only this source's subtree; the origin lets
-			// realmresolve rebase relative dependencies (`../core/`, also
-			// those of sub-realms) onto the repository at the same ref.
 			if ref, err := remote.ParseGitHub(e.Source); err == nil {
-				rrOpts = append(rrOpts, realmresolve.WithOrigin(ref))
+				origin = &ref
 			}
 		}
-		rr := realmresolve.New(rrOpts...)
+		rr := r.realmResolver(cacheDir, origin)
 		out, res := rr.Resolve(r.ctx, rf, dir)
 		diags = append(diags, res.Diagnostics...)
 		r.realmTrees[e.Source] = &realmTree{dir: dir, manifest: rf, resolved: out}
@@ -460,6 +556,27 @@ func (r *checkRun) resolveRealmDeps(cacheDir string) []result.Diagnostic {
 		r.verbosef("realm %s: %d dependency(ies) resolved, %d inheritance chain(s)", rf.Realm.ID, len(out.Dependencies), len(out.Inheritance))
 	}
 	return diags
+}
+
+// checkDependencySources refuses, before resolveRealmDeps opens them, the
+// local dependency sources that checkDependencySources refuses in the
+// manifest of each source realm.
+func (r *checkRun) checkDependencySources() error {
+	seen := &dirSet{}
+	for _, e := range r.entries {
+		dir, err := r.sourceDir(e)
+		if err != nil || dir == "" {
+			continue // as resolveRealmDeps does
+		}
+		rf, err := loadRealmIfAny(dir)
+		if err == nil && rf != nil {
+			err = checkDependencySources(dir, rf, seen)
+		}
+		if err != nil {
+			return fmt.Errorf("source %s: %w", printableText(e.Source), err)
+		}
+	}
+	return nil
 }
 
 // sourceDir returns the local directory holding a source: the path itself
@@ -535,6 +652,7 @@ func (r *checkRun) buildInputs() {
 	for _, rf := range r.resolved {
 		label := r.sourceLabel(rf, labelBase)
 		ins := r.entityInputs(rf.File, rf.Path, effective)
+		ruleeval.AnnotateRealmKind(ins, rf.RealmKind)
 		for i := range ins {
 			ins[i].Source = label
 			ins[i].Scope = string(rf.Origin.Scope)
@@ -721,12 +839,13 @@ func (r *checkRun) evaluate() error {
 
 func (r *checkRun) output(code int, diags []result.Diagnostic) checkOutput {
 	out := checkOutput{
-		OK:          code == exitOK,
-		ExitCode:    code,
-		StaticOnly:  r.static,
-		RuleCount:   len(r.inputs),
-		SourceCount: len(r.entries),
-		Diagnostics: explainDiagnostics(diags, r.opts.explain),
+		OK:              code == exitOK,
+		ExitCode:        code,
+		StaticOnly:      r.static,
+		RuleCount:       len(r.inputs),
+		StandardSkipped: len(r.inputs) - len(evaluableInputs(r.inputs)),
+		SourceCount:     len(r.entries),
+		Diagnostics:     explainDiagnostics(diags, r.opts.explain),
 	}
 	if !r.static {
 		out.Provider = r.providerName
@@ -738,8 +857,23 @@ func (r *checkRun) output(code int, diags []result.Diagnostic) checkOutput {
 	return out
 }
 
+// evaluableInputs returns the inputs the evaluator may send to a provider:
+// all but a Standard Realm's rules (STDRLM-011).
+func evaluableInputs(inputs []ruleeval.RuleInput) []ruleeval.RuleInput {
+	var out []ruleeval.RuleInput
+	for i := range inputs {
+		if inputs[i].RealmKind != entity.KindStandard {
+			out = append(out, inputs[i])
+		}
+	}
+	return out
+}
+
 func (r *checkRun) summaryLine(out *checkOutput) string {
 	s := fmt.Sprintf("Checked %d rule(s) from %d source(s)", out.RuleCount, out.SourceCount)
+	if out.StandardSkipped > 0 {
+		s += fmt.Sprintf(", %d of a Standard Realm not evaluated", out.StandardSkipped)
+	}
 	if out.StaticOnly {
 		return s + " (static-only)"
 	}
@@ -956,12 +1090,19 @@ const anthropicHostSuffix = "anthropic.com"
 // untrusted input (a PR can edit .strspc/config.yaml), and the API key is
 // sent to whatever host the endpoint names, so a config endpoint is
 // accepted only on an Anthropic host; anything else needs an explicit
-// opt-in from outside the repo: the environment variable or the flag.
+// opt-in from outside the repo: the environment variable or the flag. An
+// opted-in endpoint must still be https, or http to a loopback host (SEC-001).
 func resolveEndpoint(fromConfig, fromFlag, fromEnv string) (string, error) {
 	if e := strings.TrimSpace(fromEnv); e != "" {
+		if err := validateHTTPS(e); err != nil {
+			return "", fmt.Errorf("%s: %w", envEvaluatorEndpoint, err)
+		}
 		return e, nil
 	}
 	if e := strings.TrimSpace(fromFlag); e != "" {
+		if err := validateHTTPS(e); err != nil {
+			return "", fmt.Errorf("--endpoint: %w", err)
+		}
 		return e, nil
 	}
 	cfg := strings.TrimSpace(fromConfig)

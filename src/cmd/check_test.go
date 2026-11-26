@@ -32,11 +32,31 @@ import (
 // It also keeps the --added-by default from reading the developer's
 // STRSPC_ADDED_BY or git user.email: tests that exercise it set their own.
 func TestMain(m *testing.M) {
+	// Keep every test off the user's real schema cache.
+	schemaCache, err := os.MkdirTemp("", "strspc-test-schemas-")
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv(envSchemaCache, schemaCache)
+	// Validate against this repository's copy of the core schemas, whatever
+	// release a test realm pins, so no test needs the network (SEC-004 checks
+	// rule files before they are used). A test serving its own schemas
+	// replaces newSchemaFetcher.
+	localSchemas, err := filepath.Abs(filepath.Join("..", "..", "rules"))
+	if err != nil {
+		panic(err)
+	}
+	newSchemaFetcher = func(opts ...schema.Option) *schema.Fetcher {
+		return newCachedSchemaFetcher(append(opts, schema.WithLocalDir(localSchemas))...)
+	}
+	newValidationSchemaFetcher = newSchemaFetcher
 	newConfigSchemaFetcher = func(string) *schema.Fetcher { return nil }
 	_ = os.Unsetenv(addedByEnv)
 	realGitUserEmail = gitUserEmail
 	gitUserEmail = func(string) string { return "" }
-	os.Exit(m.Run())
+	code := m.Run()
+	_ = os.RemoveAll(schemaCache)
+	os.Exit(code)
 }
 
 // serveConfigSchema serves src/cmd/testdata/config.v1.schema.json from a
@@ -683,6 +703,62 @@ func TestCheckEndpointFlagOptsIn(t *testing.T) {
 	}
 }
 
+func TestCheckEndpointPlainHTTPRefused(t *testing.T) {
+	for _, tc := range []struct {
+		name, env string
+		args      []string
+		source    string
+	}{
+		{"flag", "", []string{"--endpoint", "http://proxy.example/v1"}, "--endpoint"},
+		{"env", "http://proxy.example/v1", nil, envEvaluatorEndpoint},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, diff := setupCheckProject(t, "claude", []string{"I"})
+			t.Setenv(envEvaluatorEndpoint, tc.env)
+			called := false
+			orig := newEvalProvider
+			newEvalProvider = func(string, providers.Options) (ruleeval.Provider, error) {
+				called = true
+				return &stubProvider{}, nil
+			}
+			t.Cleanup(func() { newEvalProvider = orig })
+
+			args := append([]string{dir, "--diff-file", diff, "--no-cache"}, tc.args...)
+			_, err := runCheckCmd(t, args...)
+			assertExit(t, err, exitConfig)
+			testutil.AssertContains(t, err.Error(), tc.source)
+			testutil.AssertContains(t, err.Error(), "HTTPS is required unless the host is loopback")
+			if called {
+				t.Error("provider must not be constructed with a plain-http endpoint")
+			}
+		})
+	}
+}
+
+func TestCheckEndpointLoopbackHTTPAllowed(t *testing.T) {
+	for _, tc := range []struct {
+		name, env string
+		args      []string
+		want      string
+	}{
+		{"flag", "", []string{"--endpoint", "http://localhost:8080"}, "http://localhost:8080"},
+		{"env", "http://127.0.0.1:8080", nil, "http://127.0.0.1:8080"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, diff := setupCheckProject(t, "claude", []string{"I"})
+			t.Setenv(envEvaluatorEndpoint, tc.env)
+			opts := stubEvalProvider(t, &stubProvider{}, nil)
+
+			args := append([]string{dir, "--diff-file", diff, "--no-cache"}, tc.args...)
+			_, err := runCheckCmd(t, args...)
+			assertExit(t, err, exitOK)
+			if opts.Endpoint != tc.want {
+				t.Errorf("endpoint passed to provider = %q, want %q", opts.Endpoint, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolveEndpoint(t *testing.T) {
 	cases := []struct {
 		cfg, flag, env, want string
@@ -697,6 +773,15 @@ func TestResolveEndpoint(t *testing.T) {
 		{"https://other.example", "", "", "", true},
 		{"https://other.example", "https://flag", "", "https://flag", false},
 		{"https://other.example", "https://flag", "https://env", "https://env", false},
+		// SEC-001: an opted-in endpoint is https, or http to a loopback host.
+		{"", "http://proxy.example", "", "", true},
+		{"", "", "http://proxy.example", "", true},
+		{"", "https://flag", "http://proxy.example", "", true}, // the env value is used, so it's checked
+		{"", "http://localhost:8080", "", "http://localhost:8080", false},
+		{"", "", "http://127.0.0.1:8080/v1", "http://127.0.0.1:8080/v1", false},
+		{"", "", "http://[::1]:8080", "http://[::1]:8080", false},
+		{"", "ftp://proxy.example", "", "", true},
+		{"", "", "proxy.example", "", true},
 	}
 	for _, c := range cases {
 		got, err := resolveEndpoint(c.cfg, c.flag, c.env)
@@ -988,8 +1073,8 @@ func TestCheckExplicitEmptyEvaluateOnEvaluatesNothing(t *testing.T) {
 func TestCheckSubRealmDependenciesValidated(t *testing.T) {
 	dir, diff := setupCheckProject(t, "null", []string{"I"})
 	rules := filepath.Join(dir, "rules")
-	parent := `{"realm":{"id":"test","title":"t","version":"0.1.0"},"sub_realms":["child"]}`
-	child := `{"realm":{"id":"test.child","title":"c","version":"0.1.0"},` +
+	parent := `{"$schema": "./_schema/realm.v1.schema.json", "realm":{"id":"test","title":"t","version":"0.1.0"},"sub_realms":["child"]}`
+	child := `{"$schema": "./_schema/realm.v1.schema.json", "realm":{"id":"test.child","title":"c","version":"0.1.0"},` +
 		`"dependencies":[{"realm_id":"dev.missing","version":"1.0.0","source":"../../nowhere/"}]}`
 	if err := os.WriteFile(filepath.Join(rules, "realm.json"), []byte(parent), 0o644); err != nil {
 		t.Fatal(err)

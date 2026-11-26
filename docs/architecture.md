@@ -46,6 +46,7 @@ that govern these tiers, and this repository owns the `dev.steerspec.cli` realm 
 | `strspc realm validate` | `realm-lint`, `rule-lint`, `remote` |
 | `strspc render` | `rule-render`, plus `realm-resolve` for an entity that declares `inherits` |
 | `strspc sync` | `rule-resolve`, `remote` |
+| `strspc schema` | `schema` |
 | `strspc check` | `rule-resolve`, `realm-resolve`, `remote`, `rule-eval`, `eval-cache` |
 | `strspc refs` | `rule-refs`, `rule-resolve`, `realm-resolve`, `remote` |
 | `strspc realm dep upgrade` | `remote`, then the `realm validate` checks |
@@ -81,6 +82,7 @@ full data model.
 | `strspc explain` | Explain a diagnostic code, or list all of them with `--list` |
 | `strspc skill` | Print the embedded agent skill for using strspc, or write it to `.claude/skills/strspc/SKILL.md` with `--install` |
 | `strspc sync` | Resolve and cache the rule sources in `.strspc/config.yaml` |
+| `strspc schema` | Show, fetch, update or clear the [schema cache](reference.md#schema-cache) |
 | `strspc render` | Convert entity JSON files to Markdown or normalized JSON |
 | `strspc realm init` | Scaffold a new Realm directory |
 | `strspc realm add` | Add a new entity to a Realm |

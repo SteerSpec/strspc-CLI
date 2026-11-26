@@ -259,7 +259,7 @@ func TestDoctorParseFailureSkipsTheRest(t *testing.T) {
 }
 
 func TestDoctorConfigSchemaFromCacheOnly(t *testing.T) {
-	fakeDoctorHost(t)
+	h := fakeDoctorHost(t)
 	dir := writeDoctorProject(t, "evaluator:\n  provider: null\nextra: 1\n")
 
 	report, err := runDoctorJSON(t, dir)
@@ -269,13 +269,16 @@ func TestDoctorConfigSchemaFromCacheOnly(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, ".strspc", "cache")); err == nil {
 		t.Error("doctor filled the cache")
 	}
+	if _, err := os.Stat(filepath.Join(h.cacheDir, "strspc", "schemas")); err == nil {
+		t.Error("doctor filled the schema cache")
+	}
 
-	writeRefsFile(t, dir, ".strspc/cache/schemas/config/v1.json", `{"type":"object","additionalProperties":false,"properties":{"evaluator":{}}}`)
+	writeRefsFile(t, h.cacheDir, "strspc/schemas/config/v1.json", `{"type":"object","additionalProperties":false,"properties":{"evaluator":{}}}`)
 	report, err = runDoctorJSON(t, dir)
 	assertExit(t, err, exitOK)
 	assertDoctorStatus(t, report, "config.schema", "", doctorWarn)
 
-	writeRefsFile(t, dir, ".strspc/cache/schemas/config/v1.json", allowSchema)
+	writeRefsFile(t, h.cacheDir, "strspc/schemas/config/v1.json", allowSchema)
 	report, _ = runDoctorJSON(t, dir)
 	assertDoctorStatus(t, report, "config.schema", "", doctorPass)
 }

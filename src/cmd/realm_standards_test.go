@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,7 +91,7 @@ func TestRealmStandardsAddValidation(t *testing.T) {
 func TestRealmStandardsRemoveGuard(t *testing.T) {
 	dir := t.TempDir()
 	setupValidRealm(t, dir)
-	if err := loadModifyWriteRealm(filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
+	if err := loadModifyWriteRealm(context.Background(), filepath.Join(dir, "realm.json"), func(rf *entity.RealmFile) error {
 		rf.Realm.Standards = []entity.StandardRef{{ID: "owasp.asvs", Relation: "implements"}, {ID: "iso.27001", Relation: "implements"}}
 		return nil
 	}); err != nil {

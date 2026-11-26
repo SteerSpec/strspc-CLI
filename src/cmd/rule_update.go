@@ -47,7 +47,7 @@ Examples:
 			var oldVersion, version string
 			var revision int
 
-			err = modifyEntity(target, func(f *entity.File) error {
+			err = modifyEntity(cmd.Context(), target, func(f *entity.File) error {
 				oldVersion = f.RuleSet.Version
 				if updateErr := entityops.UpdateRuleBody(f, ruleID, body); updateErr != nil {
 					return updateErr

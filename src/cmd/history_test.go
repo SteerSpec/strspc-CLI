@@ -44,7 +44,7 @@ func histEntityJSON(version string, rules, subRules []histRule) string {
   "entity": {"id": "ENT", "title": "Entity", "description": "d"},
   "rule_set": {"version": %q, "timestamp": "2026-01-01T00:00:00Z", "hash": null},
   "rules": %s, "notes": [],
-  "sub_entities": [{"entity": {"id": "SUB", "parent": "ENT", "title": "Sub", "description": "d"},
+  "sub_entities": [{"$schema": "./_schema/entity.v1.schema.json", "entity": {"id": "SUB", "parent": "ENT", "title": "Sub", "description": "d"},
     "rule_set": {"version": %q, "timestamp": "2026-01-01T00:00:00Z", "hash": null},
     "rules": %s, "notes": [], "sub_entities": []}]}
 `, version, histRulesJSON(rules), version, histRulesJSON(subRules))

@@ -24,7 +24,7 @@ strspc check --format github                 # ::error/::warning annotations + $
 | `--diff-file <path>` | Read a unified diff from a file, with repository-relative paths as `git diff` prints them |
 | `--format human\|json\|github` | Output style; `github` emits annotations and appends a table to `$GITHUB_STEP_SUMMARY` |
 | `--provider`, `--model` | Override `evaluator.provider` and `evaluator.model` |
-| `--endpoint <url>` | Provider endpoint; needed to opt in to a non-Anthropic host |
+| `--endpoint <url>` | Provider endpoint; needed to opt in to a non-Anthropic host. `https://`, or `http://` to a loopback host |
 | `--static-only` | Skip AI evaluation (also implied by `evaluator.provider: null`) |
 | `--no-cache` | Don't read or write `.strspc/cache.db` |
 | `--verbose` | Print resolution, diff, cache and token-usage details to stderr |
@@ -45,7 +45,10 @@ never evaluated. The check only writes inside `.strspc/` (`cache/`, `cache.db`).
 The flow follows
 [SPEC §8.3](https://github.com/SteerSpec/strspc-manager/blob/v1.47.1/docs/SPEC.md#83-evaluation-flow):
 
-1. Resolve the rule sources and collect the rules in `evaluate_on` states.
+1. Resolve the rule sources and collect the rules in `evaluate_on` states. The rules of a Standard Realm
+   are never evaluated (STDRLM-011): `RE005` reports them, or `RE006`, which blocks, when skipping one
+   would switch off enforcement ([Author a Standard Realm](author-rules.md#author-a-standard-realm)).
+   `rule_count` includes them and `standard_skipped` counts them.
 2. Collect the diff. An empty diff ends evaluation with `RE004`.
 3. Look each rule up in the cache, and send only the misses, one request per owning entity.
 4. Get one verdict per rule, then re-read the diff for each violated rule to confirm it or withdraw it.
@@ -88,14 +91,50 @@ still for that rule alone.
 
 **Configuration.** Before resolving any source, the check exits 2 on an empty `rules:` list, an unknown
 lifecycle state in `fail_on` or `evaluate_on`, or an unknown `evaluator.provider`. It then validates the
-config against the published `config.v1` schema, cached under `.strspc/cache/schemas/`. Each mismatch
+config against the published `config.v1` schema, kept in the [schema cache](reference.md#schema-cache). Each mismatch
 is warning `CHK002` and never fails the check on its own. Examples are an unknown key, a long state
 name such as `implemented` (accepted, but the schema wants the code), and `effort: xhigh` or `max`
 (accepted by the Claude provider, but not by the schema). When the schema can't be fetched, this
 validation is skipped and `--verbose` says so.
+
+**Rule files.** Once the sources are resolved, and before anything is evaluated, the check validates
+what it reads against the entity and realm schemas. That covers four things:
+
+- every entity file of each source, and each `realm.json` that chose a schema: the nearest one above
+  a file, listed as a sub-realm or not, and the ones it inherits a core pin from;
+- the `realm.json` of each source realm and of its sub-realms;
+- the whole tree of each realm a source or one of its sub-realms depends on, where a listed sub-realm
+  without a readable `realm.json` is an error;
+- the whole tree of each further dependency that an `inherits` or an `extends` note in those trees
+  names.
+
+The rules evaluated must then be the ones validated, source by source and realm by realm: if a file
+changes during the run, the check exits 2 and asks you to run it again. To notice what a change left out as
+well, the check resolves each source realm again, from the cache only: a change to what is inherited, or to whether a rule
+named by an `extends` note is live (not Abandoned, Terminated or superseded), counts. It also exits 2 when one
+source reaches two versions of a realm that differ in an entity it inherits or extends (or of which one
+lacks it), or in whether a rule named by an `extends` note is live, in either direction: live in the version
+the note's realm declares and not in the other, or the reverse. It can't then tell which was evaluated, so
+it refuses on every run until the source uses one version, for instance after a rule is Terminated in a new
+release that a dependency doesn't use yet. A reference qualified with a sub-realm counts against every
+version of the realm that lists it, including one that doesn't list that sub-realm, but not against a
+realm of that name declared by itself, which is compared only with its own versions. Two sources may use
+different versions. A file with a key twice in one object, in any case, is
+refused as well, as the schema and the parser would read it differently.
+
+`strspc rule verify`, and so `strspc rule promote` to Implemented, run the same validation. Each realm
+is checked against the schemas of the core release it pins, and core against its own release. A
+sub-realm that pins none takes those of the realm that lists it, and a pin that isn't a release
+selects the latest schemas. A file that doesn't match exits 2, naming the file and the first violations;
+`strspc lint` lists them all. A schema that isn't in the [schema cache](reference.md#schema-cache)
+and can't be fetched also exits 2: run the `strspc schema fetch` command the error gives, which names
+the core release when there is one, once while online to check offline afterwards.
 
 **Endpoint safety.** `.strspc/config.yaml` is repository content, so a pull request could point
 `evaluator.endpoint` at a host that would receive your `ANTHROPIC_API_KEY`. The check accepts an
 endpoint from the config only when it's an `https://` URL on `anthropic.com`. Any other endpoint must
 be opted in from outside the repository, with `STRSPC_EVALUATOR_ENDPOINT=<url>` (highest precedence) or
 `--endpoint <url>`. Without that, it exits 2 with a message naming the host.
+An opted-in endpoint must still be an `https://` URL, or `http://` to a loopback host (`localhost`,
+`127.0.0.0/8` or `::1`), so the key never crosses the network in clear text. A plain-http endpoint
+anywhere else exits 2.

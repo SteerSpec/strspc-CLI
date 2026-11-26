@@ -52,9 +52,13 @@ func (e *notEntityError) Unwrap() error { return e.err }
 // the hash of its own JSON (what entityops stamps on sub-entity operations).
 // When any differ, or are null, it refreshes timestamp and hash via
 // entityops.UpdateMeta and rewrites the file. Fresh files are left untouched.
-func rehashEntity(path string, data []byte, ef *entity.File) (*rehashChange, error) {
+func rehashEntity(v *schemaValidator, path string, data []byte, ef *entity.File) (*rehashChange, error) {
 	if err := entityops.ValidateEUID(ef.Entity.ID); err != nil {
 		return nil, &notEntityError{path: path, err: err}
+	}
+	// SEC-004: the file is checked against its schema before it is changed.
+	if err := v.validateEntityFile(path, data); err != nil {
+		return nil, fmt.Errorf("validating before rehashing: %w", err)
 	}
 	subsChanged, err := rehashSubEntities(ef)
 	if err != nil {
@@ -71,6 +75,9 @@ func rehashEntity(path string, data []byte, ef *entity.File) (*rehashChange, err
 	change := &rehashChange{Entity: ef.Entity.ID, Path: path, OldHash: ef.RuleSet.Hash}
 	if err := entityops.UpdateMeta(ef); err != nil {
 		return nil, fmt.Errorf("updating metadata for %s: %w", path, err)
+	}
+	if err := v.ctx.Err(); err != nil {
+		return nil, fmt.Errorf("interrupted before writing %s: %w", path, err)
 	}
 	if err := replaceEntityFile(path, ef); err != nil {
 		return nil, err
@@ -139,6 +146,8 @@ Examples:
 			}
 
 			var res rehashResult
+			// One validator, so each schema is compiled once for the walk.
+			validator := newSchemaValidator(cmd.Context())
 
 			if all {
 				err := entity.WalkEntityFiles(dir, func(path string, data []byte, ef *entity.File, parseErr error) error {
@@ -153,7 +162,7 @@ Examples:
 					if parseErr != nil {
 						return fmt.Errorf("reading %s: %w", path, parseErr)
 					}
-					change, err := rehashEntity(path, data, ef)
+					change, err := rehashEntity(validator, path, data, ef)
 					var notEntity *notEntityError
 					if errors.As(err, &notEntity) {
 						res.Skipped = append(res.Skipped, path)
@@ -194,7 +203,7 @@ Examples:
 				if err != nil {
 					return fmt.Errorf("parsing %s: %w", path, err)
 				}
-				change, err := rehashEntity(path, data, ef)
+				change, err := rehashEntity(validator, path, data, ef)
 				if err != nil {
 					return err
 				}

@@ -94,15 +94,16 @@ func TestEntityAddErrors(t *testing.T) {
 	}
 }
 
-// A parent whose version isn't SemVer can't be bumped, and is left as it was.
+// A parent whose version isn't SemVer is refused by the schema check (SEC-004)
+// before anything tries to bump it, and is left as it was.
 func TestEntityAddUnbumpableParent(t *testing.T) {
 	dir := t.TempDir()
 	setupEntityFile(t, dir, "PARENT")
 	editEntityFile(t, dir, "PARENT", func(f *entity.File) { f.RuleSet.Version = "one" })
 	before := readFiles(t, dir, "PARENT.json")
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "entity", "add", "CHILD", "--parent", "PARENT", "--title", "Child", "--dir", dir)
-	if err == nil || !strings.Contains(err.Error(), "bumping version of PARENT") {
-		t.Fatalf("error = %v, want bumping version of PARENT", err)
+	if err == nil || !strings.Contains(err.Error(), "does not match the entity/v1.json schema") {
+		t.Fatalf("error = %v, want a schema refusal", err)
 	}
 	if !bytes.Equal(readFiles(t, dir, "PARENT.json")["PARENT.json"], before["PARENT.json"]) {
 		t.Error("PARENT.json changed on error")

@@ -99,6 +99,9 @@ func fetchRealmDependency(ctx context.Context, realmDir string, dep entity.Realm
 		if isRootedPath(dep.Source) || strings.Contains(dep.Source, "://") {
 			return "", fmt.Errorf("unsupported source %q: use github:// or a relative path", dep.Source)
 		}
+		if strings.Contains(dep.Source, `\`) {
+			return "", fmt.Errorf("source %q: %w", dep.Source, errBackslashSource)
+		}
 		return filepath.Join(realmDir, dep.Source), nil
 	}
 	ref, err := remote.ParseGitHub(dep.Source)
@@ -150,12 +153,20 @@ func newRealmValidateCmd() *cobra.Command {
 				dir = args[0]
 			}
 
+			rf, err := checkValidatedRealm(dir)
+			if err != nil {
+				return fmt.Errorf("realm validate: %w", err)
+			}
+
 			vs := newRealmValidator(dir, strict, recursive, core)
 			res := vs.realmLinter.Lint(cmd.Context(), dir)
 
 			if recursive {
 				realmRes := vs.ruleLinter.LintRealm(cmd.Context(), dir)
 				mergeDiagnostics(res, realmRes)
+			}
+			if rf != nil {
+				mergeDiagnostics(res, resolveValidatedRealm(cmd.Context(), dir, rf, strict))
 			}
 
 			w := cmd.OutOrStdout()

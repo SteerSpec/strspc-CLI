@@ -72,7 +72,7 @@ Examples:
 				oldVersion, version string
 				revision            int
 			)
-			err = modifyEntity(target, func(f *entity.File) error {
+			err = modifyEntity(cmd.Context(), target, func(f *entity.File) error {
 				// The note's type after the update, its own when --type isn't
 				// given, must be one the core pin's schema accepts.
 				effective := noteType

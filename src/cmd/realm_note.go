@@ -139,7 +139,7 @@ Examples:
 			}
 
 			change := realmNoteChange{Path: realmPath, Type: noteType, Ref: ref, AddedBy: addedBy}
-			err = loadModifyWriteRealm(realmPath, func(rf *entity.RealmFile) error {
+			err = loadModifyWriteRealm(cmd.Context(), realmPath, func(rf *entity.RealmFile) error {
 				id, err := entityops.AddRealmNote(rf, noteType, body, ref, addedBy, list)
 				if err != nil {
 					return err
@@ -208,7 +208,7 @@ Examples:
 				return err
 			}
 			change := realmNoteChange{Path: realmPath, NoteID: id}
-			err = loadModifyWriteRealm(realmPath, func(rf *entity.RealmFile) error {
+			err = loadModifyWriteRealm(cmd.Context(), realmPath, func(rf *entity.RealmFile) error {
 				if err := entityops.UpdateRealmNote(rf, id, body, noteType); err != nil {
 					return err
 				}

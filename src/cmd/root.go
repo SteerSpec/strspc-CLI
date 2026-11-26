@@ -64,6 +64,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newNoteCmd())
 	cmd.AddCommand(newEntityCmd())
 	cmd.AddCommand(newSyncCmd())
+	cmd.AddCommand(newSchemaCmd())
 	cmd.AddCommand(newCheckCmd())
 	cmd.AddCommand(newLintCmd())
 	cmd.AddCommand(newRefsCmd())

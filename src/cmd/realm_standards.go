@@ -70,7 +70,7 @@ Examples:
 				return err
 			}
 			var realmID string
-			err = loadModifyWriteRealm(realmPath, func(rf *entity.RealmFile) error {
+			err = loadModifyWriteRealm(cmd.Context(), realmPath, func(rf *entity.RealmFile) error {
 				refs, err := addStandardRef(rf.Realm.Standards, &ref)
 				if err != nil {
 					return err
@@ -124,7 +124,7 @@ Example:
 				realmID string
 				removed entity.StandardRef
 			)
-			err = loadModifyWriteRealm(realmPath, func(rf *entity.RealmFile) error {
+			err = loadModifyWriteRealm(cmd.Context(), realmPath, func(rf *entity.RealmFile) error {
 				refs, r, err := removeStandardRef(rf.Realm.Standards, id)
 				if err != nil {
 					return err

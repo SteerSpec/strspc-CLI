@@ -199,7 +199,7 @@ func TestRefsSubRealm(t *testing.T) {
 	writeRealmManifest(t, sub, "dev.app.sub")
 	writeInheritEntity(t, sub, "SUBE", "", inheritRule{id: "SUBE-001", state: "A"})
 	writeRefsFile(t, dir, "rules/realm.json",
-		`{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},
+		`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},
 		  "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}],
 		  "sub_realms": ["sub"]}`)
 	writeRefsFile(t, dir, "a.md", "dev.app.sub:SUBE-001\n")
@@ -216,7 +216,7 @@ func writeRefsSubRealm(t *testing.T, dir string, deps ...string) {
 	writeRealmManifest(t, sub, "dev.app.sub", deps...)
 	writeInheritEntity(t, sub, "SUBE", "", inheritRule{id: "SUBE-001", state: "A"})
 	writeRefsFile(t, dir, "rules/realm.json",
-		`{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},
+		`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},
 		  "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}],
 		  "sub_realms": ["sub"]}`)
 }
@@ -248,7 +248,7 @@ func TestRefsSubRealmQualifiers(t *testing.T) {
 func TestRefsProjectPinWinsOverSubRealmPin(t *testing.T) {
 	dir := setupRefsProject(t)
 	other := filepath.Join(dir, "lib2")
-	writeRefsFile(t, dir, "lib2/realm.json", `{"realm": {"id": "dev.lib", "title": "t", "version": "2.0.0"}}`)
+	writeRefsFile(t, dir, "lib2/realm.json", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.lib", "title": "t", "version": "2.0.0"}}`)
 	writeInheritEntity(t, other, "ACCT", "", inheritRule{id: "ACCT-001", state: "A"}, inheritRule{id: "ACCT-002", state: "A"})
 	writeRefsSubRealm(t, dir, `{"realm_id": "dev.lib", "version": "2.0.0", "source": "../../lib2/"}`)
 	writeRefsFile(t, dir, "a.md", "ACCT-001\n")
@@ -279,7 +279,7 @@ func TestRefsSubRealmOfDependency(t *testing.T) {
 			writeRealmManifest(t, inner, "dev.lib.inner")
 			writeInheritEntity(t, inner, "INNR", "", inheritRule{id: "INNR-001", state: "I"}, inheritRule{id: "INNR-002", state: "A"})
 			writeRefsFile(t, dir, "lib/realm.json",
-				`{"realm": {"id": "dev.lib", "title": "t", "version": "1.0.0"}, "sub_realms": ["inner"]}`)
+				`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.lib", "title": "t", "version": "1.0.0"}, "sub_realms": ["inner"]}`)
 			writeRefsFile(t, dir, "a.md", tt.text+"\n")
 			out, err := runRefsCmd(t)
 			assertExit(t, err, tt.exit)
@@ -343,7 +343,7 @@ func TestRefsManifestStandards(t *testing.T) {
 func TestRefsRealmWinsOverManifestStandard(t *testing.T) {
 	dir := setupRefsProject(t)
 	writeRefsFile(t, dir, "rules/realm.json",
-		`{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0",
+		`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "t", "version": "1.0.0",
 		    "standards": [{"id": "dev.lib", "relation": "derived_from"}]},
 		  "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}]}`)
 	writeRefsFile(t, dir, "a.md", "dev.lib:ACCT-002\n")
@@ -361,10 +361,10 @@ func TestResolvedRealmSourcesRejectsBadSubRealms(t *testing.T) {
 		subRealm string
 		manifest string
 	}{
-		{"leaves the realm", "../evil", `{"realm": {"id": "dev.lib.evil", "title": "t", "version": "1.0.0"}}`},
-		{"more than one directory", "inner/deep", `{"realm": {"id": "dev.lib.inner/deep", "title": "t", "version": "1.0.0"}}`},
-		{"claims another realm", "inner", `{"realm": {"id": "dev.steerspec.core", "title": "t", "version": "1.0.0"}}`},
-		{"nests sub-realms", "inner", `{"realm": {"id": "dev.lib.inner", "title": "t", "version": "1.0.0"}, "sub_realms": ["more"]}`},
+		{"leaves the realm", "../evil", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.lib.evil", "title": "t", "version": "1.0.0"}}`},
+		{"more than one directory", "inner/deep", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.lib.inner/deep", "title": "t", "version": "1.0.0"}}`},
+		{"claims another realm", "inner", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.steerspec.core", "title": "t", "version": "1.0.0"}}`},
+		{"nests sub-realms", "inner", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.lib.inner", "title": "t", "version": "1.0.0"}, "sub_realms": ["more"]}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -423,7 +423,7 @@ func TestRefsAcceptsLinksInsideTheProject(t *testing.T) {
 func TestRefsRenderedForm(t *testing.T) {
 	dir := setupRefsProject(t)
 	writeRefsFile(t, dir, "rules/realm.json",
-		`{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},
+		`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},
 		  "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}],
 		  "rule_identifier_format": {"id_splitter": "_"}}`)
 	writeRefsFile(t, dir, "a.md", "[APP_002.0/A] and MAX_100\n")

@@ -63,7 +63,15 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 			}
 
 			// Load parent to get ID and dependencies.
-			parentRealm, err := entity.LoadRealm(parentRealmPath)
+			parentData, err := os.ReadFile(parentRealmPath)
+			if err != nil {
+				return fmt.Errorf("loading parent realm.json: %w", err)
+			}
+			// SEC-004: the sub-realm's manifest is written from the parent's.
+			if err := newSchemaValidator(cmd.Context()).validateRealmManifest(parentRealmPath, parentData); err != nil {
+				return fmt.Errorf("loading parent realm.json: %w", err)
+			}
+			parentRealm, err := entity.ParseRealm(parentData)
 			if err != nil {
 				return fmt.Errorf("loading parent realm.json: %w", err)
 			}
@@ -142,6 +150,9 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 
 			// Through replaceFile, so a realm.json link left by --force is replaced,
 			// not written through.
+			if err := cmd.Context().Err(); err != nil {
+				return fmt.Errorf("interrupted before writing %s: %w", targetRealmPath, err)
+			}
 			if err := replaceFile(targetRealmPath, data, "realm.json"); err != nil {
 				return err
 			}

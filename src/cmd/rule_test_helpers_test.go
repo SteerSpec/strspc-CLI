@@ -31,6 +31,9 @@ func setupEntityFile(t *testing.T, dir, entityID string, rules ...entity.Rule) {
 		Rules: rules,
 		Notes: []entity.Note{},
 	}
+	if f.Rules == nil {
+		f.Rules = []entity.Rule{} // the schema wants an array
+	}
 
 	data, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
@@ -68,6 +71,9 @@ func makeRule(id, state, body, addedBy string) entity.Rule {
 // holds the given rules. The parent itself has no rules.
 func setupEntityFileWithSub(t *testing.T, dir, entityID, subID string, subRules ...entity.Rule) {
 	t.Helper()
+	if subRules == nil {
+		subRules = []entity.Rule{} // the schema wants an array
+	}
 
 	hash := "blake3:0000000000000000000000000000000000000000000000000000000000000000"
 	f := entity.File{

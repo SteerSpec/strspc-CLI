@@ -65,16 +65,16 @@ func TestDoctorConfigUnreadable(t *testing.T) {
 }
 
 func TestDoctorConfigSchemaEdgeCases(t *testing.T) {
-	fakeDoctorHost(t)
+	h := fakeDoctorHost(t)
 	dir := writeDoctorProject(t, "evaluator:\n  provider: null\nfail_on: [I]\n")
 
-	writeRefsFile(t, dir, ".strspc/cache/schemas/config/v1.json", "{not json")
+	writeRefsFile(t, h.cacheDir, "strspc/schemas/config/v1.json", "{not json")
 	report, _ := runDoctorJSON(t, dir)
 	c := assertDoctorStatus(t, report, "config.schema", "", doctorSkip)
 	testutil.AssertContains(t, c.Message, "parsing")
 
 	// Two violations at two locations.
-	writeRefsFile(t, dir, ".strspc/cache/schemas/config/v1.json", `{"type":"object","properties":{"evaluator":{"type":"string"},"fail_on":{"type":"string"}}}`)
+	writeRefsFile(t, h.cacheDir, "strspc/schemas/config/v1.json", `{"type":"object","properties":{"evaluator":{"type":"string"},"fail_on":{"type":"string"}}}`)
 	report, _ = runDoctorJSON(t, dir)
 	c = assertDoctorStatus(t, report, "config.schema", "", doctorWarn)
 	testutil.AssertContains(t, c.Message, "(and 1 more)")
@@ -124,7 +124,7 @@ func writeCachedRealm(t *testing.T, cacheDir, repo, id string) {
 	t.Helper()
 	sum := sha256.Sum256([]byte("rules"))
 	dir := filepath.Join(cacheDir, "strspc", "realms", "github", "acme", repo, "v1.0.0", hex.EncodeToString(sum[:])[:12])
-	writeRefsFile(t, dir, "realm.json", `{"realm": {"id": "`+id+`", "title": "t", "version": "1.0.0"}, "dependencies": []}`)
+	writeRefsFile(t, dir, "realm.json", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "`+id+`", "title": "t", "version": "1.0.0"}, "dependencies": []}`)
 	writeEntityFile(t, dir, "TST.json", validEntityJSON)
 }
 
@@ -146,7 +146,7 @@ func TestDoctorRealmDependencies(t *testing.T) {
 		fakeDoctorHost(t)
 		project, rules := realmProject(t)
 		lib := filepath.Join(project, "lib")
-		writeRefsFile(t, lib, "realm.json", `{"realm": {"id": "dev.example.lib", "title": "t", "version": "1.0.0"}, "dependencies": []}`)
+		writeRefsFile(t, lib, "realm.json", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.example.lib", "title": "t", "version": "1.0.0"}, "dependencies": []}`)
 		writeEntityFile(t, lib, "TST.json", validEntityJSON)
 		writeRealmDeps(t, rules, entity.RealmDep{RealmID: "dev.example.lib", Version: "1.0.0", Source: "../lib"})
 		cacheRealmSchemas(t, "realm/v1.json", "entity/v1.json", "entity/bootstrap.json")
@@ -191,7 +191,7 @@ func TestDoctorRealmCoreFindsNestedDeclarations(t *testing.T) {
 		cacheRealmSchemas(t)
 		project, rules := realmProject(t)
 		writeRefsFile(t, rules, "realm.json", strings.Replace(validRealmJSON, `"dependencies": []`, `"dependencies": [], "sub_realms": ["sub"]`, 1))
-		writeRefsFile(t, rules, "sub/realm.json", `{"realm": {"id": "dev.steerspec.test.sub", "title": "t", "version": "0.1.0", `+std+`}}`)
+		writeRefsFile(t, rules, "sub/realm.json", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.steerspec.test.sub", "title": "t", "version": "0.1.0", `+std+`}}`)
 		report, _ := runDoctorJSON(t, project)
 		c := assertDoctorStatus(t, report, "realm.core", "./rules", doctorPass)
 		testutil.AssertContains(t, c.Message, "standards of 1 file(s)")

@@ -87,7 +87,7 @@ Examples:
 			var newRuleID string
 			var oldVersion, version string
 
-			err = modifyEntity(target, func(f *entity.File) error {
+			err = modifyEntity(cmd.Context(), target, func(f *entity.File) error {
 				oldVersion = f.RuleSet.Version
 				var addErr error
 				newRuleID, addErr = entityops.AddRuleWith(f, body, addedBy, opts)

@@ -19,12 +19,55 @@ through the GitHub tarball API and cached under `.strspc/cache/`.
 `strspc sync` fetches and verifies the sources ahead of a check. It takes `--force`, `--json` and
 `--verbose`.
 
+## Schema cache
+
+Rule files, realm manifests and `.strspc/config.yaml` are validated against JSON schemas published on
+steerspec.dev. Every command keeps them in one cache, shared by all projects:
+`$STRSPC_SCHEMA_CACHE`, or `strspc/schemas` under the user cache directory (`~/Library/Caches` on
+macOS, `$XDG_CACHE_HOME` or `~/.cache` on Linux, `%LocalAppData%` on Windows). A cached schema is
+used offline. A core release's schemas never change and are kept for good, below `versions/`; a
+latest schema is refreshed after an hour, when the network can be reached.
+
+| Command | Does |
+| ------- | ---- |
+| `strspc schema` | List the cached schemas, with their core release and when they were fetched |
+| `strspc schema fetch [path]` | Download the latest config, entity and realm schemas, and those of the core release each local realm in the project pins (with its sub-realms). `--dir <realm>` and `--core-version <X.Y.Z>` add more |
+| `strspc schema update` | Download the latest schemas again; a copy is replaced only once its download succeeds |
+| `strspc schema clear` | Delete the cached schemas |
+
+Run `strspc schema fetch` once while online to validate offline afterwards, for example before a
+pre-commit hook runs `strspc check`. In CI, cache the directory or set `STRSPC_SCHEMA_CACHE` to a
+path the workflow caches.
+
+On Windows, `schema fetch` refuses a source in `.strspc/config.yaml` that is a network or device path
+(`\\host\share`), and any symbolic link or junction in the paths it reads from a project. Pass a share,
+or a linked realm, that you trust with `--dir`.
+
+A download that isn't a JSON schema, such as a proxy's sign-in page, is never cached: the copy already
+cached stays in use.
+
+`schema fetch` and `schema update` mark the cache with a `.strspc-schema-cache` file. `schema clear`
+runs only on the default location or a marked directory. It deletes only the schema files strspc
+writes (`config/v1.json`, `entity/v1.json`, `realm/v1.json`, the same two below `versions/X.Y.Z/`,
+and their temporary files), also inside the `.update-N` folders an interrupted update leaves, and
+then the empty folders there. Other files and symbolic links are kept.
+
+> [!WARNING]
+> Point `STRSPC_SCHEMA_CACHE` at a directory used only for schemas. In any other directory, a
+> fetch overwrites a file that has the path of a schema, such as `config/v1.json`, marks the
+> directory as a cache, and `schema clear` then deletes that file.
+>
+> The cache is trusted like any other file you own. Anyone who can write to it can replace the
+> schemas. `schema update` refuses a folder in the cache that is a symbolic link, but someone who can
+> write to the cache could swap a folder for a link between that check and the move.
+
 ## Environment variables
 
 | Variable | Used for |
 | -------- | -------- |
 | `ANTHROPIC_API_KEY` | The Claude evaluator |
-| `STRSPC_EVALUATOR_ENDPOINT` | Opt in to a non-Anthropic endpoint |
+| `STRSPC_EVALUATOR_ENDPOINT` | Opt in to a non-Anthropic endpoint: `https://`, or `http://` to a loopback host |
+| `STRSPC_SCHEMA_CACHE` | Directory of the [schema cache](#schema-cache) |
 | `STRSPC_ADDED_BY` | Default for `--added-by` in `rule add`, `note add` and `rule supersede` |
 | `GITHUB_TOKEN`, then `GH_TOKEN` | Private `github://` sources and higher rate limits |
 | `STRSPC_TOKEN_OWNERS` | Comma-separated owners who may also receive the GitHub token |

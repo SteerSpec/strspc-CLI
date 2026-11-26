@@ -71,7 +71,7 @@ func writeRealmManifest(t *testing.T, dir, id string, deps ...string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	body := fmt.Sprintf(`{"realm": {"id": %q, "title": "t", "version": "1.0.0"}, "dependencies": [%s]}`, id, strings.Join(deps, ","))
+	body := fmt.Sprintf(`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": %q, "title": "t", "version": "1.0.0"}, "dependencies": [%s]}`, id, strings.Join(deps, ","))
 	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ func TestCheckSendsExtendedRuleOfInheritedRule(t *testing.T) {
 func TestCheckSendsExtendedRuleOfSubRealm(t *testing.T) {
 	dir, diff := setupInheritProject(t, "claude", "./rules/")
 	rules := filepath.Join(dir, "rules")
-	manifest := `{"realm": {"id": "dev.app", "title": "t", "version": "1.0.0"}, "sub_realms": ["payments"],` +
+	manifest := `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "t", "version": "1.0.0"}, "sub_realms": ["payments"],` +
 		` "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}]}`
 	if err := os.WriteFile(filepath.Join(rules, "realm.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)

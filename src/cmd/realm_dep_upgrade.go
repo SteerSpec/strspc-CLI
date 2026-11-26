@@ -52,10 +52,14 @@ type depUpgrade struct {
 }
 
 // getGitHubAPI sends a GET for path below githubAPIBase, with token as the
-// bearer token unless it is empty. The caller closes the body.
+// bearer token unless it is empty. The URL must be https, or http to a
+// loopback host (SEC-001). The caller closes the body.
 func getGitHubAPI(ctx context.Context, client *http.Client, path, accept, token string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(githubAPIBase, "/")+path, http.NoBody)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkHTTPS(req.URL); err != nil {
 		return nil, err
 	}
 	req.Header.Set("Accept", accept)
@@ -87,7 +91,7 @@ func decodeReleaseTag(resp *http.Response, ref remote.Ref) (string, error) {
 }
 
 func fetchLatestReleaseTag(ctx context.Context, ref remote.Ref, token string) (string, error) {
-	resp, err := getGitHubAPI(ctx, &http.Client{Timeout: 30 * time.Second}, releasesLatestPath(ref), "application/vnd.github+json", token)
+	resp, err := getGitHubAPI(ctx, newHTTPSOnlyClient(30*time.Second), releasesLatestPath(ref), "application/vnd.github+json", token)
 	if err != nil {
 		return "", err
 	}
@@ -189,7 +193,18 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			rf, err := entity.LoadRealm(realmPath)
+			manifest, err := os.ReadFile(realmPath)
+			if err != nil {
+				return fmt.Errorf("loading realm.json: %w", err)
+			}
+			// SEC-004: before anything is planned or looked up from it. --check
+			// only reports, like realm dep list, so it doesn't validate.
+			if !check {
+				if err := newSchemaValidator(cmd.Context()).validateRealmManifest(realmPath, manifest); err != nil {
+					return fmt.Errorf("validating before planning: %w", err)
+				}
+			}
+			rf, err := entity.ParseRealm(manifest)
 			if err != nil {
 				return fmt.Errorf("loading realm.json: %w", err)
 			}
@@ -236,7 +251,7 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("reading realm.json: %w", err)
 			}
-			err = loadAndWriteRealm(realmPath, func(cur []entity.RealmDep) ([]entity.RealmDep, error) {
+			err = loadAndWriteRealm(cmd.Context(), realmPath, func(cur []entity.RealmDep) ([]entity.RealmDep, error) {
 				for _, up := range ups {
 					for i := range cur {
 						if cur[i].RealmID == up.realmID {

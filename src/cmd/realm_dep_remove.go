@@ -38,7 +38,7 @@ func newRealmDepRemoveCmd() *cobra.Command {
 				return err
 			}
 
-			err := loadAndWriteRealm(realmPath, func(deps []entity.RealmDep) ([]entity.RealmDep, error) {
+			err := loadAndWriteRealm(cmd.Context(), realmPath, func(deps []entity.RealmDep) ([]entity.RealmDep, error) {
 				filtered := make([]entity.RealmDep, 0, len(deps))
 				found := false
 				for _, d := range deps {

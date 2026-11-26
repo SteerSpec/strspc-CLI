@@ -55,6 +55,9 @@ func newSyncCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := checkLocalSources(cwd, entries); err != nil {
+				return err
+			}
 
 			var ttl time.Duration
 			if cfg.Cache.TTL != "" {

@@ -76,7 +76,7 @@ Examples:
 				return err
 			}
 			var realmID string
-			err = loadModifyWriteRealm(realmPath, func(rf *entity.RealmFile) error {
+			err = loadModifyWriteRealm(cmd.Context(), realmPath, func(rf *entity.RealmFile) error {
 				if err := refuseSubRealmContributors(dir, rf); err != nil {
 					return err
 				}
@@ -142,7 +142,7 @@ Example:
 				realmID string
 				removed entity.Contributor
 			)
-			err = loadModifyWriteRealm(realmPath, func(rf *entity.RealmFile) error {
+			err = loadModifyWriteRealm(cmd.Context(), realmPath, func(rf *entity.RealmFile) error {
 				if err := refuseSubRealmContributors(dir, rf); err != nil {
 					return err
 				}
