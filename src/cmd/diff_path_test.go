@@ -105,6 +105,23 @@ func TestDiffFileRefusesJSONNameInAnotherCase(t *testing.T) {
 	testutil.AssertContains(t, err.Error(), "must end in .json")
 }
 
+// Single-file mode reads a regular file only: a pipe could block the read.
+func TestDiffFileRefusesPipe(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no named pipes in the file system on Windows")
+	}
+	dir := newPublishedRepo(t, "rules/ENT.json")
+	p := filepath.Join(dir, "rules", "PIPE.json")
+	if out, err := exec.Command("mkfifo", p).CombinedOutput(); err != nil {
+		t.Skipf("mkfifo: %v\n%s", err, out)
+	}
+	_, err := runDiff(t, p)
+	if err == nil {
+		t.Fatal("diff passed")
+	}
+	testutil.AssertContains(t, err.Error(), "is not a regular file")
+}
+
 // A base file named in another case, which the resolver refused, may be
 // deleted: the resolver read nothing from it.
 func TestDiffAllowsDeletingJSONNameInAnotherCase(t *testing.T) {

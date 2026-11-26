@@ -117,6 +117,10 @@ func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, e
 		// The resolver's walk refuses it rather than skip it.
 		return nil, fmt.Errorf("%s: a JSON file name must end in .json", headPath)
 	}
+	// A regular file only: a pipe or a device could block the read.
+	if fi, err := os.Lstat(headPath); err == nil && !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", headPath)
+	}
 	headData, err := os.ReadFile(headPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", headPath, err)
