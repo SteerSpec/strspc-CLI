@@ -15,6 +15,7 @@ import (
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval"
+	"github.com/SteerSpec/strspc-manager/src/ruleeval/claude"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval/prompt"
 )
 
@@ -271,7 +272,7 @@ func TestOneVerifyGroup(t *testing.T) {
 	if in[0].EntityID != "CFG" || in[0].Owner != "" {
 		t.Error("the inputs must not be modified")
 	}
-	if est := estimateVerify(nil, got); est.RuleGroups != 1 {
+	if est := estimateVerify(nil, got, claude.DefaultMaxRulesPerRequest); est.RuleGroups != 1 {
 		t.Errorf("rule groups = %d, want 1", est.RuleGroups)
 	}
 }
@@ -284,7 +285,7 @@ func TestEstimateVerify(t *testing.T) {
 	}
 	inputs = append(inputs, ruleeval.RuleInput{EntityID: "SMALL", Notes: []entity.Note{{Content: "a note"}}})
 
-	est := estimateVerify(files, inputs)
+	est := estimateVerify(files, inputs, claude.DefaultMaxRulesPerRequest)
 	if est.Files != 3 || est.Bytes != len("package a\n# R\n") {
 		t.Errorf("files/bytes = %d/%d", est.Files, est.Bytes)
 	}
@@ -301,7 +302,7 @@ func TestEstimateVerify(t *testing.T) {
 
 	// ~500k tokens: several parts, each read per rule group, then one judgement per group.
 	big := []ruleeval.File{{Path: "big.txt", Content: strings.Repeat("x\n", 500000)}}
-	got := estimateVerify(big, []ruleeval.RuleInput{{EntityID: "E"}})
+	got := estimateVerify(big, []ruleeval.RuleInput{{EntityID: "E"}}, claude.DefaultMaxRulesPerRequest)
 	if got.EstParts < 5 || got.EstRequests != got.EstParts+1 {
 		t.Errorf("parts/requests for a large tree = %d/%d", got.EstParts, got.EstRequests)
 	}
@@ -311,7 +312,7 @@ func TestEstimateVerify(t *testing.T) {
 	for i := range heavy {
 		heavy[i] = ruleeval.RuleInput{EntityID: "E", Rule: entity.Rule{ID: fmt.Sprintf("E-%03d", i+1), Body: strings.Repeat("y", 60000)}}
 	}
-	got = estimateVerify(big, heavy)
+	got = estimateVerify(big, heavy, claude.DefaultMaxRulesPerRequest)
 	if got.RuleGroups != 3 || got.EstRequests != got.EstParts*3+3 {
 		t.Errorf("groups/parts/requests for heavy rules = %d/%d/%d", got.RuleGroups, got.EstParts, got.EstRequests)
 	}
@@ -324,18 +325,18 @@ func TestPlanVerifyRules(t *testing.T) {
 		return ruleeval.RuleInput{EntityID: "E", Rule: entity.Rule{ID: id, Body: strings.Repeat("y", bodyBytes)}}
 	}
 	small := []ruleeval.RuleInput{rule("E-1", 10), rule("E-2", 10)}
-	groups, budget := planVerifyRules(prompt.AuditSystem(), nil, [][]ruleeval.RuleInput{small})
+	groups, budget := planVerifyRules(prompt.AuditSystem(), nil, [][]ruleeval.RuleInput{small}, claude.DefaultMaxRulesPerRequest)
 	if groups != 1 || budget <= 0 || budget >= 100000 {
 		t.Errorf("small rules: groups %d, budget %d", groups, budget)
 	}
-	withSchema, schemaBudget := planVerifyRules(prompt.AuditExtractSystem(), prompt.ExtractSchema, [][]ruleeval.RuleInput{small})
+	withSchema, schemaBudget := planVerifyRules(prompt.AuditExtractSystem(), prompt.ExtractSchema, [][]ruleeval.RuleInput{small}, claude.DefaultMaxRulesPerRequest)
 	if withSchema != 1 || schemaBudget >= budget {
 		t.Errorf("the extract schema must cost budget: %d vs %d", schemaBudget, budget)
 	}
 
 	// Two rules of ~30k tokens share no group of ~48k; one of ~60k fits none.
 	mixed := []ruleeval.RuleInput{rule("E-1", 60000), rule("E-2", 60000), rule("E-3", 120000)}
-	if groups, _ := planVerifyRules(prompt.AuditSystem(), nil, [][]ruleeval.RuleInput{mixed}); groups != 2 {
+	if groups, _ := planVerifyRules(prompt.AuditSystem(), nil, [][]ruleeval.RuleInput{mixed}, claude.DefaultMaxRulesPerRequest); groups != 2 {
 		t.Errorf("heavy rules: groups %d, want 2 (the oversize rule is sent in none)", groups)
 	}
 
@@ -344,7 +345,7 @@ func TestPlanVerifyRules(t *testing.T) {
 	for i := range many {
 		many[i] = rule(fmt.Sprintf("E-%d", i), 10)
 	}
-	if groups, _ := planVerifyRules(prompt.AuditSystem(), nil, [][]ruleeval.RuleInput{many, small}); groups != 3 {
+	if groups, _ := planVerifyRules(prompt.AuditSystem(), nil, [][]ruleeval.RuleInput{many, small}, claude.DefaultMaxRulesPerRequest); groups != 3 {
 		t.Errorf("41 + 2 rules in two entities: groups %d, want 3", groups)
 	}
 }
@@ -1013,5 +1014,102 @@ func TestRuleVerifyReportsSkippedFiles(t *testing.T) {
 	assertExit(t, err, exitOK)
 	if !strings.Contains(human, "Skipped: 1 tracked file(s) not read") {
 		t.Errorf("human output missing the skipped count:\n%s", human)
+	}
+}
+
+// grouperStub is a batch provider that reports its rules-per-request cap.
+type grouperStub struct {
+	batchStubProvider
+	max int
+}
+
+func (g *grouperStub) MaxRulesPerRequest() int { return g.max }
+
+// The estimate groups rules by the cap the provider reports, and by the
+// Claude default when it reports none or isn't built (--dry-run).
+func TestMaxRulesPerRequest(t *testing.T) {
+	for _, tc := range []struct {
+		p    ruleeval.Provider
+		want int
+	}{
+		{nil, claude.DefaultMaxRulesPerRequest},
+		{&batchStubProvider{}, claude.DefaultMaxRulesPerRequest},
+		{&grouperStub{max: 3}, 3},
+		{&grouperStub{}, claude.DefaultMaxRulesPerRequest},
+	} {
+		if got := maxRulesPerRequest(tc.p); got != tc.want {
+			t.Errorf("maxRulesPerRequest(%T) = %d, want %d", tc.p, got, tc.want)
+		}
+	}
+	rules := make([]ruleeval.RuleInput, 7)
+	for i := range rules {
+		rules[i] = ruleeval.RuleInput{EntityID: "E", Rule: entity.Rule{ID: fmt.Sprintf("E-%03d", i+1), Body: "MUST x"}}
+	}
+	if groups, _ := planVerifyRules(prompt.AuditSystem(), nil, [][]ruleeval.RuleInput{rules}, 3); groups != 3 {
+		t.Errorf("7 rules at 3 per request: %d groups, want 3", groups)
+	}
+}
+
+// refusingStub is a batch provider whose API refuses to ask about some
+// rules (claude.ErrSchemaTooLarge, GH #322) or fails part of the tree.
+type refusingStub struct {
+	batchStubProvider
+	refused []string
+	partial bool
+}
+
+func (r *refusingStub) EvaluateBatch(ctx context.Context, req ruleeval.BatchRequest) (*ruleeval.BatchResponse, error) { //nolint:gocritic // ruleeval.BatchProvider signature
+	out, err := r.batchStubProvider.EvaluateBatch(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range r.refused {
+		delete(out.Verdicts, id)
+		out.Errors = append(out.Errors, fmt.Errorf("rule %s was not evaluated: %w", id, claude.ErrSchemaTooLarge))
+	}
+	if r.partial {
+		out.Errors = append(out.Errors, errors.New("a hunk exceeds the input budget"))
+	}
+	return out, nil
+}
+
+// A rule the API refuses to ask about is unknown; the others of its request
+// keep their verdicts. Any other partial failure still leaves every rule of
+// the request unknown.
+func TestRuleVerifySchemaTooLargeRule(t *testing.T) {
+	for _, partial := range []bool{false, true} {
+		dir := setupVerifyRepo(t, "claude")
+		stubEvalProvider(t, &refusingStub{
+			batchStubProvider: batchStubProvider{stubProvider: stubProvider{verdicts: map[string]*ruleeval.EvalResponse{
+				"TST-001": {Verdict: ruleeval.Compliant, Explanation: "fine", Confidence: 0.9},
+				"TST-002": {Verdict: ruleeval.Compliant, Explanation: "fine", Confidence: 0.9},
+			}}},
+			refused: []string{"TST-002"},
+			partial: partial,
+		}, nil)
+
+		out, err := runVerifyCmd(t, "TST-001", "TST-002", "--project", dir, "--format", "json")
+		if err == nil {
+			t.Fatalf("partial=%v: verify passed with a rule unevaluated:\n%s", partial, out)
+		}
+		vo := decodeVerify(t, out)
+		got := verdictsOf(&vo)
+		want := verifyCompliant
+		if partial {
+			want = verifyUnknown
+		}
+		if got["TST-001"] != want || got["TST-002"] != verifyUnknown {
+			t.Errorf("partial=%v: verdicts = %v, want TST-001 %s and TST-002 unknown", partial, got, want)
+		}
+	}
+}
+
+func TestHasPartialFailure(t *testing.T) {
+	refused := fmt.Errorf("rule X: %w", claude.ErrSchemaTooLarge)
+	if hasPartialFailure(nil) || hasPartialFailure([]error{refused, refused}) {
+		t.Error("refusals alone are not a partial failure")
+	}
+	if !hasPartialFailure([]error{refused, errors.New("hunk too large")}) {
+		t.Error("another error is")
 	}
 }
