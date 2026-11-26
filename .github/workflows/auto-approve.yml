@@ -84,7 +84,7 @@ on:
   # the concurrency group. Delete this trigger only if all your gating checks
   # come from third-party apps rather than Actions.
   workflow_run:
-    workflows: ['CI', 'PR title']
+    workflows: ['CI', 'PR title', 'Security']
     types: [completed]
   # THE SWEEP: the fallback for an event that never arrives. GitHub does not
   # always deliver the event that should re-evaluate a PR: CI's workflow_run can
