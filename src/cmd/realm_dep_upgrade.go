@@ -339,17 +339,15 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			var synced []schemaSync
 			var cfgPin *configPin
 			rollback := func() error {
-				// Through replaceFile, as the upgrade wrote it: atomic, keeping
-				// the file's mode, and never through a link.
-				if rerr := replaceFile(realmPath, original, "realm.json"); rerr != nil {
-					return rerr
-				}
+				// Every step is attempted, so one that fails cannot leave the
+				// rest upgraded. Through replaceFile, as the upgrade wrote it:
+				// atomic, keeping the file's mode, and never through a link.
+				errs := []error{replaceFile(realmPath, original, "realm.json")}
 				if cfgPin != nil {
-					if rerr := cfgPin.write(cfgPin.original); rerr != nil {
-						return rerr
-					}
+					errs = append(errs, cfgPin.write(cfgPin.original))
 				}
-				return restoreSchemas(dir, synced)
+				errs = append(errs, restoreSchemas(dir, synced))
+				return errors.Join(errs...)
 			}
 			for _, up := range ups {
 				s, serr := syncCoreSchemas(cmd.Context(), dir, &up, rf.SubRealms)

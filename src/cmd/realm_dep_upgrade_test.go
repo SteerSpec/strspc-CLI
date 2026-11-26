@@ -682,3 +682,51 @@ func setupUpgradeStubs(t *testing.T, latest string) {
 	latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) { return latest, nil }
 	validateUpgradedRealm = func(context.Context, string) *result.Result { return &result.Result{} }
 }
+
+func TestRealmDepUpgradeStopsAtBlockedNearestConfig(t *testing.T) {
+	parent := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(parent, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := withRepoConfigNoGit(t, parent) // a regular config in the repository root
+	dir := filepath.Join(parent, "rules")
+	if err := os.MkdirAll(filepath.Join(dir, ".strspc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(upgradeRealmJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(cfg, filepath.Join(dir, ".strspc", "config.yaml")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	setupUpgradeStubs(t, "v9.9.9")
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := readFile(t, cfg); got != upgradeConfigYAML {
+		t.Errorf("an ancestor's config was rewritten past a blocked nearest one: %q", got)
+	}
+}
+
+func TestRealmDepUpgradeFailsOnConfigLayoutItCannotRewrite(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg := withRepoConfig(t, dir)
+	flow := "rules: [{source: github://SteerSpec/strspc-rules@v1.8.0/rules/core, scope: global}]\n"
+	if err := os.WriteFile(cfg, []byte(flow), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := readFile(t, filepath.Join(dir, "realm.json"))
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected an error: the config pin cannot be rewritten")
+	}
+	testutil.AssertContains(t, err.Error(), "update it by hand")
+	if got := readFile(t, filepath.Join(dir, "realm.json")); got != before {
+		t.Errorf("realm.json not restored:\n%s", got)
+	}
+	if got := readFile(t, cfg); got != flow {
+		t.Errorf("config.yaml changed: %q", got)
+	}
+}

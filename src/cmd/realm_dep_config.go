@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+
+	"gopkg.in/yaml.v3"
 )
 
 // configRel is where a repository keeps its SteerSpec configuration.
@@ -64,23 +66,46 @@ func findRepoConfig(dir string) string {
 		candidates = candidates[:1]
 	}
 	for _, c := range candidates {
-		if hasRegularConfig(c) {
+		switch configAt(c) {
+		case configRegular:
 			return c
+		case configBlocked:
+			// The nearest config is there but unusable (a link, or behind
+			// one): stop rather than rewrite some ancestor's config instead.
+			return ""
 		}
 	}
 	return ""
 }
 
-// hasRegularConfig reports whether root holds a regular .strspc/config.yaml,
-// looked up through an os.Root so links out of root are refused.
-func hasRegularConfig(root string) bool {
+type configState int
+
+const (
+	configNone configState = iota
+	configRegular
+	configBlocked
+)
+
+// configAt reports whether root holds a regular .strspc/config.yaml, nothing,
+// or something that must not be followed. It looks through an os.Root so links
+// out of root are refused.
+func configAt(root string) configState {
 	r, err := os.OpenRoot(root)
 	if err != nil {
-		return false
+		return configNone
 	}
 	defer func() { _ = r.Close() }()
 	fi, err := r.Lstat(configRel)
-	return err == nil && fi.Mode().IsRegular()
+	switch {
+	case err == nil && fi.Mode().IsRegular():
+		return configRegular
+	case err == nil:
+		return configBlocked
+	case os.IsNotExist(err):
+		return configNone
+	default:
+		return configBlocked
+	}
 }
 
 // planConfigPin rewrites, in the text of the repository's config.yaml, each
@@ -111,8 +136,34 @@ func planConfigPin(dir string, ups []depUpgrade) (*configPin, error) {
 		re := regexp.MustCompile(`(?m)^(\s*(?:-\s+)?source:\s*["']?)` + regexp.QuoteMeta(up.oldSource) + `(["']?\s*(?:#.*)?)$`)
 		updated = re.ReplaceAll(updated, []byte("${1}"+up.source+"${2}"))
 	}
+	if err := checkConfigPinsMoved(updated, ups); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	if bytes.Equal(updated, original) {
 		return nil, nil
 	}
 	return &configPin{root: root, path: path, original: original, updated: updated}, nil
+}
+
+// checkConfigPinsMoved fails when a rule source in the (rewritten) config still
+// names an upgraded dependency's old source. The text edit only recognises
+// block-style entries, so a flow-style one, for example, would otherwise stay
+// on the old release while the upgrade reports success.
+func checkConfigPinsMoved(data []byte, ups []depUpgrade) error {
+	var cfg struct {
+		Rules []struct {
+			Source string `yaml:"source"`
+		} `yaml:"rules"`
+	}
+	if yaml.Unmarshal(data, &cfg) != nil {
+		return nil // not parseable here; the schema check reports it
+	}
+	for _, r := range cfg.Rules {
+		for i := range ups {
+			if ups[i].oldSource != "" && ups[i].oldSource != ups[i].source && r.Source == ups[i].oldSource {
+				return fmt.Errorf("still pins %s in a layout the upgrade cannot rewrite (flow style or similar); update it by hand", sanitizeLine(r.Source))
+			}
+		}
+	}
+	return nil
 }
