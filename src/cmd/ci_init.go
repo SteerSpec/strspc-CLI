@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -43,6 +44,38 @@ jobs:
       path: %[2]s
       strict: true
 %[4]s`
+
+// realmDepsBumpTemplate opens a pull request when a dependency of the Realm has
+// a newer release. Dependabot and Renovate cannot read realm.json. The slots
+// are the workflow ref, the realm path and the optional cli-version input.
+const realmDepsBumpTemplate = `name: strspc deps bump
+
+# Opens a pull request when a dependency of this realm has a newer release.
+# Dependabot and Renovate cannot read realm.json, so this does it. It never
+# merges.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    uses: SteerSpec/.github/.github/workflows/strspc-deps-bump.yml@%[1]s
+    with:
+      path: %[2]s
+%[3]s    secrets:
+      # A token with contents and pull-requests write, so the bump pull
+      # request triggers this repository's checks. Add it as a repository
+      # secret named STRSPC_GITHUB_TOKEN.
+      STRSPC_GITHUB_TOKEN: ${{ secrets.STRSPC_GITHUB_TOKEN }}
+      # Optional: read-only token for dependencies in private repositories.
+      STRSPC_READ_TOKEN: ${{ secrets.STRSPC_READ_TOKEN }}
+`
 
 // consumerWorkflowTemplate checks a change against the rules in
 // .strspc/config.yaml. Without ANTHROPIC_API_KEY only structural checks run.
@@ -97,6 +130,7 @@ func newCIInitCmd() *cobra.Command {
 		rulesSource string
 		workflowRef string
 		cliVersion  string
+		noDepsBump  bool
 		branch      string
 		force       bool
 		dryRun      bool
@@ -150,7 +184,8 @@ Examples:
 			if branch == "" {
 				branch = detectDefaultBranch(targetDir)
 			}
-			files := ciFiles(kind, rulesPath, rulesSource, workflowRef, branch, cliVersion)
+			depsBump := kind == "realm" && !noDepsBump && realmHasDependencies(targetDir, rulesPath)
+			files := ciFiles(kind, rulesPath, rulesSource, workflowRef, branch, cliVersion, depsBump)
 
 			for _, f := range files {
 				if err := checkCIDest(targetDir, f.path, force); err != nil {
@@ -189,6 +224,10 @@ Examples:
 				writeln(w, brandStyle.Render("Wrote "+dest))
 			}
 
+			if !dryRun && depsBump {
+				writeln(w)
+				writeln(w, descStyle.Render("Add a STRSPC_GITHUB_TOKEN repository secret (contents and pull-requests write) so dependency bump pull requests trigger checks."))
+			}
 			if !dryRun && kind == "consumer" {
 				writeln(w)
 				writeln(w, descStyle.Render("Add an ANTHROPIC_API_KEY repository secret to enable AI evaluation."))
@@ -203,6 +242,7 @@ Examples:
 	cmd.Flags().StringVar(&workflowRef, "workflow-ref", ciWorkflowRef, "ref of SteerSpec/.github the workflow calls")
 	cmd.Flags().StringVar(&cliVersion, "cli-version", "", "strspc release the workflow installs: X.Y.Z or latest (default: latest)")
 	cmd.Flags().StringVar(&branch, "branch", "", "branch the workflow runs for (default: the repository's default branch, else main)")
+	cmd.Flags().BoolVar(&noDepsBump, "no-deps-bump", false, "do not write the dependency bump workflow (realm kind; written only when the realm declares dependencies)")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the files instead of writing them")
 
@@ -239,18 +279,38 @@ func detectCIKind(dir, rulesPath string) string {
 	return "consumer"
 }
 
+// realmHasDependencies reports whether the realm manifest under rulesPath
+// declares at least one dependency; only then is there anything to bump.
+func realmHasDependencies(dir, rulesPath string) bool {
+	data, err := os.ReadFile(filepath.Join(dir, rulesPath, "realm.json"))
+	if err != nil {
+		return false
+	}
+	var m struct {
+		Dependencies []json.RawMessage `json:"dependencies"`
+	}
+	return json.Unmarshal(data, &m) == nil && len(m.Dependencies) > 0
+}
+
 // ciFiles returns the files to write for a repository kind. An empty
 // cliVersion leaves the input out, so the workflow's own default applies.
-func ciFiles(kind, rulesPath, rulesSource, workflowRef, branch, cliVersion string) []ciFile {
+func ciFiles(kind, rulesPath, rulesSource, workflowRef, branch, cliVersion string, depsBump bool) []ciFile {
 	var versionInput string
 	if cliVersion != "" {
 		versionInput = fmt.Sprintf("      cli-version: %s\n", cliVersion)
 	}
 	if kind == "realm" {
-		return []ciFile{{
+		files := []ciFile{{
 			path:    filepath.Join(".github", "workflows", "strspc-lint.yml"),
 			content: fmt.Sprintf(realmWorkflowTemplate, workflowRef, rulesPath, branch, versionInput),
 		}}
+		if depsBump {
+			files = append(files, ciFile{
+				path:    filepath.Join(".github", "workflows", "strspc-deps-bump.yml"),
+				content: fmt.Sprintf(realmDepsBumpTemplate, workflowRef, rulesPath, versionInput),
+			})
+		}
+		return files
 	}
 	var withBlock string
 	if versionInput != "" {

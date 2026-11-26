@@ -281,3 +281,59 @@ func TestCIInitWriteErrors(t *testing.T) {
 		}
 	})
 }
+
+func writeCIRealm(t *testing.T, dir, manifest string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, "rules"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "rules", "realm.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCIInitRealmWithDependenciesGetsDepsBump(t *testing.T) {
+	dir := t.TempDir()
+	writeCIRealm(t, dir, `{"dependencies":[{"realm":"dev.steerspec.core"}]}`)
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", "--cli-version", "1.32.0", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wf := readFile(t, filepath.Join(dir, ".github", "workflows", "strspc-deps-bump.yml"))
+	for _, want := range []string{"strspc-deps-bump.yml@v1", "path: rules/", "      cli-version: 1.32.0\n    secrets:", "STRSPC_GITHUB_TOKEN", "cron:"} {
+		if !strings.Contains(wf, want) {
+			t.Errorf("deps-bump workflow missing %q:\n%s", want, wf)
+		}
+	}
+	if !strings.Contains(out, "STRSPC_GITHUB_TOKEN") {
+		t.Errorf("output should mention the token secret:\n%s", out)
+	}
+}
+
+func TestCIInitRealmWithoutDependenciesSkipsDepsBump(t *testing.T) {
+	for name, manifest := range map[string]string{"none": `{}`, "empty": `{"dependencies":[]}`} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeCIRealm(t, dir, manifest)
+			if _, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", dir); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(dir, ".github", "workflows", "strspc-deps-bump.yml")); err == nil {
+				t.Error("realm without dependencies should not get a deps-bump workflow")
+			}
+		})
+	}
+}
+
+func TestCIInitNoDepsBumpFlag(t *testing.T) {
+	dir := t.TempDir()
+	writeCIRealm(t, dir, `{"dependencies":[{"realm":"dev.steerspec.core"}]}`)
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "ci", "init", "--no-deps-bump", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".github", "workflows", "strspc-deps-bump.yml")); err == nil {
+		t.Error("--no-deps-bump should skip the workflow")
+	}
+}
