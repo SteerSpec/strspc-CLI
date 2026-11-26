@@ -1,0 +1,36 @@
+name: Usage snapshot
+
+# Records how strspc-CLI is used, from data GitHub already keeps
+# (scripts/usage-report.sh): release download counts per version and
+# platform, and the cli-version each SteerSpec repository's workflows pin.
+# The CLI collects nothing. Counts are cumulative, so two snapshots give the
+# downloads in between. Nothing is pushed: the snapshot is an artifact, and
+# the table goes to the job summary. Scheduled runs use the default branch.
+
+on:
+  schedule:
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    env:
+      # The workflow token only: this repository is public, so the summary
+      # and artifact must hold public data, and the script lists public
+      # repositories only. No other secret reaches a dispatched ref's code.
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Report
+        run: |
+          scripts/usage-report.sh --releases 20 --json > usage.json
+          scripts/usage-report.sh --from usage.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: usage-${{ github.run_id }}
+          path: usage.json
+          retention-days: 90
