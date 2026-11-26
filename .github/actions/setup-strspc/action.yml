@@ -1,6 +1,6 @@
 name: Setup strspc
 description: >
-  Install the strspc CLI from a GitHub release with checksum verification.
+  Install the strspc CLI from a GitHub release with checksum and build-provenance verification.
   Fails if the download, the checksum or the version check fails.
 
 inputs:
@@ -111,6 +111,53 @@ runs:
           echo "${EXPECTED}  ${TMP}/${ARCHIVE}" | sha256sum -c -
         else
           echo "${EXPECTED}  ${TMP}/${ARCHIVE}" | shasum -a 256 -c -
+        fi
+
+        # The checksum comes from the same release as the archive, so it proves
+        # integrity, not origin. Releases after ATTESTED_AFTER carry a build
+        # provenance attestation: verify that the archive was built by this
+        # repository's release workflow at the release tag, on a GitHub-hosted
+        # runner. Older releases predate it and only warn.
+        ATTESTED_AFTER="1.43.0"
+        # Portable X.Y.Z comparison (BSD sort on macOS has no -V).
+        newer_than() {
+          local IFS=. i
+          local -a a=($1) b=($2)
+          for i in 0 1 2; do
+            [ "${a[i]}" -gt "${b[i]}" ] && return 0
+            [ "${a[i]}" -lt "${b[i]}" ] && return 1
+          done
+          return 1
+        }
+        verify_attestation() {
+          gh attestation verify "${TMP}/${ARCHIVE}" --repo "${REPO}" \
+            --signer-workflow "${REPO}/.github/workflows/release.yml" \
+            --source-ref "refs/tags/v${VERSION}" --deny-self-hosted-runners 2>&1 >/dev/null
+        }
+        if newer_than "$VERSION" "$ATTESTED_AFTER"; then
+          # The attestation is published a moment after the release assets, so
+          # a release created seconds ago may not have one yet: retry.
+          ATTEMPTS=6
+        else
+          ATTEMPTS=1
+        fi
+        ATTEST_OK=0
+        for attempt in $(seq 1 "$ATTEMPTS"); do
+          if ATTEST_ERR="$(verify_attestation)"; then
+            ATTEST_OK=1
+            break
+          fi
+          if [ "$attempt" -lt "$ATTEMPTS" ]; then
+            echo "attestation not verified (attempt ${attempt}/${ATTEMPTS}) — retrying in 15s" >&2
+            sleep 15
+          fi
+        done
+        if [ "$ATTEST_OK" = 0 ]; then
+          if newer_than "$VERSION" "$ATTESTED_AFTER"; then
+            echo "::error::build provenance verification failed for ${ARCHIVE}: ${ATTEST_ERR}" >&2
+            exit 1
+          fi
+          echo "::warning::strspc ${VERSION} predates build provenance attestations; only the checksum was verified."
         fi
 
         BIN="${RUNNER_TEMP}/strspc-bin"

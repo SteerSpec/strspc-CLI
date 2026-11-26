@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"path"
 	"sort"
@@ -223,7 +224,7 @@ func (r *verifyRun) run(ids []string, o *verifyOptions) error {
 		return r.verifyFail(exitConfig, err)
 	}
 	r.inputs = oneVerifyGroup(selected)
-	est := estimateVerify(r.files, evaluableInputs(r.inputs))
+	est := estimateVerify(r.files, evaluableInputs(r.inputs), maxRulesPerRequest(r.provider))
 
 	if o.dryRun {
 		vo := r.verifyOutput(exitOK, est, nil)
@@ -336,7 +337,7 @@ func oneVerifyGroup(inputs []ruleeval.RuleInput) []ruleeval.RuleInput {
 // largest group leaves (packVerifyParts). A set that fits one request is
 // judged as a diff would be; a larger one is planned again with the
 // prompt and schema of an audit in parts.
-func estimateVerify(files []ruleeval.File, inputs []ruleeval.RuleInput) verifyEstimate {
+func estimateVerify(files []ruleeval.File, inputs []ruleeval.RuleInput, maxRules int) verifyEstimate {
 	est := verifyEstimate{Files: len(files), BytesByDir: map[string]int{}, PerRequestLimit: claude.DefaultMaxInputTokens}
 	sizes := make([]int, len(files))
 	for i, f := range files {
@@ -365,7 +366,7 @@ func estimateVerify(files []ruleeval.File, inputs []ruleeval.RuleInput) verifyEs
 		entities[i] = byEntity[id]
 	}
 
-	groups, budget := planVerifyRules(prompt.AuditSystem(), nil, entities)
+	groups, budget := planVerifyRules(prompt.AuditSystem(), nil, entities, maxRules)
 	est.RuleGroups, est.EstParts = groups, packVerifyParts(sizes, budget)
 	if est.EstParts <= 1 {
 		est.EstParts = 1
@@ -374,10 +375,23 @@ func estimateVerify(files []ruleeval.File, inputs []ruleeval.RuleInput) verifyEs
 	}
 	// Each part is read once per group to collect findings, then each group
 	// is judged on them.
-	groups, budget = planVerifyRules(prompt.AuditExtractSystem(), prompt.ExtractSchema, entities)
+	groups, budget = planVerifyRules(prompt.AuditExtractSystem(), prompt.ExtractSchema, entities, maxRules)
 	est.RuleGroups, est.EstParts = groups, packVerifyParts(sizes, budget)
 	est.EstRequests = est.EstParts*groups + groups
 	return est
+}
+
+// maxRulesPerRequest is the most rules one request of p carries, as p
+// reports it (ruleeval.RuleGrouper); the Claude provider's default when p
+// doesn't report it, or isn't built yet (--dry-run). The provider may still
+// split a group further, on its token budget or when the API refuses a
+// group's output schema as too large, so the estimate is a lower bound on
+// groups.
+func maxRulesPerRequest(p ruleeval.Provider) int {
+	if g, ok := p.(ruleeval.RuleGrouper); ok && g.MaxRulesPerRequest() > 0 {
+		return g.MaxRulesPerRequest()
+	}
+	return claude.DefaultMaxRulesPerRequest
 }
 
 // verifyOverheadTokens mirrors the Claude provider's reserve for message
@@ -386,11 +400,11 @@ const verifyOverheadTokens = 256
 
 // planVerifyRules mirrors the Claude provider's rule planning for one
 // request kind: each entity's rules are packed, in order, into groups of at
-// most DefaultMaxRulesPerRequest whose rendered rules and schema fit half
+// most maxRules whose rendered rules and schema fit half
 // the input left after the system prompt. It returns the number of groups
 // and the input budget left for files beside the largest. A rule too large
 // for any group is sent in none, as the provider reports it unevaluated.
-func planVerifyRules(system string, schema func([]string) map[string]any, entities [][]ruleeval.RuleInput) (groups, budget int) {
+func planVerifyRules(system string, schema func([]string) map[string]any, entities [][]ruleeval.RuleInput, maxRules int) (groups, budget int) {
 	available := claude.DefaultMaxInputTokens - claude.EstimateTokens(system) - verifyOverheadTokens
 	rulesBudget := available / 2
 	schemaCost := func(rules []ruleeval.RuleInput) int {
@@ -430,7 +444,7 @@ func planVerifyRules(system string, schema func([]string) map[string]any, entiti
 			if n > rulesBudget {
 				continue
 			}
-			if len(cur) >= claude.DefaultMaxRulesPerRequest || curTokens+n > rulesBudget {
+			if len(cur) >= maxRules || curTokens+n > rulesBudget {
 				flush()
 			}
 			cur = append(cur, rules[i])
@@ -717,8 +731,10 @@ func (r *verifyRun) verifyFail(code int, err error) error {
 // excerpt; this confirms it, and catches a miscount. The line is confirmed
 // when the reported line holds the excerpt, or corrected when the excerpt
 // occurs exactly once; with several other occurrences the model's line is
-// kept, unconfirmed, since picking one would be a guess. Only files that
-// were sent are consulted, so a path the model invents reads nothing.
+// kept, unconfirmed, since picking one would be a guess. An excerpt found
+// only once its HTML entities are decoded is replaced by the decoded text.
+// Only files that were sent are consulted, so a path the model invents
+// reads nothing.
 func relocateEvidence(rules []verifyRule, files []ruleeval.File) {
 	var lines map[string][]string // built on first use
 	for i := range rules {
@@ -734,9 +750,21 @@ func relocateEvidence(rules []verifyRule, files []ruleeval.File) {
 					lines[f.Path] = contentLines(f.Content)
 				}
 			}
-			line, ok := locateExcerpt(lines[path.Clean(ev.File)], needle, ev.Line)
+			fileLines := lines[path.Clean(ev.File)]
+			line, ok := locateExcerpt(fileLines, needle, ev.Line)
 			if !ok {
-				continue
+				// Models sometimes quote code HTML-escaped (`--&gt;` for
+				// `-->`). When only the decoded excerpt is in the file, it
+				// is the quote, and the record keeps it as the file has it.
+				decoded := html.UnescapeString(ev.Excerpt)
+				decodedNeedle := excerptNeedle(decoded)
+				if decoded == ev.Excerpt || decodedNeedle == "" {
+					continue
+				}
+				if line, ok = locateExcerpt(fileLines, decodedNeedle, ev.Line); !ok {
+					continue
+				}
+				ev.Excerpt = decoded
 			}
 			if line != ev.Line {
 				ev.ReportedLine = ev.Line
@@ -964,7 +992,7 @@ func (p *verdictBatchProvider) EvaluateBatch(ctx context.Context, req ruleeval.B
 		for id, v := range resp.Verdicts {
 			p.rec.put(id, v)
 		}
-		if len(resp.Errors) > 0 {
+		if hasPartialFailure(resp.Errors) {
 			ids := make([]string, len(req.Inputs))
 			for i := range req.Inputs {
 				ids[i] = req.Inputs[i].Rule.ID
@@ -973,6 +1001,20 @@ func (p *verdictBatchProvider) EvaluateBatch(ctx context.Context, req ruleeval.B
 		}
 	}
 	return resp, err
+}
+
+// hasPartialFailure reports whether errs, a batch's non-fatal errors, may
+// have left a rule judged on part of the tree. A rule the API refused to
+// ask about (claude.ErrSchemaTooLarge, even alone) gets no verdict at all,
+// so it reports unknown by itself and says nothing about the other rules
+// of its request.
+func hasPartialFailure(errs []error) bool {
+	for _, err := range errs {
+		if !errors.Is(err, claude.ErrSchemaTooLarge) {
+			return true
+		}
+	}
+	return false
 }
 
 // auditStore is the evaluation cache as rule verify uses it: only what the

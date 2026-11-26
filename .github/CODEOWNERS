@@ -1,0 +1,11 @@
+# Files that decide which rules are enforced and how the gate runs.
+# strspc diff compares rule files only: a change to these could weaken
+# enforcement without a rule changing (strspc-manager SPEC §7.3). With
+# "Require review from Code Owners" on the develop and main rulesets, a
+# pull request that touches them needs cnslr-bt-chef's approval, not the
+# auto-approver's.
+/.strspc/config.yaml  @cnslr-bt-chef
+/rules/realm.json     @cnslr-bt-chef
+/.github/workflows/   @cnslr-bt-chef
+/.github/actions/     @cnslr-bt-chef
+/.github/CODEOWNERS   @cnslr-bt-chef

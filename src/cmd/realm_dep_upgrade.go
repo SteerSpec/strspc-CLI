@@ -157,11 +157,38 @@ func planDepUpgrade(ctx context.Context, dep entity.RealmDep, to string) (up *de
 	return &depUpgrade{realmID: dep.RealmID, from: dep.Version, to: next.String(), source: ref.String()}, "", nil
 }
 
+// depUpgradeReport is the --json output of realm dep upgrade.
+type depUpgradeReport struct {
+	// Check is true when nothing was written because --check was given.
+	Check bool `json:"check"`
+	// Applied is true when realm.json was rewritten and the realm validates.
+	Applied  bool                `json:"applied"`
+	Upgrades []depUpgradeEntry   `json:"upgrades"`
+	Skipped  []depUpgradeSkipped `json:"skipped"`
+	Synced   []string            `json:"synced"`
+	// Errors lists the validation errors of an upgrade that was rolled back.
+	Errors []string `json:"errors"`
+}
+
+type depUpgradeEntry struct {
+	RealmID string `json:"realm_id"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Source  string `json:"source"`
+}
+
+type depUpgradeSkipped struct {
+	RealmID string `json:"realm_id"`
+	Version string `json:"version"`
+	Reason  string `json:"reason"`
+}
+
 func newRealmDepUpgradeCmd() *cobra.Command {
 	var (
-		dir   string
-		to    string
-		check bool
+		dir     string
+		to      string
+		check   bool
+		jsonOut bool
 	)
 
 	cmd := &cobra.Command{
@@ -173,11 +200,13 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			"them (RM015). If validation fails, every file is restored and the command exits non-zero.\n\n" +
 			"Without realm_id every dependency is considered. Dependencies are never downgraded,\n" +
 			"and sources that are not github:// references are skipped. Private sources need GITHUB_TOKEN.\n\n" +
-			"With --check nothing is written; the command exits non-zero when an upgrade is available.\n\n" +
+			"With --check nothing is written; the command exits non-zero when an upgrade is available.\n" +
+			"With --json one JSON document is written to stdout (exit codes are unchanged).\n\n" +
 			"Examples:\n" +
 			"  strspc realm dep upgrade --dir rules\n" +
 			"  strspc realm dep upgrade dev.steerspec.core --to 1.11.0\n" +
-			"  strspc realm dep upgrade --check",
+			"  strspc realm dep upgrade --check\n" +
+			"  strspc realm dep upgrade --check --json",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -222,28 +251,54 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 				}
 			}
 
+			// In JSON mode the progress lines are dropped and one report is
+			// written instead; the exit code stays the same.
 			w := cmd.OutOrStdout()
+			text := w
+			if jsonOut {
+				text = io.Discard
+			}
+			report := depUpgradeReport{
+				Check:    check,
+				Upgrades: []depUpgradeEntry{},
+				Skipped:  []depUpgradeSkipped{},
+				Synced:   []string{},
+				Errors:   []string{},
+			}
+			emit := func() error {
+				if !jsonOut {
+					return nil
+				}
+				return writeJSONOutput(w, report)
+			}
 			var ups []depUpgrade
 			for _, d := range deps {
 				up, note, err := planDepUpgrade(cmd.Context(), d, to)
 				if err != nil {
-					return err
+					// Nothing is written yet; report what was planned so far.
+					report.Errors = append(report.Errors, sanitizeLine(err.Error()))
+					return errors.Join(err, emit())
 				}
 				// As in realm dep list, realm.json isn't validated yet.
 				id := printableRealmID(d.RealmID)
 				if up == nil {
-					writeln(w, descStyle.Render(sanitizeLine(fmt.Sprintf("  %s@%s: %s", id, d.Version, note))))
+					writeln(text, descStyle.Render(sanitizeLine(fmt.Sprintf("  %s@%s: %s", id, d.Version, note))))
+					report.Skipped = append(report.Skipped, depUpgradeSkipped{RealmID: sanitizeLine(id), Version: sanitizeLine(d.Version), Reason: note})
 					continue
 				}
-				writeln(w, cmdStyle.Render(sanitizeLine(fmt.Sprintf("  %s: %s -> %s", id, up.from, up.to))))
+				writeln(text, cmdStyle.Render(sanitizeLine(fmt.Sprintf("  %s: %s -> %s", id, up.from, up.to))))
+				report.Upgrades = append(report.Upgrades, depUpgradeEntry{RealmID: sanitizeLine(id), From: sanitizeLine(up.from), To: up.to, Source: sanitizeLine(up.source)})
 				ups = append(ups, *up)
 			}
 
 			if len(ups) == 0 {
-				writeln(w, brandStyle.Render("Dependencies are up to date"))
-				return nil
+				writeln(text, brandStyle.Render("Dependencies are up to date"))
+				return emit()
 			}
 			if check {
+				if err := emit(); err != nil {
+					return err
+				}
 				return fmt.Errorf("%d dependency upgrade(s) available", len(ups))
 			}
 
@@ -279,33 +334,51 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 				s, serr := syncCoreSchemas(cmd.Context(), dir, up, rf.SubRealms)
 				synced = append(synced, s...)
 				if serr != nil {
-					if rerr := rollback(); rerr != nil {
-						return fmt.Errorf("syncing schemas failed (%w) and restoring files failed: %w", serr, rerr)
+					// Roll back first, then report: an output failure must not
+					// leave the upgraded files behind.
+					rerr := rollback()
+					report.Errors = append(report.Errors, sanitizeLine(serr.Error()))
+					eerr := emit()
+					if rerr != nil {
+						return errors.Join(fmt.Errorf("syncing schemas failed (%w) and restoring files failed: %w", serr, rerr), eerr)
 					}
-					return fmt.Errorf("%w; files left unchanged", serr)
+					return errors.Join(fmt.Errorf("%w; files left unchanged", serr), eerr)
 				}
 			}
 			for _, s := range synced {
-				writeln(w, cmdStyle.Render(sanitizeLine("  synced "+filepath.Join(dir, s.path))))
+				writeln(text, cmdStyle.Render(sanitizeLine("  synced "+filepath.Join(dir, s.path))))
+				report.Synced = append(report.Synced, sanitizeLine(filepath.Join(dir, s.path)))
 			}
 
 			res := validateUpgradedRealm(cmd.Context(), dir)
 			if !res.OK() {
-				outputText(w, res)
-				if rerr := rollback(); rerr != nil {
-					return fmt.Errorf("upgrade breaks the realm and restoring files failed: %w", rerr)
+				if jsonOut {
+					for _, d := range res.Errors() {
+						report.Errors = append(report.Errors, sanitizeLine(d.Message))
+					}
+				} else {
+					outputText(w, res)
 				}
-				return fmt.Errorf("upgrade breaks the realm (%d error(s)); files left unchanged", len(res.Errors()))
+				// Roll back before reporting, so a failing output stream cannot
+				// bypass the all-or-nothing guarantee.
+				rerr := rollback()
+				eerr := emit()
+				if rerr != nil {
+					return errors.Join(fmt.Errorf("upgrade breaks the realm and restoring files failed: %w", rerr), eerr)
+				}
+				return errors.Join(fmt.Errorf("upgrade breaks the realm (%d error(s)); files left unchanged", len(res.Errors())), eerr)
 			}
 
-			writeln(w, brandStyle.Render(fmt.Sprintf("Upgraded %d dependency(ies); realm validates", len(ups))))
-			return nil
+			writeln(text, brandStyle.Render(fmt.Sprintf("Upgraded %d dependency(ies); realm validates", len(ups))))
+			report.Applied = true
+			return emit()
 		},
 	}
 
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
 	cmd.Flags().StringVar(&to, "to", "", "upgrade the named dependency to this version instead of the latest")
 	cmd.Flags().BoolVar(&check, "check", false, "only report available upgrades; exit non-zero if there are any")
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 
 	return cmd
 }
