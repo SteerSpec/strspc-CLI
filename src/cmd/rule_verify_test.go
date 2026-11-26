@@ -787,6 +787,49 @@ func TestRelocateEvidence(t *testing.T) {
 	}
 }
 
+// An excerpt the model returned HTML-escaped is confirmed against the
+// decoded text and recorded as the file has it (GH #321); one the file holds
+// escaped, as HTML does, is matched as quoted and kept.
+func TestRelocateEvidenceHTMLEscaped(t *testing.T) {
+	files := []ruleeval.File{
+		{Path: "m.go", Content: "package m\n\n" +
+			"var markerBeginRe = regexp.MustCompile(`<!--\\s*BEGIN:(\\S+)\\s*-->`)\n" +
+			"var markerEndRe   = regexp.MustCompile(`<!--\\s*END:(\\S+)\\s*-->`)\n" +
+			"x := a && b\n"},
+		{Path: "p.html", Content: "<p>if a &gt; b &amp;&amp; c</p>\n"},
+	}
+	ev := func(file string, line int, excerpt string) verifyEvidence {
+		return verifyEvidence{Location: ruleeval.Location{File: file, Line: line, Excerpt: excerpt}}
+	}
+	rules := []verifyRule{{Evidence: []verifyEvidence{
+		ev("m.go", 3, "markerBeginRe = regexp.MustCompile(`<!--\\s*BEGIN:(\\S+)\\s*--&gt;`)"), // escaped: confirmed, decoded
+		ev("m.go", 4, "markerEndRe   = regexp.MustCompile(`<!--\\s*END:(\\S+)\\s*-->`)"),      // as in the file
+		ev("m.go", 9, "x := a &amp;&amp; b"),                                                  // escaped and miscounted: corrected
+		ev("p.html", 1, "if a &gt; b &amp;&amp; c"),                                           // escaped in the file too: kept
+		ev("m.go", 3, "func h() &gt; nowhere"),                                                // nowhere, even decoded
+		ev("m.go", 3, "&lt;&lt;&lt;&lt;"),                                                     // too short once decoded
+	}}}
+	relocateEvidence(rules, files)
+	got := rules[0].Evidence
+	wants := []struct {
+		line      int
+		confirmed bool
+		excerpt   string
+	}{
+		{3, true, "markerBeginRe = regexp.MustCompile(`<!--\\s*BEGIN:(\\S+)\\s*-->`)"},
+		{4, true, "markerEndRe   = regexp.MustCompile(`<!--\\s*END:(\\S+)\\s*-->`)"},
+		{5, true, "x := a && b"},
+		{1, true, "if a &gt; b &amp;&amp; c"},
+		{3, false, "func h() &gt; nowhere"},
+		{3, false, "&lt;&lt;&lt;&lt;"},
+	}
+	for i, w := range wants {
+		if got[i].Line != w.line || got[i].LineConfirmed != w.confirmed || got[i].Excerpt != w.excerpt {
+			t.Errorf("evidence %d = line %d confirmed %v excerpt %q, want %+v", i, got[i].Line, got[i].LineConfirmed, got[i].Excerpt, w)
+		}
+	}
+}
+
 func TestRuleVerifyCorrectsEvidenceLine(t *testing.T) {
 	dir := setupVerifyRepo(t, "claude")
 	stub := &batchStubProvider{stubProvider: stubProvider{verdicts: map[string]*ruleeval.EvalResponse{
