@@ -935,7 +935,8 @@ func (v *verdictRecorder) report(inputs []ruleeval.RuleInput) []verifyRule {
 }
 
 // verdictProvider forwards to a provider and records its verdicts. It
-// forwards the optional Describer and UsageReporter capabilities too.
+// forwards the optional Describer, Auditor, ConflictChecker and
+// UsageReporter capabilities too.
 type verdictProvider struct {
 	inner ruleeval.Provider
 	rec   *verdictRecorder
@@ -970,6 +971,25 @@ func (p *verdictProvider) AuditPromptVersion() string {
 		return a.AuditPromptVersion()
 	}
 	return ""
+}
+
+// ConflictPromptVersion and CheckConflict forward ruleeval.ConflictChecker,
+// so verify checks a Draft override against the rule it overrides (RE007,
+// RUL-023) as check does. "" when the wrapped provider can't, which turns
+// the check off. Conflict answers are not verdicts, so nothing is recorded.
+func (p *verdictProvider) ConflictPromptVersion() string {
+	if c, ok := p.inner.(ruleeval.ConflictChecker); ok {
+		return c.ConflictPromptVersion()
+	}
+	return ""
+}
+
+func (p *verdictProvider) CheckConflict(ctx context.Context, req ruleeval.ConflictRequest) (*ruleeval.ConflictResponse, error) { //nolint:gocritic // ruleeval.ConflictChecker signature
+	c, ok := p.inner.(ruleeval.ConflictChecker)
+	if !ok {
+		return nil, errors.New("provider cannot check override conflicts")
+	}
+	return c.CheckConflict(ctx, req)
 }
 
 func (p *verdictProvider) Usage() ruleeval.Usage {

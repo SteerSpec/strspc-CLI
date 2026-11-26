@@ -44,6 +44,10 @@ type realmPin struct {
 // schema accepts a `structured` note (NTE-036 to NTE-039).
 var structuredMinCore = semver.MustParse("1.23.0")
 
+// overrideAckMinCore is the first dev.steerspec.core release whose entity
+// schema accepts an `override_ack` note (NTE-042).
+var overrideAckMinCore = semver.MustParse("1.26.0")
+
 // checkCoreAcceptsNoteType refuses to write a note of noteType into the entity
 // file at path when the core pin that validates it predates that type:
 // `standard` needs standardsMinCore and `structured` structuredMinCore. The
@@ -54,6 +58,8 @@ func checkCoreAcceptsNoteType(dir, path, noteType string) error {
 		return checkCoreAccepts(dir, path, "type: standard", standardsMinCore)
 	case entity.NoteTypeStructured:
 		return checkCoreAccepts(dir, path, "type: structured", structuredMinCore)
+	case entity.NoteTypeOverrideAck:
+		return checkCoreAccepts(dir, path, "type: override_ack", overrideAckMinCore)
 	}
 	return nil
 }

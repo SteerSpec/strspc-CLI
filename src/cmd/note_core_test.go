@@ -91,3 +91,25 @@ func TestNoteTypeOtherTypesUnchecked(t *testing.T) {
 		}
 	}
 }
+
+// An override_ack note (NTE-042) is refused under a core pin older than
+// 1.26.0, before strspc-manager checks that the rule overrides one.
+func TestOverrideAckRefusesOldCore(t *testing.T) {
+	dir := t.TempDir()
+	setupValidRealm(t, dir)
+	setupEntityFile(t, dir, "MYE", makeRule("MYE-001", "D", "The system MUST validate.", "github:alice"))
+	pinCore(t, dir, "1.25.0")
+	args := []string{"note", "add", "MYE-001", "--type", entity.NoteTypeOverrideAck, "--body", "0", "--added-by", "github:alice", "--dir", dir}
+	_, err := testutil.ExecuteCommand(NewRootCmd(), args...)
+	if err == nil || !strings.Contains(err.Error(), "`type: override_ack`") || !strings.Contains(err.Error(), overrideAckMinCore.String()) {
+		t.Errorf("under 1.25.0: err = %v, want the core pin refusal", err)
+	}
+
+	// From 1.26.0 the type passes the pin; the manager then refuses it on a
+	// rule that overrides nothing (NTE-043).
+	pinCore(t, dir, overrideAckMinCore.String())
+	_, err = testutil.ExecuteCommand(NewRootCmd(), args...)
+	if err == nil || strings.Contains(err.Error(), "`type: override_ack`") {
+		t.Errorf("under %s: err = %v, want the manager's refusal for a rule without overrides", overrideAckMinCore, err)
+	}
+}

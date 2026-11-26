@@ -63,7 +63,7 @@ a rule or note added in a branch can be reworded before it merges:
 
 ```bash
 strspc note update CFG-001/02 --body "Reworded after review." --base origin/develop
-strspc rule update CFG-003 --body "The CLI MUST write a YAML config file." --base origin/develop
+strspc rule update CFG-003 --body "The CLI MUST write a YAML config file." --base origin/develop # strspc-refs: ignore
 ```
 
 **Verifying before Implemented (experimental).** A rule should reach Implemented only once the code
@@ -201,6 +201,17 @@ strspc rule add SAVACCT --body "Withdrawals MUST be capped." --added-by github:a
 
 `entity add` also takes `--inherits`, and `rule supersede` takes `--overrides` to keep an override in
 force on the replacement rule.
+
+An override replaces the inherited rule only once it is Published or Implemented. While it is a Draft,
+the inherited rule stays in force. `check` and `rule verify` then ask the AI provider whether the two
+rules conflict, and report a conflict as an RE007 warning. To publish an override, a contributor first
+acknowledges it with an `override_ack` note whose body is the rule's current revision (RUL-022). That
+needs core 1.26.0 or later:
+
+```bash
+strspc note add SAVACCT-001 --type override_ack --body 0 --added-by github:alice # strspc-refs: ignore
+strspc rule promote SAVACCT-001
+```
 
 ## Realms and dependencies
 
