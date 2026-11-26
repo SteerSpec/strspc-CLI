@@ -116,9 +116,11 @@ runs:
         # The checksum comes from the same release as the archive, so it proves
         # integrity, not origin. Releases after ATTESTED_AFTER carry a build
         # provenance attestation: verify that the archive was built by this
-        # repository's release workflow. Older releases predate it and only warn.
+        # repository's release workflow at the release tag, on a GitHub-hosted runner. Older releases predate it and only warn.
         ATTESTED_AFTER="1.43.0"
-        ATTEST_ERR="$(gh attestation verify "${TMP}/${ARCHIVE}" --repo "${REPO}" 2>&1 >/dev/null)" && ATTEST_OK=1 || ATTEST_OK=0
+        ATTEST_ERR="$(gh attestation verify "${TMP}/${ARCHIVE}" --repo "${REPO}" \
+          --signer-workflow "${REPO}/.github/workflows/release.yml" \
+          --source-ref "refs/tags/v${VERSION}" --deny-self-hosted-runners 2>&1 >/dev/null)" && ATTEST_OK=1 || ATTEST_OK=0
         if [ "$ATTEST_OK" = 0 ]; then
           NEWEST="$(printf '%s\n%s\n' "$ATTESTED_AFTER" "$VERSION" | sort -V | tail -n1)"
           if [ "$NEWEST" = "$VERSION" ] && [ "$VERSION" != "$ATTESTED_AFTER" ]; then
