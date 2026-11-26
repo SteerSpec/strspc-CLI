@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.42.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.41.1...v1.42.0) (2026-11-26)
+
+
+### Features
+
+* **check:** skip Standard Realm rules in check and rule verify ([#340](https://github.com/SteerSpec/strspc-CLI/issues/340)) ([56f3d29](https://github.com/SteerSpec/strspc-CLI/commit/56f3d29743d826217e59ee3a495c1519cdbed6fe))
+* **schema:** add strspc schema and keep every schema in one cache ([#337](https://github.com/SteerSpec/strspc-CLI/issues/337)) ([57d87da](https://github.com/SteerSpec/strspc-CLI/commit/57d87da96d0855c28fff5adb6d50a3e9216a7eb5))
+
+
+### Bug Fixes
+
+* **config:** refuse network and device paths as local rule sources ([#339](https://github.com/SteerSpec/strspc-CLI/issues/339)) ([16742fb](https://github.com/SteerSpec/strspc-CLI/commit/16742fb1a0d31dabc1f02737a94edbf9f0f5d8a1))
+* **diff:** compare every file the resolver reads and refuse links and submodules ([#342](https://github.com/SteerSpec/strspc-CLI/issues/342)) ([38f710d](https://github.com/SteerSpec/strspc-CLI/commit/38f710d84ef47a527bb4cb65cf2aed5bbeff2a65))
+* **http:** require HTTPS for endpoints and the CLI's own requests, except to loopback ([#336](https://github.com/SteerSpec/strspc-CLI/issues/336)) ([01f921e](https://github.com/SteerSpec/strspc-CLI/commit/01f921e01074a1874a0158e22d6919ac6aa05b4d))
+* **realm:** resolve the realm in realm validate as check does ([#341](https://github.com/SteerSpec/strspc-CLI/issues/341)) ([0d91fea](https://github.com/SteerSpec/strspc-CLI/commit/0d91fea9fe6760b2e91a7fe58c99674c00418f2f))
+* **validate:** check rule files and realm manifests against their schemas before use ([#338](https://github.com/SteerSpec/strspc-CLI/issues/338)) ([507d459](https://github.com/SteerSpec/strspc-CLI/commit/507d45932e0aadb9c41463a0cf0497c5ef68ec98))
+
 ## [1.41.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.41.0...v1.41.1) (2026-11-14)
 
 
