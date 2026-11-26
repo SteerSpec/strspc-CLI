@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.43.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.42.0...v1.43.0) (2026-11-26)
+
+
+### Features
+
+* **ci:** generate the deps-bump workflow in ci init ([#346](https://github.com/SteerSpec/strspc-CLI/issues/346)) ([7c79b9d](https://github.com/SteerSpec/strspc-CLI/commit/7c79b9d2fde0a0620c90e1b1b4eaa88dca83a959))
+* **rule:** set the revision against a base with note update and rule update --base ([#345](https://github.com/SteerSpec/strspc-CLI/issues/345)) ([07d601e](https://github.com/SteerSpec/strspc-CLI/commit/07d601e8a5171e605d22b55177f89f30a3511f79))
+
 ## [1.42.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.41.1...v1.42.0) (2026-11-26)
 
 
