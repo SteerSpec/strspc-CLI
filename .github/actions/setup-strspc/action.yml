@@ -98,14 +98,17 @@ runs:
 
     # Only the archive is cached. The checksums file is fetched on every run
     # and the attestation checked, so a cached archive is verified exactly
-    # as a downloaded one.
-    - name: Cache strspc archive
+    # as a downloaded one. Entries are saved under a fresh key and restored
+    # by prefix, newest first, so an archive downloaded to replace a bad
+    # entry supersedes it: an exact key would never be saved again.
+    - name: Restore strspc archive
       # An input default from an expression may be a boolean; compare as text.
       if: format('{0}', inputs.cache) == 'true'
-      uses: actions/cache@v6
+      uses: actions/cache/restore@v6
       with:
         path: ${{ runner.temp }}/strspc-archive
-        key: strspc-${{ steps.resolve.outputs.archive }}
+        key: strspc-${{ steps.resolve.outputs.archive }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: strspc-${{ steps.resolve.outputs.archive }}-
 
     - name: Install strspc
       id: install
@@ -171,6 +174,8 @@ runs:
           fetch "${BASE_URL}/${ARCHIVE}" "${TMP}/${ARCHIVE}"
           checksum_ok
         fi
+        SAVE=false
+        [ "$USE_CACHE" = true ] && [ "$CACHED" = 0 ] && SAVE=true
 
         # The checksum comes from the same release as the archive, so it proves
         # integrity, not origin. Releases after ATTESTED_AFTER carry a build
@@ -241,4 +246,15 @@ runs:
         rm -rf "$TMP"
 
         "${BIN}/${EXE}" version
-        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+        {
+          echo "version=${VERSION}"
+          echo "save=${SAVE}"
+        } >> "$GITHUB_OUTPUT"
+
+    # Saved only after a download, which the install step verified.
+    - name: Save strspc archive
+      if: format('{0}', inputs.cache) == 'true' && steps.install.outputs.save == 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ runner.temp }}/strspc-archive
+        key: strspc-${{ steps.resolve.outputs.archive }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
