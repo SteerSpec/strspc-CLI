@@ -109,6 +109,24 @@ func TestEvalProviderTable(t *testing.T) {
 	}
 }
 
+// An available row has what init and the endpoint policy need: a default
+// model for the config's comment and a policy. Making a row available
+// before its default model is filled fails here.
+func TestEvalProviderRowsComplete(t *testing.T) {
+	for i := range evalProviders {
+		p := &evalProviders[i]
+		if p.configEndpoint == nil || p.endpointHosts == "" {
+			t.Errorf("%s: no endpoint policy", p.name)
+		}
+		if p.available && p.defaultModel == "" {
+			t.Errorf("%s is available without a default model: init would write a blank model comment", p.name)
+		}
+		if p.available && p.keyEnv == "" && strings.Contains(renderConfig("x", p.name), "requires") {
+			t.Errorf("%s takes no key, but the config says it requires one", p.name)
+		}
+	}
+}
+
 func TestCheckEffort(t *testing.T) {
 	for _, c := range []struct {
 		provider, effort string

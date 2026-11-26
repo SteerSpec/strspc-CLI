@@ -17,7 +17,10 @@ type evalProvider struct {
 	// keyEnv is the environment variable holding the API key; "" when the
 	// provider takes none.
 	keyEnv string
-	// defaultModel is the model called when evaluator.model is unset.
+	// defaultModel is the model called when evaluator.model is unset, as
+	// the config init writes documents it. Rows not yet available leave it
+	// empty until strspc-manager ships them with one;
+	// TestEvalProviderRowsComplete refuses an available row without it.
 	defaultModel string
 	// takesEffort reports whether the provider has a reasoning-effort
 	// setting. Setting evaluator.effort for one that hasn't is an error.
