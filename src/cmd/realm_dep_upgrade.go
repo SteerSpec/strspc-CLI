@@ -49,6 +49,9 @@ type depUpgrade struct {
 	from    string
 	to      string
 	source  string // rewritten source
+	// oldSource is the source before the upgrade, which .strspc/config.yaml
+	// may repeat.
+	oldSource string
 }
 
 // getGitHubAPI sends a GET for path below githubAPIBase, with token as the
@@ -154,7 +157,7 @@ func planDepUpgrade(ctx context.Context, dep entity.RealmDep, to string) (up *de
 	}
 
 	ref.Ref = tag
-	return &depUpgrade{realmID: dep.RealmID, from: dep.Version, to: next.String(), source: ref.String()}, "", nil
+	return &depUpgrade{realmID: dep.RealmID, from: dep.Version, to: next.String(), source: ref.String(), oldSource: dep.Source}, "", nil
 }
 
 // depUpgradeReport is the --json output of realm dep upgrade.
@@ -166,6 +169,9 @@ type depUpgradeReport struct {
 	Upgrades []depUpgradeEntry   `json:"upgrades"`
 	Skipped  []depUpgradeSkipped `json:"skipped"`
 	Synced   []string            `json:"synced"`
+	// Config lists the .strspc/config.yaml files whose rule sources follow the
+	// upgrade (planned when Check is set, rewritten otherwise).
+	Config []string `json:"config"`
 	// Errors lists the validation errors of an upgrade that was rolled back.
 	Errors []string `json:"errors"`
 }
@@ -200,6 +206,8 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			"them (RM015). If validation fails, every file is restored and the command exits non-zero.\n\n" +
 			"Without realm_id every dependency is considered. Dependencies are never downgraded,\n" +
 			"and sources that are not github:// references are skipped. Private sources need GITHUB_TOKEN.\n\n" +
+			"The repository's .strspc/config.yaml (the nearest one at or above --dir) follows the upgrade:\n" +
+			"a rule source that is exactly a dependency's old source is rewritten to the new one.\n\n" +
 			"With --check nothing is written; the command exits non-zero when an upgrade is available.\n" +
 			"With --json one JSON document is written to stdout (exit codes are unchanged).\n\n" +
 			"Examples:\n" +
@@ -263,6 +271,7 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 				Upgrades: []depUpgradeEntry{},
 				Skipped:  []depUpgradeSkipped{},
 				Synced:   []string{},
+				Config:   []string{},
 				Errors:   []string{},
 			}
 			emit := func() error {
@@ -296,6 +305,12 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 				return emit()
 			}
 			if check {
+				if cfg, err := planConfigPin(dir, ups); err != nil {
+					return err
+				} else if cfg != nil {
+					writeln(text, cmdStyle.Render(sanitizeLine("  would update "+cfg.path)))
+					report.Config = append(report.Config, sanitizeLine(cfg.path))
+				}
 				if err := emit(); err != nil {
 					return err
 				}
@@ -322,16 +337,22 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			}
 
 			var synced []schemaSync
+			var cfgPin *configPin
 			rollback := func() error {
 				// Through replaceFile, as the upgrade wrote it: atomic, keeping
 				// the file's mode, and never through a link.
 				if rerr := replaceFile(realmPath, original, "realm.json"); rerr != nil {
 					return rerr
 				}
+				if cfgPin != nil {
+					if rerr := replaceFile(cfgPin.path, cfgPin.original, "config.yaml"); rerr != nil {
+						return rerr
+					}
+				}
 				return restoreSchemas(dir, synced)
 			}
 			for _, up := range ups {
-				s, serr := syncCoreSchemas(cmd.Context(), dir, up, rf.SubRealms)
+				s, serr := syncCoreSchemas(cmd.Context(), dir, &up, rf.SubRealms)
 				synced = append(synced, s...)
 				if serr != nil {
 					// Roll back first, then report: an output failure must not
@@ -348,6 +369,30 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			for _, s := range synced {
 				writeln(text, cmdStyle.Render(sanitizeLine("  synced "+filepath.Join(dir, s.path))))
 				report.Synced = append(report.Synced, sanitizeLine(filepath.Join(dir, s.path)))
+			}
+
+			// The repository's own config pins the same dependency; leaving it
+			// would validate against the old release. Written after the schema
+			// sync so a rollback below restores it too.
+			cfgPin, err = planConfigPin(dir, ups)
+			if err == nil && cfgPin != nil {
+				err = replaceFile(cfgPin.path, cfgPin.updated, "config.yaml")
+				if err != nil {
+					cfgPin = &configPin{path: cfgPin.path, original: cfgPin.original}
+				}
+			}
+			if err != nil {
+				rerr := rollback()
+				report.Errors = append(report.Errors, sanitizeLine(err.Error()))
+				eerr := emit()
+				if rerr != nil {
+					return errors.Join(fmt.Errorf("updating config.yaml failed (%w) and restoring files failed: %w", err, rerr), eerr)
+				}
+				return errors.Join(fmt.Errorf("%w; files left unchanged", err), eerr)
+			}
+			if cfgPin != nil {
+				writeln(text, cmdStyle.Render(sanitizeLine("  updated "+cfgPin.path)))
+				report.Config = append(report.Config, sanitizeLine(cfgPin.path))
 			}
 
 			res := validateUpgradedRealm(cmd.Context(), dir)
