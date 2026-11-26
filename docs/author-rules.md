@@ -56,6 +56,16 @@ strspc rule add CFG --sub-entity CFGIO --body "Writes MUST be atomic." --added-b
 strspc entity rehash --all                                     # fix hashes after a bulk import
 ```
 
+**Revising in a branch.** Each `rule update` and `note update` adds one to the revision, but `diff`
+wants a rule or note the base doesn't hold at revision 0 (RD004, RD015), and one the base holds one
+revision past it (RD013). Pass the base `diff` compares with, and the revision is set against it, so
+a rule or note added in a branch can be reworded before it merges:
+
+```bash
+strspc note update CFG-001/02 --body "Reworded after review." --base origin/develop
+strspc rule update CFG-003 --body "The CLI MUST write a YAML config file." --base origin/develop
+```
+
 **Verifying before Implemented (experimental).** A rule should reach Implemented only once the code
 complies. `rule verify` audits the current code against named rules, not a diff: it sends every
 tracked file (or those matching `--path`, minus any `--exclude`) to the configured AI provider, with

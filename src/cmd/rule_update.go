@@ -13,6 +13,7 @@ func newRuleUpdateCmd() *cobra.Command {
 	var (
 		body    string
 		dir     string
+		baseRef string
 		jsonOut bool
 	)
 
@@ -21,9 +22,15 @@ func newRuleUpdateCmd() *cobra.Command {
 		Short: "Update the body of a draft rule",
 		Long: `Update the body text of a Draft rule. Only works on rules in state D (Draft).
 
+With --base <ref>, the revision is set against the entity file at that git ref,
+the base strspc diff compares with: 0 for a rule the base doesn't hold, so that
+a rule added in a branch can be revised before it merges (RD004), and one more
+than the base revision for a rule the base holds.
+
 Examples:
   strspc rule update MYE-001 --body "The system MUST validate all input"
-  strspc rule update MYE-001 --body "Updated text" --json`,
+  strspc rule update MYE-001 --body "Updated text" --json
+  strspc rule update MYE-002 --body "Reworded" --base origin/develop`,
 		Args:          cobra.ExactArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -43,6 +50,12 @@ Examples:
 			if err != nil {
 				return err
 			}
+			var baseFile *entity.File
+			if baseRef != "" {
+				if baseFile, err = baseEntityFile(baseRef, target.path); err != nil {
+					return err
+				}
+			}
 
 			var oldVersion, version string
 			var revision int
@@ -51,6 +64,11 @@ Examples:
 				oldVersion = f.RuleSet.Version
 				if updateErr := entityops.UpdateRuleBody(f, ruleID, body); updateErr != nil {
 					return updateErr
+				}
+				if baseRef != "" {
+					if err := setRuleRevisionFromBase(f, baseFile, ruleID); err != nil {
+						return err
+					}
 				}
 				version = f.RuleSet.Version
 				if r := findRule(f, ruleID); r != nil {
@@ -83,6 +101,7 @@ Examples:
 
 	cmd.Flags().StringVar(&body, "body", "", "new rule statement text (required)")
 	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
+	cmd.Flags().StringVar(&baseRef, "base", "", "git ref to set the revision against: 0 for a rule the ref doesn't hold")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 
 	return cmd
