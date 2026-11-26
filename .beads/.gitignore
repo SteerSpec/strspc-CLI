@@ -74,3 +74,6 @@ proxieddb/
 dolt-server.activity
 .beads-credential-key
 proxied_server_client_info.json
+
+# Added by bd (missing required patterns)
+dolt-server-config.yaml

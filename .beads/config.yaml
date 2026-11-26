@@ -54,3 +54,5 @@
 # - github.repo
 
 dolt.shared-server: true
+sync:
+    remote: "git+https://github.com/SteerSpec/strspc-CLI.git"
