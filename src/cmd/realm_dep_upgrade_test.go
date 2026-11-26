@@ -518,3 +518,285 @@ func TestRealmDepUpgradeJSONReportsPlanningFailure(t *testing.T) {
 		t.Errorf("realm.json was modified: version %s", got)
 	}
 }
+
+const upgradeConfigYAML = `# keep this comment
+rules:
+  - source: github://SteerSpec/strspc-rules@v1.8.0/rules/core   # core
+    scope: global
+  - source: ./rules/
+    scope: global
+`
+
+// withRepoConfig turns dir into a repository root holding a .strspc/config.yaml.
+func withRepoConfig(t *testing.T, dir string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".strspc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, ".strspc", "config.yaml")
+	if err := os.WriteFile(p, []byte(upgradeConfigYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestRealmDepUpgradeUpdatesConfigPin(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg := withRepoConfig(t, dir)
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--json", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	r := decodeUpgradeReport(t, out)
+	if len(r.Config) != 1 || r.Config[0] != cfg {
+		t.Errorf("config = %v, want [%s]", r.Config, cfg)
+	}
+	want := `# keep this comment
+rules:
+  - source: github://SteerSpec/strspc-rules@v9.9.9/rules/core   # core
+    scope: global
+  - source: ./rules/
+    scope: global
+`
+	if got := readFile(t, cfg); got != want {
+		t.Errorf("config.yaml = %q, want %q", got, want)
+	}
+}
+
+func TestRealmDepUpgradeCheckReportsConfigPinWithoutWriting(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg := withRepoConfig(t, dir)
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--check", "--json", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected non-zero exit when an upgrade is available")
+	}
+	if r := decodeUpgradeReport(t, out); len(r.Config) != 1 {
+		t.Errorf("config = %v, want one entry", r.Config)
+	}
+	if got := readFile(t, cfg); got != upgradeConfigYAML {
+		t.Errorf("--check wrote config.yaml: %q", got)
+	}
+}
+
+func TestRealmDepUpgradeRestoresConfigPinOnValidationFailure(t *testing.T) {
+	failing := func() *result.Result {
+		res := &result.Result{}
+		res.Add(result.Diagnostic{Code: "RM099", Severity: result.Error, Message: "breaks"})
+		return res
+	}
+	dir := setupUpgradeTest(t, "v9.9.9", failing)
+	cfg := withRepoConfig(t, dir)
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err == nil {
+		t.Fatal("expected error when the upgrade breaks the realm")
+	}
+	if got := readFile(t, cfg); got != upgradeConfigYAML {
+		t.Errorf("config.yaml not restored: %q", got)
+	}
+}
+
+func TestRealmDepUpgradeLeavesUnrelatedConfigSources(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg := withRepoConfig(t, dir)
+	other := "rules:\n  - source: github://acme/specs@v1.8.0/rules/core\n    scope: global\n"
+	if err := os.WriteFile(cfg, []byte(other), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--json", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r := decodeUpgradeReport(t, out); len(r.Config) != 0 {
+		t.Errorf("config = %v, want none", r.Config)
+	}
+	if got := readFile(t, cfg); got != other {
+		t.Errorf("unrelated config changed: %q", got)
+	}
+}
+
+func TestRealmDepUpgradeIgnoresConfigBehindSymlink(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	outside := t.TempDir()
+	victim := filepath.Join(outside, "config.yaml")
+	if err := os.WriteFile(victim, []byte(upgradeConfigYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, ".strspc")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := readFile(t, victim); got != upgradeConfigYAML {
+		t.Errorf("file behind the .strspc symlink was rewritten: %q", got)
+	}
+}
+
+func TestRealmDepUpgradeIgnoresConfigInUnrelatedParent(t *testing.T) {
+	parent := t.TempDir() // no .git anywhere above the realm
+	cfg := withRepoConfigNoGit(t, parent)
+	dir := filepath.Join(parent, "rules")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(upgradeRealmJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setupUpgradeStubs(t, "v9.9.9")
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := readFile(t, cfg); got != upgradeConfigYAML {
+		t.Errorf("config outside any repository was rewritten: %q", got)
+	}
+}
+
+func withRepoConfigNoGit(t *testing.T, root string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(root, ".strspc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(root, ".strspc", "config.yaml")
+	if err := os.WriteFile(p, []byte(upgradeConfigYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// setupUpgradeStubs stubs the release lookup and validation without creating a realm.
+func setupUpgradeStubs(t *testing.T, latest string) {
+	t.Helper()
+	origTag, origValidate := latestReleaseTag, validateUpgradedRealm
+	t.Cleanup(func() { latestReleaseTag, validateUpgradedRealm = origTag, origValidate })
+	latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) { return latest, nil }
+	validateUpgradedRealm = func(context.Context, string) *result.Result { return &result.Result{} }
+}
+
+func TestRealmDepUpgradeStopsAtBlockedNearestConfig(t *testing.T) {
+	parent := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(parent, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := withRepoConfigNoGit(t, parent) // a regular config in the repository root
+	dir := filepath.Join(parent, "rules")
+	if err := os.MkdirAll(filepath.Join(dir, ".strspc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(upgradeRealmJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(cfg, filepath.Join(dir, ".strspc", "config.yaml")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	setupUpgradeStubs(t, "v9.9.9")
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := readFile(t, cfg); got != upgradeConfigYAML {
+		t.Errorf("an ancestor's config was rewritten past a blocked nearest one: %q", got)
+	}
+}
+
+func TestRealmDepUpgradeRewritesFlowStyleConfigPin(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg := withRepoConfig(t, dir)
+	flow := "rules: [{source: github://SteerSpec/strspc-rules@v1.8.0/rules/core, scope: global}, {source: ./rules/, scope: global}]\n"
+	if err := os.WriteFile(cfg, []byte(flow), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "rules: [{source: github://SteerSpec/strspc-rules@v9.9.9/rules/core, scope: global}, {source: ./rules/, scope: global}]\n"
+	if got := readFile(t, cfg); got != want {
+		t.Errorf("config.yaml = %q, want %q", got, want)
+	}
+
+	// Quoted, in a block entry, with a trailing comment.
+	quoted := "rules:\n  - source: \"github://SteerSpec/strspc-rules@v9.9.9/rules/core\" # core\n"
+	dir2 := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg2 := withRepoConfig(t, dir2)
+	in := strings.Replace(quoted, "v9.9.9", "v1.8.0", 1)
+	if err := os.WriteFile(cfg2, []byte(in), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := readFile(t, cfg2); got != quoted {
+		t.Errorf("config.yaml = %q, want %q", got, quoted)
+	}
+}
+
+func TestRealmDepUpgradeFailsOnConfigLayoutItCannotRewrite(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg := withRepoConfig(t, dir)
+	folded := "rules:\n  - source: >-\n      github://SteerSpec/strspc-rules@v1.8.0/rules/core\n    scope: global\n"
+	if err := os.WriteFile(cfg, []byte(folded), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := readFile(t, filepath.Join(dir, "realm.json"))
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected an error: the config pin cannot be rewritten")
+	}
+	testutil.AssertContains(t, err.Error(), "update it by hand")
+	if got := readFile(t, filepath.Join(dir, "realm.json")); got != before {
+		t.Errorf("realm.json not restored:\n%s", got)
+	}
+	if got := readFile(t, cfg); got != folded {
+		t.Errorf("config.yaml changed: %q", got)
+	}
+}
+
+func TestRealmDepUpgradeLeavesCommentedConfigSources(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg := withRepoConfig(t, dir)
+	in := "# source: github://SteerSpec/strspc-rules@v1.8.0/rules/core\nrules:\n  - source: ./rules/   # was source: github://SteerSpec/strspc-rules@v1.8.0/rules/core\n    scope: global\n"
+	if err := os.WriteFile(cfg, []byte(in), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--json", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r := decodeUpgradeReport(t, out); len(r.Config) != 0 {
+		t.Errorf("config = %v, want none", r.Config)
+	}
+	if got := readFile(t, cfg); got != in {
+		t.Errorf("commented sources were rewritten: %q", got)
+	}
+}
+
+func TestRealmDepUpgradeCheckJSONReportsUnrewritableConfig(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg := withRepoConfig(t, dir)
+	folded := "rules:\n  - source: >-\n      github://SteerSpec/strspc-rules@v1.8.0/rules/core\n"
+	if err := os.WriteFile(cfg, []byte(folded), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--check", "--json", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	r := decodeUpgradeReport(t, out)
+	if len(r.Errors) != 1 || !strings.Contains(r.Errors[0], "update it by hand") {
+		t.Errorf("unexpected report: %+v", r)
+	}
+}
