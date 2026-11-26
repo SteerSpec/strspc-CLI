@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"path"
 	"sort"
@@ -717,8 +718,10 @@ func (r *verifyRun) verifyFail(code int, err error) error {
 // excerpt; this confirms it, and catches a miscount. The line is confirmed
 // when the reported line holds the excerpt, or corrected when the excerpt
 // occurs exactly once; with several other occurrences the model's line is
-// kept, unconfirmed, since picking one would be a guess. Only files that
-// were sent are consulted, so a path the model invents reads nothing.
+// kept, unconfirmed, since picking one would be a guess. An excerpt found
+// only once its HTML entities are decoded is replaced by the decoded text.
+// Only files that were sent are consulted, so a path the model invents
+// reads nothing.
 func relocateEvidence(rules []verifyRule, files []ruleeval.File) {
 	var lines map[string][]string // built on first use
 	for i := range rules {
@@ -734,9 +737,21 @@ func relocateEvidence(rules []verifyRule, files []ruleeval.File) {
 					lines[f.Path] = contentLines(f.Content)
 				}
 			}
-			line, ok := locateExcerpt(lines[path.Clean(ev.File)], needle, ev.Line)
+			fileLines := lines[path.Clean(ev.File)]
+			line, ok := locateExcerpt(fileLines, needle, ev.Line)
 			if !ok {
-				continue
+				// Models sometimes quote code HTML-escaped (`--&gt;` for
+				// `-->`). When only the decoded excerpt is in the file, it
+				// is the quote, and the record keeps it as the file has it.
+				decoded := html.UnescapeString(ev.Excerpt)
+				decodedNeedle := excerptNeedle(decoded)
+				if decoded == ev.Excerpt || decodedNeedle == "" {
+					continue
+				}
+				if line, ok = locateExcerpt(fileLines, decodedNeedle, ev.Line); !ok {
+					continue
+				}
+				ev.Excerpt = decoded
 			}
 			if line != ev.Line {
 				ev.ReportedLine = ev.Line
