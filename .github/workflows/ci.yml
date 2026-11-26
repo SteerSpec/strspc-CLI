@@ -93,6 +93,22 @@ jobs:
       - run: test "${INSTALLED}" = "1.15.0" && strspc version
         env:
           INSTALLED: ${{ steps.pinned.outputs.version }}
+      # This is a SteerSpec repository, so the archive is kept for the
+      # cache. A copy that doesn't match the release checksum is dropped and
+      # downloaded again, and the verified archive takes its place.
+      - run: test -s "${RUNNER_TEMP}/strspc-archive/strspc-CLI_1.15.0_linux_amd64.tar.gz"
+      - run: echo tampered > "${RUNNER_TEMP}/strspc-archive/strspc-CLI_1.15.0_linux_amd64.tar.gz"
+      - uses: ./.github/actions/setup-strspc
+        with:
+          version: "1.15.0"
+      - run: test "$(wc -c < "${RUNNER_TEMP}/strspc-archive/strspc-CLI_1.15.0_linux_amd64.tar.gz")" -gt 100
+      # Without the cache, nothing is kept.
+      - run: rm -rf "${RUNNER_TEMP}/strspc-archive"
+      - uses: ./.github/actions/setup-strspc
+        with:
+          version: "1.15.0"
+          cache: "false"
+      - run: test ! -e "${RUNNER_TEMP}/strspc-archive"
 
   setup-action-windows:
     # Same smoke test on Windows. 1.26.0 is the first release with Windows

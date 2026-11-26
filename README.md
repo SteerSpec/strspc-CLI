@@ -54,8 +54,13 @@ The composite action installs a release for the runner and verifies its checksum
 - uses: SteerSpec/strspc-CLI/.github/actions/setup-strspc@v1.36.0
   with:
     version: "latest"       # the default, or a release such as "1.36.0"
+    # cache: "true"         # keep the archive in the Actions cache (default: SteerSpec repositories only)
 - run: strspc version
 ```
+
+With `cache`, the archive is downloaded only on a cache miss. The checksum and build provenance are
+still verified on every run. A cached archive that doesn't match the release checksum is downloaded
+again.
 
 **From source** (Go 1.26+)
 
