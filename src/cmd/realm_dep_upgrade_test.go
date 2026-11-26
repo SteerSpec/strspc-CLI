@@ -709,11 +709,43 @@ func TestRealmDepUpgradeStopsAtBlockedNearestConfig(t *testing.T) {
 	}
 }
 
+func TestRealmDepUpgradeRewritesFlowStyleConfigPin(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg := withRepoConfig(t, dir)
+	flow := "rules: [{source: github://SteerSpec/strspc-rules@v1.8.0/rules/core, scope: global}, {source: ./rules/, scope: global}]\n"
+	if err := os.WriteFile(cfg, []byte(flow), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "rules: [{source: github://SteerSpec/strspc-rules@v9.9.9/rules/core, scope: global}, {source: ./rules/, scope: global}]\n"
+	if got := readFile(t, cfg); got != want {
+		t.Errorf("config.yaml = %q, want %q", got, want)
+	}
+
+	// Quoted, in a block entry, with a trailing comment.
+	quoted := "rules:\n  - source: \"github://SteerSpec/strspc-rules@v9.9.9/rules/core\" # core\n"
+	dir2 := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg2 := withRepoConfig(t, dir2)
+	in := strings.Replace(quoted, "v9.9.9", "v1.8.0", 1)
+	if err := os.WriteFile(cfg2, []byte(in), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := readFile(t, cfg2); got != quoted {
+		t.Errorf("config.yaml = %q, want %q", got, quoted)
+	}
+}
+
 func TestRealmDepUpgradeFailsOnConfigLayoutItCannotRewrite(t *testing.T) {
 	dir := setupUpgradeTest(t, "v9.9.9", nil)
 	cfg := withRepoConfig(t, dir)
-	flow := "rules: [{source: github://SteerSpec/strspc-rules@v1.8.0/rules/core, scope: global}]\n"
-	if err := os.WriteFile(cfg, []byte(flow), 0o644); err != nil {
+	folded := "rules:\n  - source: >-\n      github://SteerSpec/strspc-rules@v1.8.0/rules/core\n    scope: global\n"
+	if err := os.WriteFile(cfg, []byte(folded), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	before := readFile(t, filepath.Join(dir, "realm.json"))
@@ -726,7 +758,7 @@ func TestRealmDepUpgradeFailsOnConfigLayoutItCannotRewrite(t *testing.T) {
 	if got := readFile(t, filepath.Join(dir, "realm.json")); got != before {
 		t.Errorf("realm.json not restored:\n%s", got)
 	}
-	if got := readFile(t, cfg); got != flow {
+	if got := readFile(t, cfg); got != folded {
 		t.Errorf("config.yaml changed: %q", got)
 	}
 }

@@ -133,7 +133,10 @@ func planConfigPin(dir string, ups []depUpgrade) (*configPin, error) {
 		if up.oldSource == "" || up.oldSource == up.source {
 			continue
 		}
-		re := regexp.MustCompile(`(?m)^(\s*(?:-\s+)?source:\s*["']?)` + regexp.QuoteMeta(up.oldSource) + `(["']?\s*(?:#.*)?)$`)
+		// The key may start a block line ("source:", "- source:") or sit in a
+		// flow mapping ("{source: ..., scope: global}"); the value ends at
+		// whitespace, a comma, a closing brace, a comment or the line's end.
+		re := regexp.MustCompile(`(?m)((?:^|[\s{,])source:\s*["']?)` + regexp.QuoteMeta(up.oldSource) + `(["']?(?:[\s,}#]|$))`)
 		updated = re.ReplaceAll(updated, []byte("${1}"+up.source+"${2}"))
 	}
 	if err := checkConfigPinsMoved(updated, ups); err != nil {
@@ -147,7 +150,8 @@ func planConfigPin(dir string, ups []depUpgrade) (*configPin, error) {
 
 // checkConfigPinsMoved fails when a rule source in the (rewritten) config still
 // names an upgraded dependency's old source. The text edit only recognises
-// block-style entries, so a flow-style one, for example, would otherwise stay
+// plain `source: value` entries, block or flow style, so an exotic layout (a block
+// scalar, an anchor) would otherwise stay
 // on the old release while the upgrade reports success.
 func checkConfigPinsMoved(data []byte, ups []depUpgrade) error {
 	var cfg struct {
@@ -161,7 +165,7 @@ func checkConfigPinsMoved(data []byte, ups []depUpgrade) error {
 	for _, r := range cfg.Rules {
 		for i := range ups {
 			if ups[i].oldSource != "" && ups[i].oldSource != ups[i].source && r.Source == ups[i].oldSource {
-				return fmt.Errorf("still pins %s in a layout the upgrade cannot rewrite (flow style or similar); update it by hand", sanitizeLine(r.Source))
+				return fmt.Errorf("still pins %s in a layout the upgrade cannot rewrite (for example a block scalar or an anchor); update it by hand", sanitizeLine(r.Source))
 			}
 		}
 	}
