@@ -78,9 +78,10 @@ jobs:
 `
 
 // consumerWorkflowTemplate checks a change against the rules in
-// .strspc/config.yaml. Without ANTHROPIC_API_KEY only structural checks run.
-// The slots are the workflow ref, the branch and the optional with: block
-// holding the cli-version input.
+// .strspc/config.yaml. Without the provider's API key only structural checks
+// run. The slots are the workflow ref, the branch, the optional with: block
+// holding the cli-version input, and the API key secret, which must be one
+// strspc-check.yml declares.
 const consumerWorkflowTemplate = `name: strspc check
 
 on:
@@ -100,7 +101,7 @@ jobs:
       pull-requests: read
 %[3]s    secrets:
       # Optional: without it the job runs structural checks only.
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      %[4]s: ${{ secrets.%[4]s }}
       # Optional: token for github:// rule sources in private repositories;
       # the workflow token is used when unset.
       STRSPC_GITHUB_TOKEN: ${{ secrets.STRSPC_GITHUB_TOKEN }}
@@ -144,7 +145,7 @@ func newCIInitCmd() *cobra.Command {
 A realm repository (one with rules/realm.json) gets a workflow that validates
 the realm, lints its entities and checks lifecycle transitions on pull requests.
 Any other repository gets a .strspc/config.yaml and a workflow that checks
-changes against the rules it consumes; without an ANTHROPIC_API_KEY secret the
+changes against the rules it consumes; without an ` + ciKeySecret() + ` secret the
 check runs structural checks only.
 
 Existing files are never overwritten without --force, which regenerates them
@@ -230,7 +231,7 @@ Examples:
 			}
 			if !dryRun && kind == "consumer" {
 				writeln(w)
-				writeln(w, descStyle.Render("Add an ANTHROPIC_API_KEY repository secret to enable AI evaluation."))
+				writeln(w, descStyle.Render("Add an "+ciKeySecret()+" repository secret to enable AI evaluation."))
 			}
 			return nil
 		},
@@ -319,7 +320,7 @@ func ciFiles(kind, rulesPath, rulesSource, workflowRef, branch, cliVersion strin
 	return []ciFile{
 		{
 			path:    filepath.Join(".strspc", "config.yaml"),
-			content: fmt.Sprintf(defaultConfigTemplate, rulesSource, "claude"),
+			content: renderConfig(rulesSource, defaultEvalProvider),
 		},
 		{
 			path:    filepath.Join(".strspc", ".gitignore"),
@@ -327,7 +328,7 @@ func ciFiles(kind, rulesPath, rulesSource, workflowRef, branch, cliVersion strin
 		},
 		{
 			path:    filepath.Join(".github", "workflows", "strspc-check.yml"),
-			content: fmt.Sprintf(consumerWorkflowTemplate, workflowRef, branch, withBlock),
+			content: fmt.Sprintf(consumerWorkflowTemplate, workflowRef, branch, withBlock, ciKeySecret()),
 		},
 	}
 }

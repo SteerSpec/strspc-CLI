@@ -24,7 +24,8 @@ strspc check --format github                 # ::error/::warning annotations + $
 | `--diff-file <path>` | Read a unified diff from a file, with repository-relative paths as `git diff` prints them |
 | `--format human\|json\|github` | Output style; `github` emits annotations and appends a table to `$GITHUB_STEP_SUMMARY` |
 | `--provider`, `--model` | Override `evaluator.provider` and `evaluator.model` |
-| `--endpoint <url>` | Provider endpoint; needed to opt in to a non-Anthropic host. `https://`, or `http://` to a loopback host |
+| `--effort low\|medium\|high\|xhigh\|max` | Override `evaluator.effort`. A provider without a reasoning-effort setting refuses it (exit 2). JSON output reports it as `effort` |
+| `--endpoint <url>` | Provider endpoint; needed to opt in to a host the config may not set ([endpoint safety](#safety-and-configuration-checks)). `https://`, or `http://` to a loopback host |
 | `--static-only` | Skip AI evaluation (also implied by `evaluator.provider: null`) |
 | `--no-cache` | Don't read or write `.strspc/cache.db` |
 | `--verbose` | Print resolution, diff, cache and token-usage details to stderr |
@@ -131,8 +132,18 @@ and can't be fetched also exits 2: run the `strspc schema fetch` command the err
 the core release when there is one, once while online to check offline afterwards.
 
 **Endpoint safety.** `.strspc/config.yaml` is repository content, so a pull request could point
-`evaluator.endpoint` at a host that would receive your `ANTHROPIC_API_KEY`. The check accepts an
-endpoint from the config only when it's an `https://` URL on `anthropic.com`. Any other endpoint must
+`evaluator.endpoint` at a host that would receive your API key. The check accepts an endpoint from
+the config only on the provider's own hosts:
+
+| Provider | Config endpoint accepted |
+| -------- | ------------------------ |
+| `claude` | `https://` on `anthropic.com` or a subdomain |
+| `openai` | `https://api.openai.com` |
+| `openrouter` | `https://openrouter.ai` |
+| `ollama` | A loopback host, `http://` too: it takes no key |
+
+Only `claude` is available today; the others wait on
+[strspc-manager#67](https://github.com/SteerSpec/strspc-manager/issues/67). Any other endpoint must
 be opted in from outside the repository, with `STRSPC_EVALUATOR_ENDPOINT=<url>` (highest precedence) or
 `--endpoint <url>`. Without that, it exits 2 with a message naming the host.
 An opted-in endpoint must still be an `https://` URL, or `http://` to a loopback host (`localhost`,

@@ -784,7 +784,7 @@ func TestResolveEndpoint(t *testing.T) {
 		{"", "", "proxy.example", "", true},
 	}
 	for _, c := range cases {
-		got, err := resolveEndpoint(c.cfg, c.flag, c.env)
+		got, err := resolveEndpoint("claude", c.cfg, c.flag, c.env)
 		if (err != nil) != c.wantErr || got != c.want {
 			t.Errorf("resolveEndpoint(%q,%q,%q) = %q, %v; want %q, err=%v", c.cfg, c.flag, c.env, got, err, c.want, c.wantErr)
 		}
