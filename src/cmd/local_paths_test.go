@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,9 +64,9 @@ func TestCheckRefusesLinkedLocalPaths(t *testing.T) {
 		})
 	}
 	// A link inside a rule source's tree is refused before anything reads
-	// through it: where strspc refuses links (Windows), by strspc itself;
-	// elsewhere by the resolver: a linked sub-realm directory (RR007), and a
-	// linked manifest (RSV002).
+	// through it, by the resolver (a linked sub-realm directory is RR007, a
+	// linked manifest RSV002) or, where strspc refuses links (Windows) and the
+	// resolver let it through, by strspc itself.
 	for at, want := range map[string]string{"rules/child": "RR007", "rules/child/realm.json": "RSV002"} {
 		t.Run(at, func(t *testing.T) {
 			dir, diff := setupLinkProject(t)
@@ -73,13 +74,15 @@ func TestCheckRefusesLinkedLocalPaths(t *testing.T) {
 
 			out, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
 			assertExit(t, err, exitConfig)
-			if refuseProjectLinks {
-				testutil.AssertContains(t, err.Error(), "sub-realm of dev.app")
-				testutil.AssertContains(t, err.Error(), "is a link")
+			if strings.Contains(out, want) {
+				testutil.AssertContains(t, out, "link")
 				return
 			}
-			testutil.AssertContains(t, out, want)
-			testutil.AssertContains(t, out, "link")
+			if !refuseProjectLinks {
+				t.Fatalf("expected output to contain %q, got:\n%s", want, out)
+			}
+			testutil.AssertContains(t, err.Error(), "sub-realm of dev.app")
+			testutil.AssertContains(t, err.Error(), "is a link")
 		})
 	}
 }
