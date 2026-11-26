@@ -62,9 +62,10 @@ func TestCheckRefusesLinkedLocalPaths(t *testing.T) {
 			testutil.AssertContains(t, err.Error(), "is a link")
 		})
 	}
-	// A link inside a rule source's tree is refused by the resolver itself,
-	// on every system, before anything reads through it: a linked sub-realm
-	// directory (RR007), and a linked manifest (RSV002).
+	// A link inside a rule source's tree is refused before anything reads
+	// through it: where strspc refuses links (Windows), by strspc itself;
+	// elsewhere by the resolver: a linked sub-realm directory (RR007), and a
+	// linked manifest (RSV002).
 	for at, want := range map[string]string{"rules/child": "RR007", "rules/child/realm.json": "RSV002"} {
 		t.Run(at, func(t *testing.T) {
 			dir, diff := setupLinkProject(t)
@@ -72,6 +73,11 @@ func TestCheckRefusesLinkedLocalPaths(t *testing.T) {
 
 			out, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
 			assertExit(t, err, exitConfig)
+			if refuseProjectLinks {
+				testutil.AssertContains(t, err.Error(), "sub-realm of dev.app")
+				testutil.AssertContains(t, err.Error(), "is a link")
+				return
+			}
 			testutil.AssertContains(t, out, want)
 			testutil.AssertContains(t, out, "link")
 		})
@@ -247,10 +253,12 @@ func TestCheckRefusesNetworkPaths(t *testing.T) {
 		assertExit(t, err, exitConfig)
 		testutil.AssertContains(t, err.Error(), "is a network or device path")
 	})
+	// Written with /: a backslash in a dependency source is refused first, on
+	// every system (TestDependencySourceWithBackslash).
 	t.Run("dependency", func(t *testing.T) {
 		dir, diff := setupInheritProject(t, "null", "./rules/")
 		writeRealmManifest(t, filepath.Join(dir, "rules"), "dev.app",
-			`{"realm_id": "dev.lib", "version": "1.0.0", "source": "\\\\127.0.0.1\\share\\lib"}`)
+			`{"realm_id": "dev.lib", "version": "1.0.0", "source": "//127.0.0.1/share/lib"}`)
 		_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
 		assertExit(t, err, exitConfig)
 		testutil.AssertContains(t, err.Error(), "is a network or device path")
