@@ -104,6 +104,21 @@ schema URLs below: they copy `_schema/` unchanged from a `dev.steerspec.core` re
 | Versioned rules | `https://steerspec.dev/rules/v<version>/` |
 | Schemas of a core release | `https://steerspec.dev/rules/v<version>/_schema/` |
 
+## Usage data
+
+The CLI collects no telemetry. For maintainers, `scripts/usage-report.sh` reads two things GitHub
+already keeps:
+
+- The **download counts** of release archives, per version and platform. `setup-strspc` downloads one
+  archive per CI run, so they mostly count CI runs. They are cumulative: two snapshots give the
+  downloads in between.
+- The **pinned version** of each SteerSpec repository workflow that calls the strspc workflows or
+  `setup-strspc`. This needs a token that can search the organization's code.
+
+The **Usage snapshot** workflow runs it weekly and keeps each snapshot as an artifact for 90 days.
+`scripts/usage-report.sh --from <snapshot>.json` renders one again. It can't see `go install`, or a
+binary downloaded once and run many times.
+
 ## Work in progress
 
 The specification already covers these, but this CLI doesn't do them yet:
