@@ -7,6 +7,9 @@ on:
 
 permissions:
   contents: write
+  # Build provenance: setup-strspc verifies the archives against it.
+  id-token: write
+  attestations: write
 
 jobs:
   goreleaser:
@@ -46,3 +49,11 @@ jobs:
           MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
           MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
           MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+      # Attest the archives and the checksum manifest so consumers can verify
+      # who built them (gh attestation verify), not just that they are intact.
+      - uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*_checksums.txt

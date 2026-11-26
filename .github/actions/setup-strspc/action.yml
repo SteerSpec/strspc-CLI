@@ -1,6 +1,6 @@
 name: Setup strspc
 description: >
-  Install the strspc CLI from a GitHub release with checksum verification.
+  Install the strspc CLI from a GitHub release with checksum and build-provenance verification.
   Fails if the download, the checksum or the version check fails.
 
 inputs:
@@ -111,6 +111,21 @@ runs:
           echo "${EXPECTED}  ${TMP}/${ARCHIVE}" | sha256sum -c -
         else
           echo "${EXPECTED}  ${TMP}/${ARCHIVE}" | shasum -a 256 -c -
+        fi
+
+        # The checksum comes from the same release as the archive, so it proves
+        # integrity, not origin. Releases after ATTESTED_AFTER carry a build
+        # provenance attestation: verify that the archive was built by this
+        # repository's release workflow. Older releases predate it and only warn.
+        ATTESTED_AFTER="1.43.0"
+        ATTEST_ERR="$(gh attestation verify "${TMP}/${ARCHIVE}" --repo "${REPO}" 2>&1 >/dev/null)" && ATTEST_OK=1 || ATTEST_OK=0
+        if [ "$ATTEST_OK" = 0 ]; then
+          NEWEST="$(printf '%s\n%s\n' "$ATTESTED_AFTER" "$VERSION" | sort -V | tail -n1)"
+          if [ "$NEWEST" = "$VERSION" ] && [ "$VERSION" != "$ATTESTED_AFTER" ]; then
+            echo "::error::build provenance verification failed for ${ARCHIVE}: ${ATTEST_ERR}" >&2
+            exit 1
+          fi
+          echo "::warning::strspc ${VERSION} predates build provenance attestations; only the checksum was verified."
         fi
 
         BIN="${RUNNER_TEMP}/strspc-bin"
