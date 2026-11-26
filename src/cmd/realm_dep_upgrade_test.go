@@ -619,3 +619,66 @@ func TestRealmDepUpgradeLeavesUnrelatedConfigSources(t *testing.T) {
 		t.Errorf("unrelated config changed: %q", got)
 	}
 }
+
+func TestRealmDepUpgradeIgnoresConfigBehindSymlink(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	outside := t.TempDir()
+	victim := filepath.Join(outside, "config.yaml")
+	if err := os.WriteFile(victim, []byte(upgradeConfigYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, ".strspc")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := readFile(t, victim); got != upgradeConfigYAML {
+		t.Errorf("file behind the .strspc symlink was rewritten: %q", got)
+	}
+}
+
+func TestRealmDepUpgradeIgnoresConfigInUnrelatedParent(t *testing.T) {
+	parent := t.TempDir() // no .git anywhere above the realm
+	cfg := withRepoConfigNoGit(t, parent)
+	dir := filepath.Join(parent, "rules")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "realm.json"), []byte(upgradeRealmJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setupUpgradeStubs(t, "v9.9.9")
+
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := readFile(t, cfg); got != upgradeConfigYAML {
+		t.Errorf("config outside any repository was rewritten: %q", got)
+	}
+}
+
+func withRepoConfigNoGit(t *testing.T, root string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(root, ".strspc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(root, ".strspc", "config.yaml")
+	if err := os.WriteFile(p, []byte(upgradeConfigYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// setupUpgradeStubs stubs the release lookup and validation without creating a realm.
+func setupUpgradeStubs(t *testing.T, latest string) {
+	t.Helper()
+	origTag, origValidate := latestReleaseTag, validateUpgradedRealm
+	t.Cleanup(func() { latestReleaseTag, validateUpgradedRealm = origTag, origValidate })
+	latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) { return latest, nil }
+	validateUpgradedRealm = func(context.Context, string) *result.Result { return &result.Result{} }
+}

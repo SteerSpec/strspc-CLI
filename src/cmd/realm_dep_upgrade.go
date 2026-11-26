@@ -345,7 +345,7 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 					return rerr
 				}
 				if cfgPin != nil {
-					if rerr := replaceFile(cfgPin.path, cfgPin.original, "config.yaml"); rerr != nil {
+					if rerr := cfgPin.write(cfgPin.original); rerr != nil {
 						return rerr
 					}
 				}
@@ -376,10 +376,7 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			// sync so a rollback below restores it too.
 			cfgPin, err = planConfigPin(dir, ups)
 			if err == nil && cfgPin != nil {
-				err = replaceFile(cfgPin.path, cfgPin.updated, "config.yaml")
-				if err != nil {
-					cfgPin = &configPin{path: cfgPin.path, original: cfgPin.original}
-				}
+				err = cfgPin.write(cfgPin.updated)
 			}
 			if err != nil {
 				rerr := rollback()
