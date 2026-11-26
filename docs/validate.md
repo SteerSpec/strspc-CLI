@@ -6,7 +6,7 @@ Back to the [README](../README.md).
 
 ```bash
 strspc lint rules/ --strict                    # schema and structure of each entity file
-strspc realm validate rules/ --recursive       # manifest, EUID uniqueness, sub-realms, pins
+strspc realm validate rules/ --recursive       # manifest, EUID uniqueness, sub-realms, pins, inheritance
 strspc diff rules/ --base origin/develop       # lifecycle transitions vs. a git ref
 strspc diff rules/ --pr 42                     # ... or vs. a PR base (needs gh auth)
 strspc check --static-only                     # resolve sources, verify hashes and references
@@ -29,6 +29,15 @@ parent's.
 **Dependencies.** `realm validate` compares the realm with the dependencies it pins, so it fetches them
 and needs network access unless they're cached. It reports a pin that disagrees with its source tag or
 the dependency's manifest, and a `_schema/` file that differs from the pinned `dev.steerspec.core`.
+
+**Inheritance.** `realm validate` also resolves the realm as `check` does, with or without
+`--recursive`, and reports what only resolving it finds: an `inherits` or `overrides` that names nothing
+(RR013, RR015), an override visibility forbids (RR023), an entity wider than the one it inherits
+(RR024), and the other realm-resolve codes. A dependency it can't reach (an invalid source, a missing
+directory or manifest, a failed fetch: RR001, RR002, RR012) stays a warning, as realm-lint's RM016
+does, so that it still runs offline. A dependency it reaches but whose files don't load is an error,
+as in `check`, and `--strict` makes every
+resolver warning an error. `lint` checks each file alone, so it reports none of these.
 
 **Diff.** `diff` compares the files the resolver reads: every `.json` file but `realm.json`, outside
 `_schema/` directories, whatever their name. It reads the base at the path as given and refuses a

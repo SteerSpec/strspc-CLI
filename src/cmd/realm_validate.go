@@ -153,12 +153,20 @@ func newRealmValidateCmd() *cobra.Command {
 				dir = args[0]
 			}
 
+			rf, err := checkValidatedRealm(dir)
+			if err != nil {
+				return fmt.Errorf("realm validate: %w", err)
+			}
+
 			vs := newRealmValidator(dir, strict, recursive, core)
 			res := vs.realmLinter.Lint(cmd.Context(), dir)
 
 			if recursive {
 				realmRes := vs.ruleLinter.LintRealm(cmd.Context(), dir)
 				mergeDiagnostics(res, realmRes)
+			}
+			if rf != nil {
+				mergeDiagnostics(res, resolveValidatedRealm(cmd.Context(), dir, rf, strict))
 			}
 
 			w := cmd.OutOrStdout()
