@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -368,5 +369,84 @@ func TestRealmDepUpgradeErrorsNeutraliseRealmValues(t *testing.T) {
 				t.Errorf("error doesn't quote the ID: %q", err)
 			}
 		})
+	}
+}
+
+func decodeUpgradeReport(t *testing.T, out string) depUpgradeReport {
+	t.Helper()
+	var r depUpgradeReport
+	if err := json.Unmarshal([]byte(out), &r); err != nil {
+		t.Fatalf("stdout is not a single JSON document: %v\n%s", err, out)
+	}
+	return r
+}
+
+func TestRealmDepUpgradeJSONApplied(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--json", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	r := decodeUpgradeReport(t, out)
+	if !r.Applied || r.Check || len(r.Upgrades) != 1 || len(r.Skipped) != 1 {
+		t.Fatalf("unexpected report: %+v", r)
+	}
+	if u := r.Upgrades[0]; u.RealmID != "dev.steerspec.core" || u.From != "1.8.0" || u.To != "9.9.9" ||
+		u.Source != "github://SteerSpec/strspc-rules@v9.9.9/rules/core" {
+		t.Errorf("unexpected upgrade: %+v", u)
+	}
+	if r.Errors == nil || r.Synced == nil {
+		t.Errorf("empty lists must be [] not null: %+v", r)
+	}
+}
+
+func TestRealmDepUpgradeJSONCheckKeepsExitCode(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--check", "--json", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected non-zero exit when an upgrade is available")
+	}
+	r := decodeUpgradeReport(t, out)
+	if !r.Check || r.Applied || len(r.Upgrades) != 1 {
+		t.Errorf("unexpected report: %+v", r)
+	}
+	if got := readRealmDeps(t, dir)[0].Version; got != "1.8.0" {
+		t.Errorf("--check wrote realm.json: version %s", got)
+	}
+}
+
+func TestRealmDepUpgradeJSONUpToDate(t *testing.T) {
+	dir := setupUpgradeTest(t, "v1.8.0", nil)
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--check", "--json", "--dir", dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	r := decodeUpgradeReport(t, out)
+	if r.Applied || len(r.Upgrades) != 0 || len(r.Skipped) != 2 {
+		t.Errorf("unexpected report: %+v", r)
+	}
+}
+
+func TestRealmDepUpgradeJSONReportsValidationFailure(t *testing.T) {
+	failing := func() *result.Result {
+		res := &result.Result{}
+		res.Add(result.Diagnostic{Code: "RM099", Severity: result.Error, Message: "breaks"})
+		return res
+	}
+	dir := setupUpgradeTest(t, "v9.9.9", failing)
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--json", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected error when the upgrade breaks the realm")
+	}
+	r := decodeUpgradeReport(t, out)
+	if r.Applied || len(r.Errors) != 1 || r.Errors[0] != "breaks" {
+		t.Errorf("unexpected report: %+v", r)
+	}
+	if got := readRealmDeps(t, dir)[0].Version; got != "1.8.0" {
+		t.Errorf("realm.json not restored: version %s", got)
 	}
 }
