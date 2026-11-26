@@ -19,10 +19,10 @@ jobs:
   snapshot:
     runs-on: ubuntu-latest
     env:
-      # Org code search for the pins needs a token that can read the org's
-      # repositories; with the workflow token the pins of private
-      # repositories are missing.
-      GH_TOKEN: ${{ secrets.STRSPC_READ_TOKEN || github.token }}
+      # The workflow token only: this repository is public, so the summary
+      # and artifact must hold public data, and the script lists public
+      # repositories only. No other secret reaches a dispatched ref's code.
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v7
       - name: Report

@@ -5,13 +5,14 @@
 # - Downloads: release asset download counts, per release and per OS/arch.
 #   setup-strspc downloads one archive per CI run, so this mostly counts CI
 #   runs. Counts are cumulative: compare two snapshots for a period.
-# - Pins: the cli-version each repository's workflows set when calling the
-#   SteerSpec workflows or setup-strspc (needs a token that can search the
-#   org's code; skipped otherwise).
+# - Pins: the version each public repository's workflows set when calling
+#   the SteerSpec strspc workflows or setup-strspc. Private repositories are
+#   left out unless --include-private is given, since a snapshot of this
+#   public repository must not name them; use that only locally.
 #
 # Not counted: `go install`, and a binary downloaded once and run many times.
 #
-# Usage: scripts/usage-report.sh [--json] [--releases N] [--org ORG] [--from FILE]
+# Usage: scripts/usage-report.sh [--json] [--releases N] [--org ORG] [--from FILE] [--include-private]
 # --from renders a snapshot written earlier with --json, without fetching.
 # Needs gh (authenticated) and jq.
 set -eu
@@ -21,9 +22,11 @@ org=SteerSpec
 releases=10
 json=false
 from=
+private=false
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--json) json=true ;;
+	--include-private) private=true ;;
 	--releases)
 		releases="$2"
 		shift
@@ -55,24 +58,32 @@ downloads=$(gh api "repos/$repo/releases?per_page=$releases" --jq '[.[] | {
 
 # pins: the workflow files that call a SteerSpec strspc workflow or
 # setup-strspc, outside the SteerSpec/.github repository that defines them,
-# with the cli-version values they set ("default" when none).
+# with the versions they set ("default" when none). Code search only finds
+# candidates (.yml or .yaml, all result pages); a file counts only when a
+# uses: line names one of the targets below.
 pins='[]'
 files=$(
-	for q in '"workflows/strspc-check.yml@"' '"workflows/strspc-lint.yml@"' '"workflows/strspc-deps-bump.yml@"' '"actions/setup-strspc"'; do
-		gh api -X GET search/code -f q="org:$org $q path:.github/workflows" -f per_page=100 \
-			--jq '.items[] | select(.repository.full_name != "'"$org"'/.github") | "\(.repository.full_name) \(.path)"'
+	for q in '"workflows/strspc-check"' '"workflows/strspc-lint"' '"workflows/strspc-deps-bump"' '"setup-strspc"'; do
+		gh api -X GET --paginate search/code -f q="org:$org $q path:.github/workflows" -f per_page=100 \
+			--jq '.items[] | select(.repository.full_name != "'"$org"'/.github")
+				| select('"$private"' or (.repository.private | not))
+				| "\(.repository.full_name) \(.path)"'
 	done 2>/dev/null | sort -u
 )
 if [ -n "$files" ]; then
 	pins=$(printf '%s\n' "$files" | while read -r full path; do
 		[ -n "$full" ] || continue
 		content=$(gh api "repos/$full/contents/$path" --jq .content 2>/dev/null | base64 -d 2>/dev/null) || content=
+		# The official targets, and the action's local path in this repository.
+		targets="uses:[[:space:]]*[\"']?($org/\.github/\.github/workflows/strspc-(check|lint|deps-bump)\.ya?ml|$org/strspc-CLI/\.github/actions/setup-strspc)@"
+		[ "$full" = "$repo" ] && targets="$targets|uses:[[:space:]]*[\"']?\./\.github/actions/setup-strspc"
+		printf '%s\n' "$content" | sed 's/#.*//' | grep -Eq "$targets" || continue
 		# A "cli-version: <value>" line (the reusable workflows' input), or
 		# "version: <value>" inside a setup-strspc step. An input
 		# declaration has no value, so it isn't a pin.
 		versions=$(printf '%s\n' "$content" | awk '
 			/^[[:space:]]*-[[:space:]]/ { step = 0 }
-			/uses:.*setup-strspc/ { step = 1 }
+			/uses:[[:space:]]*["\047]?[^[:space:]]*\/\.github\/actions\/setup-strspc/ { step = 1 }
 			{
 				line = $0
 				sub(/#.*/, "", line)

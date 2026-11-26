@@ -112,8 +112,9 @@ already keeps:
 - The **download counts** of release archives, per version and platform. `setup-strspc` downloads one
   archive per CI run, so they mostly count CI runs. They are cumulative: two snapshots give the
   downloads in between.
-- The **pinned version** of each SteerSpec repository workflow that calls the strspc workflows or
-  `setup-strspc`. This needs a token that can search the organization's code.
+- The **pinned version** of each public SteerSpec repository workflow that calls the strspc workflows
+  or `setup-strspc`. `--include-private` adds private repositories, for local use only: a snapshot of
+  this public repository must not name them.
 
 The **Usage snapshot** workflow runs it weekly and keeps each snapshot as an artifact for 90 days.
 `scripts/usage-report.sh --from <snapshot>.json` renders one again. It can't see `go install`, or a
