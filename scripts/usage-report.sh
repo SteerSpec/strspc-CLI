@@ -77,13 +77,13 @@ if [ -n "$files" ]; then
 		# The official targets, and the action's local path in this repository.
 		targets="uses:[[:space:]]*[\"']?($org/\.github/\.github/workflows/strspc-(check|lint|deps-bump)\.ya?ml|$org/strspc-CLI/\.github/actions/setup-strspc)@"
 		[ "$full" = "$repo" ] && targets="$targets|uses:[[:space:]]*[\"']?\./\.github/actions/setup-strspc"
-		printf '%s\n' "$content" | sed 's/#.*//' | grep -Eq "$targets" || continue
+		printf '%s\n' "$content" | sed 's/#.*//' | grep -Eiq "$targets" || continue
 		# A "cli-version: <value>" line (the reusable workflows' input), or
 		# "version: <value>" inside a setup-strspc step. An input
 		# declaration has no value, so it isn't a pin.
 		versions=$(printf '%s\n' "$content" | awk '
 			/^[[:space:]]*-[[:space:]]/ { step = 0 }
-			/uses:[[:space:]]*["\047]?[^[:space:]]*\/\.github\/actions\/setup-strspc/ { step = 1 }
+			tolower($0) ~ /uses:[[:space:]]*["\047]?[^[:space:]]*\/\.github\/actions\/setup-strspc/ { step = 1 }
 			{
 				line = $0
 				sub(/#.*/, "", line)
