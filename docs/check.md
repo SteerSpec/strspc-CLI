@@ -99,10 +99,15 @@ still for that rule alone.
 against the published `config.v1` schema, kept in the [schema cache](reference.md#schema-cache). Each
 mismatch is error `CHK002`, shown in every `--format`, and the check exits 2 before it looks at the
 provider (exit 3). Examples are an unknown key, an empty `rules:` list, an empty file, and a state
-name instead of its code: `fail_on: [implemented]` is refused, write `fail_on: [I]`. The config is
-valid when it matches the latest `config.v1` or the `config.v1` of the newest core release in the cache, so an older cached
-latest copy, used offline, doesn't refuse what a newer release allows. When neither schema is cached
-and the network can't be reached, the check exits 2 and asks you to run `strspc schema fetch`. A
+name instead of its code: `fail_on: [implemented]` is refused, write `fail_on: [I]`. One schema
+decides, and the config must match it:
+
+- the latest `config.v1`, when it was just downloaded or its cached copy is less than an hour old;
+- the `config.v1` of the newest core release in the cache, when no latest copy can be had;
+- offline, with only an expired latest copy: that copy, unless the release copy is newer than the
+  core release the expired copy names in `x-steerspec-core-version`. Then the release copy decides.
+
+When neither schema is cached and the network can't be reached, the check exits 2 and asks you to run `strspc schema fetch`. A
 config that passes the schema still exits 2 on an unknown `evaluator.provider`.
 
 Every command that uses the config validates it the same way first: `refs`, `rule show`,

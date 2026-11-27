@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
+
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/result"
 	"github.com/SteerSpec/strspc-manager/src/schema"
@@ -249,5 +251,142 @@ func TestConfigurationDocExampleIsValid(t *testing.T) {
 	writeSchemaCacheFile(t, dir, configV1SchemaPath, testConfigSchema(t, false), 0)
 	if err := validateConfig(context.Background(), offlineConfigFetcher(dir), dir, []byte(example)); err != nil {
 		t.Errorf("the example doesn't match config.v1: %v", err)
+	}
+}
+
+// testConfigSchemaFor returns testdata's config.v1 schema (old: without xhigh
+// and max) naming core release version, or naming none when version is "".
+func testConfigSchemaFor(t *testing.T, old bool, version string) []byte {
+	t.Helper()
+	data := string(testConfigSchema(t, old))
+	const field = `"x-steerspec-core-version": "1.27.0",`
+	if !strings.Contains(data, field) {
+		t.Fatal("testdata/config.v1.schema.json no longer names its core version")
+	}
+	repl := ""
+	if version != "" {
+		repl = `"x-steerspec-core-version": "` + version + `",`
+	}
+	return []byte(strings.Replace(data, field, repl, 1))
+}
+
+// A fresh latest schema decides alone: a release copy that accepts what it
+// refuses is not consulted.
+func TestValidateConfigFreshLatestDecides(t *testing.T) {
+	for name, age := range map[string]time.Duration{"cached within its TTL": 0, "just under the TTL": schemaLatestTTL - time.Minute} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSchemaCacheFile(t, dir, configV1SchemaPath, testConfigSchemaFor(t, true, "1.20.0"), age)
+			writeSchemaCacheFile(t, dir, releaseCacheKey("v"+testReleaseVersion, configV1SchemaPath), testConfigSchema(t, false), 0)
+			err := validateConfig(context.Background(), offlineConfigFetcher(dir), dir, []byte(validTestConfig))
+			var ce *configSchemaError
+			if !errors.As(err, &ce) {
+				t.Fatalf("got %v, want the fresh latest schema to refuse effort: xhigh", err)
+			}
+			testutil.AssertContains(t, err.Error(), "the latest config.v1 schema")
+		})
+	}
+}
+
+// A latest schema downloaded now decides too, whatever the cache holds.
+func TestValidateConfigDownloadedLatestDecides(t *testing.T) {
+	old := testConfigSchemaFor(t, true, "1.20.0")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(old) }))
+	t.Cleanup(srv.Close)
+	dir := t.TempDir()
+	writeSchemaCacheFile(t, dir, configV1SchemaPath, testConfigSchema(t, false), 48*time.Hour)
+	writeSchemaCacheFile(t, dir, releaseCacheKey("v"+testReleaseVersion, configV1SchemaPath), testConfigSchema(t, false), 0)
+	fetcher := schema.New(schema.WithBaseURL(srv.URL), schema.WithCacheDir(dir), withSchemasOnly())
+	var ce *configSchemaError
+	if err := validateConfig(context.Background(), fetcher, dir, []byte(validTestConfig)); !errors.As(err, &ce) {
+		t.Fatalf("got %v, want the downloaded latest schema to refuse effort: xhigh", err)
+	}
+}
+
+// With no latest schema, the release copy decides.
+func TestValidateConfigReleaseDecidesWithoutLatest(t *testing.T) {
+	dir := t.TempDir()
+	writeSchemaCacheFile(t, dir, releaseCacheKey("v"+testReleaseVersion, configV1SchemaPath), testConfigSchema(t, false), 0)
+	if err := validateConfig(context.Background(), offlineConfigFetcher(dir), dir, []byte(validTestConfig)); err != nil {
+		t.Fatalf("got %v, want the release copy to accept the config", err)
+	}
+}
+
+// A stale latest copy decides unless the release copy is provably newer: a
+// release above the x-steerspec-core-version the stale copy names. The
+// newer copy decides both ways, refusing as well as accepting.
+func TestValidateConfigStaleLatest(t *testing.T) {
+	cases := []struct {
+		name         string
+		latest       []byte // the stale latest copy
+		release      string
+		releaseOld   bool // the release copy lacks xhigh and max
+		accept       bool
+		decidedLabel string
+	}{
+		{"newer release accepts", testConfigSchemaFor(t, true, "1.20.0"), "1.21.0", false, true, ""},
+		{"newer release refuses", testConfigSchemaFor(t, false, "1.20.0"), "1.21.0", true, false, coreRealmID + " 1.21.0"},
+		{"same release", testConfigSchemaFor(t, true, "1.21.0"), "1.21.0", false, false, "the latest config.v1 schema"},
+		{"older release", testConfigSchemaFor(t, true, "1.21.0"), "1.9.0", false, false, "the latest config.v1 schema"},
+		{"stale copy names no release", testConfigSchemaFor(t, true, ""), testReleaseVersion, false, false, "the latest config.v1 schema"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSchemaCacheFile(t, dir, configV1SchemaPath, tc.latest, schemaLatestTTL+time.Minute)
+			writeSchemaCacheFile(t, dir, releaseCacheKey("v"+tc.release, configV1SchemaPath), testConfigSchema(t, tc.releaseOld), 0)
+			err := validateConfig(context.Background(), offlineConfigFetcher(dir), dir, []byte(validTestConfig))
+			if tc.accept {
+				if err != nil {
+					t.Fatalf("got %v, want the config accepted", err)
+				}
+				return
+			}
+			var ce *configSchemaError
+			if !errors.As(err, &ce) {
+				t.Fatalf("got %v, want a schema mismatch", err)
+			}
+			testutil.AssertContains(t, err.Error(), tc.decidedLabel)
+		})
+	}
+}
+
+func TestReleaseIsNewer(t *testing.T) {
+	v := semver.MustParse
+	for _, tc := range []struct {
+		release string
+		latest  string
+		want    bool
+	}{
+		{"1.21.0", `{"x-steerspec-core-version": "1.20.0"}`, true},
+		{"1.10.0", `{"x-steerspec-core-version": "1.9.0"}`, true},
+		{"1.20.0", `{"x-steerspec-core-version": "1.20.0"}`, false},
+		{"1.20.0", `{"x-steerspec-core-version": "1.21.0"}`, false},
+		{"1.20.0", `{"x-steerspec-core-version": "next"}`, false},
+		{"1.20.0", `{}`, false},
+		{"1.20.0", `not json`, false},
+	} {
+		if got := releaseIsNewer(v(tc.release), []byte(tc.latest)); got != tc.want {
+			t.Errorf("releaseIsNewer(%s, %s) = %v, want %v", tc.release, tc.latest, got, tc.want)
+		}
+	}
+}
+
+func TestLatestIsStale(t *testing.T) {
+	dir := t.TempDir()
+	data := testConfigSchema(t, false)
+	if latestIsStale("", data) || latestIsStale(dir, data) {
+		t.Error("no cache, or nothing cached: not stale")
+	}
+	writeSchemaCacheFile(t, dir, configV1SchemaPath, data, 2*schemaLatestTTL)
+	if !latestIsStale(dir, data) {
+		t.Error("the expired cached copy is stale")
+	}
+	if latestIsStale(dir, testConfigSchema(t, true)) {
+		t.Error("a copy that isn't the cached one is not stale")
+	}
+	writeSchemaCacheFile(t, dir, configV1SchemaPath, data, 0)
+	if latestIsStale(dir, data) {
+		t.Error("a copy within its TTL is not stale")
 	}
 }

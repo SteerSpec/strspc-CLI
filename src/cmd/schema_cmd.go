@@ -32,8 +32,8 @@ var latestSchemaPaths = []string{configV1SchemaPath, schema.EntityV1Path, schema
 var releaseSchemaPaths = []string{schema.EntityV1Path, schema.RealmV1Path, schema.BootstrapPath}
 
 // releaseOptionalPaths are the schemas `schema fetch` also caches for a core
-// release when it publishes them: its config schema, which config.yaml may
-// match when the cached latest one is older (validateConfig). A release
+// release when it publishes them: its config schema, which decides when no
+// latest copy can be had or only an older, expired one (validateConfig). A release
 // without one isn't a failure.
 var releaseOptionalPaths = []string{configV1SchemaPath}
 

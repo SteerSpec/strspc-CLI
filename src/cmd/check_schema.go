@@ -3,12 +3,16 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
 
@@ -37,15 +41,18 @@ var newConfigSchemaFetcher = func(_ string, opts ...schema.Option) *schema.Fetch
 // .strspc/config.yaml is validated against the config.v1 schema before its
 // content is used (SEC-004): validateConfig takes the bytes read and the
 // caller parses those same bytes only once they pass. Two copies of the
-// schema can be at hand, and the document is valid when either accepts it:
+// schema can be at hand: the latest config.v1, fetched or, offline, the
+// cached copy however old; and the newest core release's config.v1 in the
+// schema cache. Exactly one of them decides, and the document must match it:
 //
-//   - the latest config.v1, fetched or, offline, the cached copy however old;
-//   - the newest core release's config.v1 in the schema cache.
+//   - a fresh latest copy (downloaded now, or cached within its TTL) decides;
+//   - with no latest copy, the release copy decides;
+//   - a stale latest copy (served offline from an expired cache) decides,
+//     unless the release copy is provably newer: its release is above the
+//     x-steerspec-core-version the stale copy carries.
 //
-// The newer schema wins either way: offline, a cached latest copy older than a
-// release cached since must not refuse a key that release added. When neither
-// is available, nothing is used unvalidated: the command fails and names
-// `strspc schema fetch`.
+// When neither is available, nothing is used unvalidated: the command fails
+// and names `strspc schema fetch`.
 
 // errConfigSchemaUnavailable marks a config.v1 schema that is neither cached
 // nor reachable.
@@ -114,11 +121,10 @@ func loadStrspcConfig(ctx context.Context, cwd string, opts ...schema.Option) (*
 
 // validateConfig validates raw, the content of .strspc/config.yaml, against
 // the latest config.v1 schema from latest (nil: none) and against the newest
-// core release's copy in cacheDir ("": none). It returns nil when either
-// accepts it, a *configSchemaError listing the violations of the latest
-// schema (or of the release copy when only that is available) when neither
-// does, and an error wrapping errConfigSchemaUnavailable when neither is
-// available.
+// core release's copy in cacheDir ("": none), the cache latest also uses.
+// One of them decides, as described above. It returns nil when that schema
+// accepts raw, a *configSchemaError listing its violations when it doesn't,
+// and an error wrapping errConfigSchemaUnavailable when neither is available.
 func validateConfig(ctx context.Context, latest *schema.Fetcher, cacheDir string, raw []byte) error {
 	var doc any
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
@@ -129,47 +135,80 @@ func validateConfig(ctx context.Context, latest *schema.Fetcher, cacheDir string
 		return fmt.Errorf("parsing config.yaml: %w", err)
 	}
 
-	type candidate struct {
-		label    string
-		compiled *jsonschema.Schema
+	var latestC *jsonschema.Schema
+	var latestData []byte
+	latestErr := errors.New("no schema fetcher")
+	if latest != nil {
+		latestData, latestErr = latest.Fetch(ctx, configV1SchemaPath)
+		if latestErr != nil {
+			latestErr = fmt.Errorf("fetching %s: %w", configV1SchemaPath, latestErr)
+		} else {
+			latestC, latestErr = compileSchemaBytes(latestData)
+		}
 	}
-	var candidates []candidate
-	var latestErr error
-	if latest == nil {
-		latestErr = errors.New("no schema fetcher")
-	} else if c, err := compileConfigSchema(ctx, latest); err != nil {
-		latestErr = err
-	} else {
-		candidates = append(candidates, candidate{"the latest config.v1 schema", c})
-	}
+	var releaseC *jsonschema.Schema
+	var release *semver.Version
 	if cacheDir != "" {
 		if tag := newestCachedRelease(cacheDir, []string{configV1SchemaPath}); tag != "" {
 			// newestCachedRelease has read it already: a usable schema.
 			data, _ := readCachedSchema(cacheDir, releaseCacheKey(tag, configV1SchemaPath))
 			if c, err := compileSchemaBytes(data); err == nil {
-				label := "the config.v1 schema of " + coreRealmID + " " + strings.TrimPrefix(tag, "v")
-				candidates = append(candidates, candidate{label, c})
+				releaseC, release = c, semver.MustParse(strings.TrimPrefix(tag, "v"))
 			}
 		}
-	}
-	if len(candidates) == 0 {
-		return fmt.Errorf("can't validate .strspc/config.yaml: %w: %w", errConfigSchemaUnavailable, latestErr)
 	}
 
-	var refused *configSchemaError
-	for _, c := range candidates {
-		err := c.compiled.Validate(doc)
-		if err == nil {
-			return nil
-		}
-		if refused == nil {
-			refused = &configSchemaError{label: c.label}
-			for _, msg := range schemaViolations(err) {
-				refused.violations = append(refused.violations, sanitizeLine(msg))
-			}
-		}
+	var label string
+	var decider *jsonschema.Schema
+	switch {
+	case latestC != nil && (release == nil || !latestIsStale(cacheDir, latestData) || !releaseIsNewer(release, latestData)):
+		label, decider = "the latest config.v1 schema", latestC
+	case releaseC != nil:
+		label, decider = "the config.v1 schema of "+coreRealmID+" "+release.Original(), releaseC
+	default:
+		return fmt.Errorf("can't validate .strspc/config.yaml: %w: %w", errConfigSchemaUnavailable, latestErr)
+	}
+	verr := decider.Validate(doc)
+	if verr == nil {
+		return nil
+	}
+	refused := &configSchemaError{label: label}
+	for _, msg := range schemaViolations(verr) {
+		refused.violations = append(refused.violations, sanitizeLine(msg))
 	}
 	return refused
+}
+
+// latestIsStale reports whether data, the latest config.v1 schema the fetcher
+// returned, is the cached copy in cacheDir served after its TTL expired: the
+// manager serves that copy when the refresh fails. A copy downloaded now is
+// written to the cache, so the file is then fresh; one the cache doesn't hold
+// (a local schema, or a write that failed) came from somewhere else than the
+// expired copy and is fresh too.
+func latestIsStale(cacheDir string, data []byte) bool {
+	if cacheDir == "" {
+		return false
+	}
+	cached, ok := readCachedSchema(cacheDir, configV1SchemaPath)
+	if !ok || !bytes.Equal(cached, data) {
+		return false
+	}
+	fi, err := os.Lstat(filepath.Join(cacheDir, filepath.FromSlash(configV1SchemaPath)))
+	return err == nil && time.Since(fi.ModTime()) >= schemaLatestTTL
+}
+
+// releaseIsNewer reports whether release is provably newer than latest, a
+// config.v1 schema: above the core release latest names in its
+// x-steerspec-core-version. A schema that names none can't be compared, so
+// the release isn't newer.
+func releaseIsNewer(release *semver.Version, latest []byte) bool {
+	var meta struct {
+		CoreVersion string `json:"x-steerspec-core-version"`
+	}
+	if json.Unmarshal(latest, &meta) != nil || !schemaVersion.MatchString(meta.CoreVersion) {
+		return false
+	}
+	return release.GreaterThan(semver.MustParse(meta.CoreVersion))
 }
 
 // jsonValue converts a decoded YAML document to the values a JSON document
