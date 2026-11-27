@@ -94,8 +94,10 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 			// Schemas missing from the parent are fetched from the core release the
 			// parent pins (else the latest), even when its deps are not inherited.
 			// Resolved at most once, so every fetched file comes from one release.
+			// Offline, the newest release in the schema cache stands in for the latest.
 			schemaTag := sync.OnceValues(func() (string, error) {
-				return resolveSchemaTag(cmd.Context(), "", parentRealm.Dependencies)
+				return resolveSchemaTagOrCached(cmd.Context(), cmd.ErrOrStderr(), "", parentRealm.Dependencies,
+					"pin "+coreRealmID+" in the parent realm to choose one")
 			})
 
 			// Create target directory.
@@ -163,8 +165,8 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 			writeln(w, brandStyle.Render(fmt.Sprintf("Initialized sub-realm %q in %s", realmID, cleanDir)))
 			writeln(w)
 			writeln(w, descStyle.Render("Next steps:"))
-			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Add entities: ")+cmdStyle.Render(fmt.Sprintf("strspc realm add MYENTITY --title \"My Entity\" --dir %s", cleanDir)))
-			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Validate: ")+cmdStyle.Render(fmt.Sprintf("strspc realm validate %s", cleanDir)))
+			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Add entities: ")+cmdStyle.Render("strspc realm add MYENTITY --title \"My Entity\""+realmDirArg(cleanDir)))
+			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Validate: ")+cmdStyle.Render("strspc realm validate"+realmDirArg(cleanDir)))
 			writeln(w)
 
 			return nil

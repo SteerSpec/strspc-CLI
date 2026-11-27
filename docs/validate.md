@@ -6,7 +6,7 @@ Back to the [README](../README.md).
 
 ```bash
 strspc lint rules/ --strict                    # schema and structure of each entity file
-strspc realm validate rules/ --recursive       # manifest, EUID uniqueness, sub-realms, pins, inheritance
+strspc realm validate --dir rules/ --recursive # manifest, EUID uniqueness, sub-realms, pins, inheritance
 strspc diff rules/ --base origin/develop       # lifecycle transitions vs. a git ref
 strspc diff rules/ --pr 42                     # ... or vs. a PR base (needs gh auth)
 strspc check --static-only                     # resolve sources, verify hashes and references
@@ -18,6 +18,8 @@ These implement the checks of
 takes `--format json`. `lint --cross-ref` adds
 cross-file reference checks in directory mode. `diff` exits 0 when all checks pass and 1 on a
 violation. `lint`, `diff` and `realm validate` exit 4 when `--json` output can't be written.
+`realm validate` takes the Realm directory as a path or with `--dir`, as `realm init` and
+`realm add` do; it defaults to `./rules`.
 
 **Schemas.** `lint` and `realm validate` use the schemas of the `dev.steerspec.core` version the realm
 pins, so a schema change reaches a realm when it bumps its pin. A realm with no pin uses the latest
@@ -80,6 +82,7 @@ strspc refs --format github                    # annotations; --json for diagnos
 | RF005 | Draft, Published or Implemented, replaced by a Published rule | warning | error |
 | RF006 | Draft | warning | error |
 | RF007 | No ID is cited: the text holds the whole body of a rule of five words or more, in any state | error | error |
+| RF008 | Not cited by any file of a [coverage set](#check-that-every-rule-is-cited) | error | error |
 
 Text that copies the body of a rule instead of citing it, five words or more, is an error (RF007),
 whatever the rule's state. Cite the ID and look the rule up with `strspc rule show`. Committed
@@ -109,6 +112,37 @@ RUL-004 was retired in 2026.
 directory, and `dir/**` matches everything under `dir`. A file named as an argument is scanned
 whatever its extension. `refs` exits 0 when clean, 1 on findings, 2 on a configuration or
 resolution error and 4 when `--json` output can't be written.
+
+### Check that every rule is cited
+
+A prompt or a guide that lists rule IDs by hand goes stale when a rule is added. A coverage set in
+`.strspc/config.yaml` makes `strspc refs` report each rule that none of its files cites:
+
+```yaml
+refs:
+  coverage:
+    - entities: [APP, API]
+      files: ['.claude/agents/*.md', 'AGENTS.md']
+      states: [D, P, I]   # the default
+```
+
+For each set, every rule of `entities`, a rule of a sub-entity counting toward its parent, in one of
+`states`, must be cited in at least one file that `files` matches. Each missing rule is an RF008
+error on `.strspc/config.yaml` that names the rule, its entity and the set's globs. The findings
+come out with the others, in text, `--json` and `--format github`.
+
+- Only the entities of the configured local rule sources and their sub-realms can be named. An
+  entity of a dependency or a `github://` source is a configuration error (exit 2).
+- `files` globs are relative to the project root and follow the patterns above. A set reads its
+  files whatever paths, `--include` and `--exclude` the scan is given, and they need not be
+  Markdown. Ignored files (`.gitignore`), links and binary files don't count.
+- A glob that matches no file is a configuration error (exit 2): the set no longer reads what it
+  names. Fix or remove the glob.
+- A set's files are checked for RF001 to RF007 too, even a file the scan doesn't select. A file
+  that the scan and a set both read, or that two sets read, is checked once, so no finding is
+  reported twice.
+
+Leave out a file that loads its rules at run time with `strspc rule show`: it cites no ID.
 
 ## Understand a diagnostic
 

@@ -31,13 +31,19 @@ latest schema is refreshed after an hour, when the network can be reached.
 | Command | Does |
 | ------- | ---- |
 | `strspc schema` | List the cached schemas, with their core release and when they were fetched |
-| `strspc schema fetch [path]` | Download the latest config, entity and realm schemas, and those of the core release each local realm in the project pins (with its sub-realms). `--dir <realm>` and `--core-version <X.Y.Z>` add more |
+| `strspc schema fetch [path]` | Download the latest config, entity and realm schemas, and the entity, realm and bootstrap schemas of the core release each local realm in the project pins (with its sub-realms). `--dir <realm>` and `--core-version <X.Y.Z>` add more |
 | `strspc schema update` | Download the latest schemas again; a copy is replaced only once its download succeeds |
 | `strspc schema clear` | Delete the cached schemas |
 
 Run `strspc schema fetch` once while online to validate offline afterwards, for example before a
 pre-commit hook runs `strspc check`. In CI, cache the directory or set `STRSPC_SCHEMA_CACHE` to a
 path the workflow caches.
+
+`strspc realm init` keeps the schemas it vendors in the same cache, below `versions/`, and reads
+them from there. A pinned release that is cached, from an earlier init or from
+`schema fetch --core-version`, needs no network. Without a pin, when the latest release can't be looked
+up, init uses the newest release cached in full and prints a warning naming it and why the lookup
+failed. `realm add-subrealm` does the same for the schemas its parent lacks.
 
 On Windows, `schema fetch` refuses a source in `.strspc/config.yaml` that is a network or device path
 (`\\host\share`), and any symbolic link or junction in the paths it reads from a project. Pass a share,
@@ -46,10 +52,10 @@ or a linked realm, that you trust with `--dir`.
 A download that isn't a JSON schema, such as a proxy's sign-in page, is never cached: the copy already
 cached stays in use.
 
-`schema fetch` and `schema update` mark the cache with a `.strspc-schema-cache` file. `schema clear`
-runs only on the default location or a marked directory. It deletes only the schema files strspc
-writes (`config/v1.json`, `entity/v1.json`, `realm/v1.json`, the same two below `versions/X.Y.Z/`,
-and their temporary files), also inside the `.update-N` folders an interrupted update leaves, and
+`schema fetch`, `schema update` and `realm init` mark the cache with a `.strspc-schema-cache` file.
+`schema clear` runs only on the default location or a marked directory. It deletes only the schema
+files strspc writes (`config/v1.json`, `entity/v1.json`, `realm/v1.json`, `entity/bootstrap.json`,
+the last three below `versions/X.Y.Z/` too, and their temporary files), also inside the `.update-N` folders an interrupted update leaves, and
 then the empty folders there. Other files and symbolic links are kept.
 
 > [!WARNING]
@@ -126,7 +132,6 @@ The specification already covers these, but this CLI doesn't do them yet:
 
 | Item | Status |
 | ---- | ------ |
-| **`refs.coverage`** | `config.v1` accepts it, but `strspc refs` doesn't read it yet, so it reports no rule that no file cites |
 | **OpenAI and Ollama providers** | Reserved names that fail with a not-implemented error |
 | **Fallback without an LLM** | SPEC §8.4 falls back to structural checks; today `strspc check` exits 3 with provider `claude` and no key, so pass `--static-only` |
 | **Cloud mode** | SPEC §8.5 plans a CI action that calls a hosted SteerSpec evaluator, with shared caching and a compliance dashboard. The hosted service is planned, and the CLI has no cloud commands |

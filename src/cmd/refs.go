@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -67,6 +66,12 @@ func newRefsCmd() *cobra.Command {
 			"up with `strspc rule show`. Committed `strspc render` output copies every body, so\n" +
 			"exclude it with --exclude.\n\n" +
 			"A line holding \"strspc-refs: ignore\" exempts itself and the next line, in any comment syntax.\n\n" +
+			"Each entry of refs.coverage in .strspc/config.yaml is a coverage set: every rule of its\n" +
+			"entities, sub-entities included, in its states (D, P and I by default), must be cited in\n" +
+			"at least one file its files globs match in the project (RF008). Only entities of the local\n" +
+			"rule sources can be named. A glob that matches no file is a configuration error. The sets\n" +
+			"run whatever paths, --include and --exclude select, and their files are checked for the\n" +
+			"findings above too, each file once.\n\n" +
 			"Exit codes: 0 clean, 1 findings, 2 configuration or resolution error, 4 the JSON output\n" +
 			"can't be written.\n\n" +
 			"A pattern with no slash matches a file name in any directory, and dir/** matches everything\n" +
@@ -112,10 +117,11 @@ func runRefs(ctx context.Context, out, errOut io.Writer, cwd string, paths []str
 	if err != nil {
 		return withExitCode(exitConfig, err)
 	}
-	sources, standards, err := refsSources(ctx, errOut, cwd)
+	project, err := loadRefsProject(ctx, errOut, cwd, true)
 	if err != nil {
 		return withExitCode(exitConfig, err)
 	}
+	sources, standards := project.sources, project.standards
 	checker, err := rulerefs.New(sources,
 		rulerefs.WithStandards(standards...),
 		rulerefs.WithStrict(o.strict),
@@ -127,16 +133,23 @@ func runRefs(ctx context.Context, out, errOut io.Writer, cwd string, paths []str
 	}
 
 	res := &result.Result{}
+	checked := make(map[string]bool, len(files))
 	for _, f := range files {
-		data, err := os.ReadFile(filepath.Join(cwd, filepath.FromSlash(f)))
+		checked[f] = true
+		data, ok, err := readRefsFile(cwd, f)
 		if err != nil {
-			return withExitCode(exitConfig, fmt.Errorf("reading %s: %w", printableText(f), err))
+			return withExitCode(exitConfig, err)
 		}
-		if bytes.IndexByte(data[:min(len(data), refsBinaryProbe)], 0) >= 0 {
+		if !ok {
 			continue
 		}
 		res.Diagnostics = append(res.Diagnostics, checker.CheckText(printableText(f), data).Diagnostics...)
 	}
+	coverage, err := runRefsCoverage(cwd, checker, project.coverage, checked)
+	if err != nil {
+		return withExitCode(exitConfig, err)
+	}
+	res.Diagnostics = append(res.Diagnostics, coverage...)
 
 	switch {
 	case o.jsonOutput:
@@ -164,13 +177,40 @@ func runRefs(ctx context.Context, out, errOut io.Writer, cwd string, paths []str
 // (RLMMNFST-007), which rulerefs can't see in a Source. Those the entities
 // declare, rulerefs finds itself.
 func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.Source, []string, error) {
+	p, err := loadRefsProject(ctx, errOut, cwd, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	return p.sources, p.standards, nil
+}
+
+// refsProject is what refs reads from .strspc/config.yaml: the sources and
+// standards that citations are judged against, and the coverage sets.
+type refsProject struct {
+	sources   []rulerefs.Source
+	standards []string
+	coverage  []refsCoverageSet
+}
+
+// loadRefsProject reads the configuration and resolves its sources, as
+// refsSources describes. With coverage set, refs.coverage is read and checked
+// before any source is resolved; other commands leave it alone. The sources of the configured local directories, and their
+// sub-realms, are marked Local: they hold the rules a coverage set may name.
+func loadRefsProject(ctx context.Context, errOut io.Writer, cwd string, coverage bool) (*refsProject, error) {
 	r := &checkRun{ctx: ctx, out: io.Discard, errOut: errOut, cwd: cwd, opts: checkOptions{format: formatHuman}}
 	if err := r.loadConfig(); err != nil {
-		return nil, nil, err
+		return nil, err
+	}
+	var sets []refsCoverageSet
+	if coverage {
+		var err error
+		if sets, err = buildRefsCoverage(r.cfg.Refs.Coverage); err != nil {
+			return nil, err
+		}
 	}
 	if err := r.resolveRules(); err != nil {
 		writeRefsNotices(errOut, r.resolutionDiags)
-		return nil, nil, err
+		return nil, err
 	}
 	writeRefsNotices(errOut, r.notices)
 
@@ -180,7 +220,7 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 	}
 	sources := make([]rulerefs.Source, 0, len(r.entries))
 	for _, e := range r.entries {
-		s := rulerefs.Source{Entities: byOrigin[e.Source]}
+		s := rulerefs.Source{Entities: byOrigin[e.Source], Local: isLocalSource(e.Source)}
 		if t := r.realmTrees[e.Source]; t != nil {
 			s.RealmID = t.manifest.Realm.ID
 			s.Format = t.manifest.RuleIdentifierFormat
@@ -201,12 +241,13 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 	}
 
 	seen := make(map[string]bool)
-	add := func(realm *realmresolve.ResolvedRealm, format *entity.RuleIdentifierFormat) {
+	add := func(realm *realmresolve.ResolvedRealm, format *entity.RuleIdentifierFormat, local bool) {
 		realmSources, realmStandards := resolvedRealmSources(realm, format)
 		addStandards(realmStandards)
 		for _, s := range realmSources {
 			if !seen[s.RealmID] {
 				seen[s.RealmID] = true
+				s.Local = local
 				sources = append(sources, s)
 			}
 		}
@@ -214,30 +255,32 @@ func refsSources(ctx context.Context, errOut io.Writer, cwd string) ([]rulerefs.
 	// A sub-realm can pin another version of a dependency, so the project's own
 	// dependencies go first.
 	trees := make([]*realmTree, 0, len(r.entries))
+	local := make([]bool, 0, len(r.entries)) // whether trees[i] comes from a local directory
 	for _, e := range r.entries {
 		if t := r.realmTrees[e.Source]; t != nil {
 			trees = append(trees, t)
+			local = append(local, isLocalSource(e.Source))
 			addStandards(t.manifest.Realm.Standards)
 		}
 	}
-	for _, t := range trees {
+	for i, t := range trees {
 		for _, sub := range t.resolved.SubRealms {
-			add(sub, t.manifest.RuleIdentifierFormat) // a sub-realm renders like its parent (RLM-015)
+			add(sub, t.manifest.RuleIdentifierFormat, local[i]) // a sub-realm renders like its parent (RLM-015)
 		}
 	}
 	for _, t := range trees {
 		for _, dep := range t.resolved.Dependencies {
-			add(dep, dep.Realm.RuleIdentifierFormat)
+			add(dep, dep.Realm.RuleIdentifierFormat, false)
 		}
 	}
 	for _, t := range trees {
 		for _, sub := range t.resolved.SubRealms {
 			for _, dep := range sub.Dependencies {
-				add(dep, dep.Realm.RuleIdentifierFormat)
+				add(dep, dep.Realm.RuleIdentifierFormat, false)
 			}
 		}
 	}
-	return sources, standards, nil
+	return &refsProject{sources: sources, standards: standards, coverage: sets}, nil
 }
 
 // writeRefsNotices writes resolution diagnostics, which stay out of the citation

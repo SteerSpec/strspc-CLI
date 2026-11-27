@@ -56,6 +56,29 @@ strspc rule add CFG --sub-entity CFGIO --body "Writes MUST be atomic." --added-b
 strspc entity rehash --all                                     # fix hashes after a bulk import
 ```
 
+**`diff` refuses an edit to a Published rule.** Commit the promotion, then change the rule's text
+by hand: `strspc diff` against the commit exits 1 with RD002. Editing the file by hand also leaves
+the version, timestamp and hash stale, so RD007, RD009 and RD008 come with it:
+
+```bash
+strspc rule promote CFG-001                                                    # D → P
+git add ./rules && git commit -m 'Publish CFG-001'
+# Edit the body of CFG-001 in rules/CFG.json, then:
+strspc diff rules/ --base HEAD
+```
+
+```text
+[error] RD007: rule_set.version must be a valid semver and strictly higher than "0.2.0", got "0.2.0" (rules/CFG.json: CFG/rule_set.version)
+[error] RD009: rule_set.timestamp must be updated (rules/CFG.json: CFG/rule_set.timestamp)
+[error] RD002: rule body is immutable in state "P": supersede the rule to change its body (rules/CFG.json: CFG/CFG-001)
+[error] RD008: rule_set.hash mismatch: computed "blake3:…", file has "blake3:…" (rules/CFG.json: CFG/rule_set.hash)
+
+4 error(s), 0 warning(s)
+Error: diff found 4 error(s)
+```
+
+`rule supersede` is the way to change it, as above.
+
 **Revising in a branch.** Each `rule update` and `note update` adds one to the revision, but `diff`
 wants a rule or note the base doesn't hold at revision 0 (RD004, RD015), and one the base holds one
 revision past it (RD013). Pass the base `diff` compares with, and the revision is set against it, so
@@ -231,6 +254,12 @@ release 1.20.0 each file carries its release as a top-level `x-steerspec-core-ve
 older releases have no such field. `realm init` refuses a core dependency whose `github://` source tag
 differs from its version, and a `--core-version` that differs from the dependency.
 
+`realm init` keeps the schemas it copies in the [schema cache](reference.md#schema-cache), by
+release, and reads them from there when they are cached, so a pinned release needs no network the
+second time. When the latest release can't be looked up, such as offline or when rate limited, it
+uses the newest release whose schemas are all cached, and prints a warning naming it and why the
+lookup failed. With none cached, it fails and asks for `--core-version`.
+
 ```bash
 strspc realm dep add com.acme.shared@1.0.0=../shared
 strspc realm dep list
@@ -241,6 +270,11 @@ strspc realm add-subrealm --parent-dir rules --dir rules/sync --id com.acme.app.
 A sub-realm inherits its parent's dependencies unless you pass `--no-inherit-deps`. `add-subrealm`
 doesn't declare it in the parent: add the directory name to `sub_realms` in the parent's `realm.json`,
 or `realm validate --recursive` skips it.
+
+`add-subrealm` copies the schemas from the parent's `_schema/`. It fetches any that are missing from
+the core release the parent pins, through the schema cache as `realm init` does. When the parent
+pins no release and the latest can't be looked up, it uses the newest release cached in full and
+prints the same warning.
 
 **Keep dependencies current.** Dependabot and Renovate can't read `realm.json`, so a pinned dependency
 drifts silently. `strspc realm dep upgrade` moves each `github://` dependency pinned to a release tag

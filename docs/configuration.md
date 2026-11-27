@@ -24,6 +24,10 @@ cache:
 evaluate_on: [D, P, I]      # the default
 fail_on:
   - I                       # state codes (D, A, P, I, R, T), not words
+refs:
+  coverage:                 # optional; see strspc refs
+    - entities: [APP]
+      files: ['.claude/agents/*.md']
 ```
 
 | Field | Meaning |
@@ -36,6 +40,7 @@ fail_on:
 | `cache.ttl` | How long evaluations and `@latest` lookups stay valid |
 | `evaluate_on` | Rule states sent to the evaluator; other states are skipped |
 | `fail_on` | Rule states whose violations fail the check; other violations are warnings |
+| `refs.coverage` | Coverage sets for `strspc refs`: every rule of `entities`, in `states` (D, P and I by default), must be cited by a file that `files` matches. See [coverage sets](validate.md#check-that-every-rule-is-cited) |
 
 > [!TIP]
 > Use `scope: global` for a local realm that governs your code, as the CLI's

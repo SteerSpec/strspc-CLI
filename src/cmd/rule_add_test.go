@@ -22,6 +22,9 @@ func TestRuleAddBasic(t *testing.T) {
 
 	testutil.AssertContains(t, out, "TST-001")
 	testutil.AssertContains(t, out, "Draft")
+	// The next step promotes the rule, in the same --dir.
+	testutil.AssertContains(t, out, "Next steps:")
+	testutil.AssertContains(t, out, "strspc rule promote TST-001"+realmDirArg(dir))
 
 	f := loadEntityFile(t, dir, "TST")
 	if len(f.Rules) != 1 {
@@ -59,6 +62,7 @@ func TestRuleAddJSON(t *testing.T) {
 	if result["state"] != "D" {
 		t.Errorf("expected state D, got %v", result["state"])
 	}
+	testutil.AssertNotContains(t, out, "Next steps:")
 }
 
 func TestRuleAddMissingBody(t *testing.T) {

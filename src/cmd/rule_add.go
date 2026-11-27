@@ -126,6 +126,11 @@ Examples:
 			writeStandardFields(w, clause, profiles)
 			writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", oldVersion, version)))
 			writeAddedBySource(w, addedBy, addedBySource)
+			writeln(w)
+			writeln(w, descStyle.Render("Next steps:"))
+			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Publish it once its text is final: ")+
+				cmdStyle.Render("strspc rule promote "+newRuleID+realmDirArg(dir)))
+			writeln(w)
 
 			return nil
 		},
@@ -133,7 +138,7 @@ Examples:
 
 	cmd.Flags().StringVar(&body, "body", "", "rule statement text (required)")
 	cmd.Flags().StringVar(&addedBy, "added-by", "", "contributor identifier such as github:<login>; must name a contributor when the realm lists any. Defaults to $STRSPC_ADDED_BY, then to the contributor whose email is your git user.email")
-	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
+	cmd.Flags().StringVar(&dir, "dir", defaultRealmDir, "realm directory")
 	cmd.Flags().StringVar(&subEntity, "sub-entity", "", "target this sub-entity of <entity_id> instead of the entity itself")
 	cmd.Flags().StringVar(&overrides, "overrides", "", "inherited rule this rule replaces for the entity: <EUID>-NNN or <realm-id>:<EUID>-NNN")
 	cmd.Flags().StringVar(&clause, "clause", "", "in a Standard Realm, the clause of the standard the rule transcribes, such as V1.1.1")
