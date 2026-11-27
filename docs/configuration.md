@@ -18,7 +18,7 @@ rules:
 evaluator:
   provider: claude          # requires ANTHROPIC_API_KEY; use "null" to skip AI evaluation
   model: claude-haiku-5-5   # the default
-  effort: medium            # low | medium | high
+  effort: medium            # low | medium | high | xhigh | max
 cache:
   ttl: 24h
 evaluate_on: [D, P, I]      # the default

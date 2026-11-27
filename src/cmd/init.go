@@ -42,7 +42,7 @@ rules:
 evaluator:
   provider: %[2]s          # %[3]s; use "null" to skip AI evaluation
   # model: %[4]s    # model override (the default)
-  # effort: medium             # low | medium | high
+  # effort: medium             # low | medium | high | xhigh | max
 
 # Local cache settings
 cache:
