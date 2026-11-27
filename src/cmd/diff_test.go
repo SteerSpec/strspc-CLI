@@ -235,6 +235,19 @@ func TestDiffNewFile(t *testing.T) {
 	}
 }
 
+// An unchanged committed file reports nothing, in single-file mode as in
+// directory mode (#372): an unbumped version and timestamp are no change.
+func TestDiffFileUnchanged(t *testing.T) {
+	promoted := entityV2Promote("ENT")
+	dir := makeGitRepo(t, "ENT.json", promoted, promoted)
+
+	for _, target := range []string{filepath.Join(dir, "ENT.json"), dir} {
+		out, err := testutil.ExecuteCommand(NewRootCmd(), "diff", target, "--base", "HEAD")
+		assertExit(t, err, exitOK)
+		testutil.AssertContains(t, out, "No errors or warnings found")
+	}
+}
+
 func TestDiffDirMode(t *testing.T) {
 	base := map[string][]byte{
 		"ENT.json": entityV1("ENT"),
