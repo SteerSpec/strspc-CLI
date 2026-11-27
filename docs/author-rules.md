@@ -58,7 +58,7 @@ strspc entity rehash --all                                     # fix hashes afte
 
 **`diff` refuses an edit to a Published rule.** Commit the promotion, then change the rule's text
 by hand: `strspc diff` against the commit exits 1 with RD002. Editing the file by hand also leaves
-the version, timestamp and hash stale, so RD007, RD009 and RD008 come with it (hashes shortened):
+the version, timestamp and hash stale, so RD007, RD009 and RD008 come with it:
 
 ```bash
 strspc rule promote CFG-001                                                    # D → P
@@ -71,7 +71,7 @@ strspc diff rules/ --base HEAD
 [error] RD007: rule_set.version must be a valid semver and strictly higher than "0.2.0", got "0.2.0" (rules/CFG.json: CFG/rule_set.version)
 [error] RD009: rule_set.timestamp must be updated (rules/CFG.json: CFG/rule_set.timestamp)
 [error] RD002: rule body is immutable in state "P": supersede the rule to change its body (rules/CFG.json: CFG/CFG-001)
-[error] RD008: rule_set.hash mismatch: computed "blake3:0249bd2c…", file has "blake3:4ffec856…" (rules/CFG.json: CFG/rule_set.hash)
+[error] RD008: rule_set.hash mismatch: computed "blake3:…", file has "blake3:…" (rules/CFG.json: CFG/rule_set.hash)
 
 4 error(s), 0 warning(s)
 Error: diff found 4 error(s)

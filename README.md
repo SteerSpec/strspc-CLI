@@ -100,7 +100,7 @@ Add `./rules/` to `.strspc/config.yaml` to
 ### See a rule enforced
 
 No API key is needed. In a new, empty directory, publish a rule, commit it, then edit its text by
-hand: `strspc diff` refuses the edit, as it would in CI.
+hand: `strspc diff` refuses the edit.
 
 ```bash
 git init -b main
@@ -113,13 +113,13 @@ git add ./rules && git commit -m 'Publish CFG-001'
 strspc diff rules/ --base HEAD
 ```
 
-`strspc diff` exits 1 (hashes shortened):
+`strspc diff` exits 1:
 
 ```text
 [error] RD007: rule_set.version must be a valid semver and strictly higher than "0.2.0", got "0.2.0" (rules/CFG.json: CFG/rule_set.version)
 [error] RD009: rule_set.timestamp must be updated (rules/CFG.json: CFG/rule_set.timestamp)
 [error] RD002: rule body is immutable in state "P": supersede the rule to change its body (rules/CFG.json: CFG/CFG-001)
-[error] RD008: rule_set.hash mismatch: computed "blake3:0249bd2c…", file has "blake3:4ffec856…" (rules/CFG.json: CFG/rule_set.hash)
+[error] RD008: rule_set.hash mismatch: computed "blake3:…", file has "blake3:…" (rules/CFG.json: CFG/rule_set.hash)
 
 4 error(s), 0 warning(s)
 Error: diff found 4 error(s)

@@ -46,7 +46,7 @@ var gettingStarted = []helpStep{
 var authoringPath = []helpStep{
 	{"strspc realm init --id <realm-id> --title <title>", "Create a realm in ./rules"},
 	{"strspc realm add <EUID> --title <title>", "Add an entity to it"},
-	{"strspc rule add <EUID> --body <text>", "Add a Draft rule"},
+	{"strspc rule add <EUID> --body <text> --added-by github:<login>", "Add a Draft rule"},
 	{"strspc rule promote <EUID>-001", "Publish the rule, then commit"},
 	{"strspc diff rules/ --base HEAD", "See an edit to the Published rule refused"},
 }
