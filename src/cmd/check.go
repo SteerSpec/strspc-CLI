@@ -193,7 +193,7 @@ func runCheck(ctx context.Context, out, errOut io.Writer, cwd string, o *checkOp
 	}
 
 	if err := r.loadConfig(); err != nil {
-		return r.fail(exitConfig, err)
+		return r.fail(exitConfig, err, configSchemaDiagnostics(err)...)
 	}
 	if code, err := r.buildProvider(); err != nil {
 		return r.fail(code, err)
@@ -239,16 +239,13 @@ func (r *checkRun) fail(code int, err error, diags ...result.Diagnostic) error {
 	return withExitCode(code, err)
 }
 
-// loadConfig reads .strspc/config.yaml and normalises the settings used by
-// the check. Structural problems the check cannot work around (no rule
-// source, unknown lifecycle state codes) are configuration errors; a
-// mismatch against the published config.v1 schema is reported as a warning.
+// loadConfig reads .strspc/config.yaml, validates it against the config.v1
+// schema before anything in it is used (a *configSchemaError when it doesn't
+// match), and normalises the settings used by the check. Structural problems
+// the check cannot work around (no rule source, unknown lifecycle state
+// codes) are configuration errors too.
 func (r *checkRun) loadConfig() error {
-	raw, err := readStrspcConfig(r.cwd)
-	if err != nil {
-		return err
-	}
-	cfg, err := parseStrspcConfig(raw)
+	cfg, err := loadStrspcConfig(r.ctx, r.cwd)
 	if err != nil {
 		return err
 	}
@@ -287,7 +284,6 @@ func (r *checkRun) loadConfig() error {
 		}
 	}
 
-	r.notices = append(r.notices, r.validateConfigSchema(raw)...)
 	return nil
 }
 
@@ -1101,8 +1097,10 @@ func (o *checkObserver) counts() (hits, misses, calls, skipped int) {
 	return o.hits, o.misses, o.calls, o.skipped
 }
 
-// stateNameToCode maps the long lifecycle state names accepted in fail_on
-// and evaluate_on to their single-letter codes (entity.State*).
+// stateNameToCode maps the long lifecycle state names to their single-letter
+// codes (entity.State*). config.v1 refuses names in fail_on and evaluate_on,
+// so from the config only a looser schema lets one through; flags such as
+// rule show --state still accept them.
 var stateNameToCode = map[string]string{
 	"draft":       entity.StateDraft,
 	"abandoned":   entity.StateAbandoned,

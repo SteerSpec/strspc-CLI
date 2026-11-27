@@ -46,7 +46,7 @@ func newSyncCmd() *cobra.Command {
 				cwd = args[0]
 			}
 
-			cfg, err := loadStrspcConfig(cwd)
+			cfg, err := loadStrspcConfig(cmd.Context(), cwd)
 			if err != nil {
 				return err
 			}

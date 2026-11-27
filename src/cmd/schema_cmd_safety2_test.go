@@ -17,7 +17,7 @@ func TestSchemaClearKeepsUnownedFiles(t *testing.T) {
 	// The cache was marked by fetch, but these files aren't schemas.
 	writeRefsFile(t, cache, "config/settings.json.bak", "keep")
 	writeRefsFile(t, cache, "config/settings.json", "keep")
-	writeRefsFile(t, cache, "versions/1.2.3/config/v1.json", "keep")
+	writeRefsFile(t, cache, "versions/1.2.3/config/settings.json", "keep")
 	writeRefsFile(t, cache, "versions/notes.txt", "keep")
 
 	_, err = testutil.ExecuteCommand(NewRootCmd(), "schema", "clear")
@@ -27,7 +27,7 @@ func TestSchemaClearKeepsUnownedFiles(t *testing.T) {
 			t.Errorf("%s survived clear", p)
 		}
 	}
-	for _, p := range []string{"config/settings.json.bak", "config/settings.json", "versions/1.2.3/config/v1.json", "versions/notes.txt"} {
+	for _, p := range []string{"config/settings.json.bak", "config/settings.json", "versions/1.2.3/config/settings.json", "versions/notes.txt"} {
 		if _, err := os.Stat(filepath.Join(cache, filepath.FromSlash(p))); err != nil {
 			t.Errorf("clear removed %s, which isn't a schema: %v", p, err)
 		}

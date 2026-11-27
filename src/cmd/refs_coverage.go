@@ -25,8 +25,9 @@ type refsCoverageSet struct {
 	states   []string // empty means rulerefs' default: D, P and I
 }
 
-// buildRefsCoverage validates refs.coverage. The config.v1 schema check only
-// warns, so an entry that can't be run is a configuration error here.
+// buildRefsCoverage validates refs.coverage. The config.v1 schema refuses
+// most of what it checks already; an entry that passes a looser schema but
+// can't be run is still a configuration error here.
 func buildRefsCoverage(entries []refsCoverageConfig) ([]refsCoverageSet, error) {
 	sets := make([]refsCoverageSet, 0, len(entries))
 	for i, e := range entries {

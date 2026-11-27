@@ -73,7 +73,7 @@ func TestRefsCoverageGitHubFormat(t *testing.T) {
 // A coverage set reads its files wherever they are, even a .txt file that the
 // main scan doesn't select, and judges their citations as the scan does.
 func TestRefsCoverageStatesAndFilesOutsideTheScan(t *testing.T) {
-	dir := setupRefsCoverage(t, "    - entities: [APP]\n      files: ['notes/*.txt']\n      states: [abandoned]\n")
+	dir := setupRefsCoverage(t, "    - entities: [APP]\n      files: ['notes/*.txt']\n      states: [A]\n")
 	writeRefsFile(t, dir, "notes/a.txt", "APP-002\n")
 	_, err := runRefsCmd(t, "--allow-state", "A")
 	assertExit(t, err, exitOK)
@@ -171,10 +171,10 @@ func TestRefsCoverageConfigurationErrors(t *testing.T) {
 		coverage string
 		want     string
 	}{
-		{"no entity", "    - entities: [' ']\n      files: ['agents/*.md']\n", "refs.coverage[0] in .strspc/config.yaml: entities must name"},
+		{"no entity", "    - entities: [' ']\n      files: ['agents/*.md']\n", "/refs/coverage/0/entities/0"},
 		{"no file", "    - entities: [APP]\n      files: ['']\n", "files must list at least one glob"},
 		{"bad glob", "    - entities: [APP]\n      files: ['[']\n", `invalid files glob "["`},
-		{"bad state", "    - entities: [APP]\n      files: ['agents/*.md']\n      states: [X]\n", "refs.coverage[0].states"},
+		{"bad state", "    - entities: [APP]\n      files: ['agents/*.md']\n      states: [X]\n", "/refs/coverage/0/states/0"},
 		{"no match", refsCoverageAgents + "    - entities: [APP]\n      files: ['agents/*.md', 'none/*']\n", `refs.coverage[1] in .strspc/config.yaml: no file matches "none/*"`},
 		{"dependency entity", "    - entities: [ACCT]\n      files: ['agents/*.md']\n", `refs.coverage[0] in .strspc/config.yaml: entity "ACCT" is not in the local realm`},
 		{"unknown entity", "    - entities: [NOPE]\n      files: ['agents/*.md']\n", `entity "NOPE"`},

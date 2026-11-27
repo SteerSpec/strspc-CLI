@@ -40,19 +40,9 @@ type refsCoverageConfig struct {
 	States   []string `yaml:"states"`
 }
 
-// loadStrspcConfig reads and parses .strspc/config.yaml under cwd.
+// readStrspcConfig returns the raw bytes of .strspc/config.yaml under cwd, so
+// that the caller validates the same bytes it parses (loadStrspcConfig).
 // Returns a user-friendly error if the file is absent (prompting strspc init).
-func loadStrspcConfig(cwd string) (*strspcConfig, error) {
-	data, err := readStrspcConfig(cwd)
-	if err != nil {
-		return nil, err
-	}
-	return parseStrspcConfig(data)
-}
-
-// readStrspcConfig returns the raw bytes of .strspc/config.yaml under cwd so
-// that callers can both decode the typed settings and validate the document
-// against the config schema.
 func readStrspcConfig(cwd string) ([]byte, error) {
 	configPath := filepath.Join(cwd, ".strspc", "config.yaml")
 	if _, err := os.Stat(configPath); err != nil {
@@ -68,7 +58,9 @@ func readStrspcConfig(cwd string) ([]byte, error) {
 	return data, nil
 }
 
-// parseStrspcConfig decodes the typed settings from config.yaml content.
+// parseStrspcConfig decodes the typed settings from config.yaml content. Only
+// content validateConfig accepted may be parsed for use, except by `schema
+// fetch` (see schemaProjectRealms).
 func parseStrspcConfig(data []byte) (*strspcConfig, error) {
 	var cfg strspcConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {

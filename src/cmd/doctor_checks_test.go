@@ -76,8 +76,10 @@ func TestDoctorConfigSchemaEdgeCases(t *testing.T) {
 	// Two violations at two locations.
 	writeRefsFile(t, h.cacheDir, "strspc/schemas/config/v1.json", `{"type":"object","properties":{"evaluator":{"type":"string"},"fail_on":{"type":"string"}}}`)
 	report, _ = runDoctorJSON(t, dir)
-	c = assertDoctorStatus(t, report, "config.schema", "", doctorWarn)
+	c = assertDoctorStatus(t, report, "config.schema", "", doctorFail)
 	testutil.AssertContains(t, c.Message, "(and 1 more)")
+	// Doctor goes on with the other checks.
+	assertDoctorStatus(t, report, "config.ttl", "", doctorPass)
 }
 
 func TestDoctorProviderConfigFailures(t *testing.T) {
