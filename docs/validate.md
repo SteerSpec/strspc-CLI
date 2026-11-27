@@ -46,7 +46,9 @@ resolver warning an error. `lint` checks each file alone, so it reports none of 
 `_schema/` directories, whatever their name. It reads the base at the path as given and refuses a
 link on the way to it, a linked entity file or directory in the tree, on either side, and a submodule.
 In directory mode it also compares the Realms of the two trees: their kinds, Realm Notes and
-dependency sources (RD028 to RD031). Deleting a file that holds no entity isn't RD005.
+dependency sources (RD028 to RD031). Deleting a file that holds no entity isn't RD005. Adding,
+changing or removing `inherits` on an entity that declares no `visibility` is RD020, an Info, as its
+visibility follows the inherited entity.
 
 **Core realm.** The core realm defines the schemas, so it has nothing to pin. Pass `--core` to validate
 it against its own `_schema/`:
