@@ -20,6 +20,10 @@ func TestInitCreatesConfig(t *testing.T) {
 	}
 
 	testutil.AssertContains(t, output, "Initialized SteerSpec in "+filepath.Join(dir, ".strspc"))
+	// The next steps lead to a rule enforced without an API key (#376).
+	testutil.AssertContains(t, output, "strspc realm init --id <realm-id> --title <title>")
+	testutil.AssertContains(t, output, "no API key needed")
+	testutil.AssertContains(t, output, "strspc diff")
 
 	configPath := filepath.Join(dir, ".strspc", "config.yaml")
 	data, err := os.ReadFile(configPath)
