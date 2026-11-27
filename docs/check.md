@@ -98,16 +98,15 @@ still for that rule alone.
 **Configuration.** Before it uses anything in `.strspc/config.yaml`, the check validates the file
 against the published `config.v1` schema, kept in the [schema cache](reference.md#schema-cache). Each
 mismatch is error `CHK002`, shown in every `--format`, and the check exits 2 before it looks at the
-provider (exit 3). Examples are an unknown key, an empty `rules:` list, an empty file, and a long state
-name such as `implemented`: the schema wants the code `I`. The config is valid when it matches the
-latest `config.v1` or the `config.v1` of the newest core release in the cache, so an older cached
+provider (exit 3). Examples are an unknown key, an empty `rules:` list, an empty file, and a state
+name instead of its code: `fail_on: [implemented]` is refused, write `fail_on: [I]`. The config is
+valid when it matches the latest `config.v1` or the `config.v1` of the newest core release in the cache, so an older cached
 latest copy, used offline, doesn't refuse what a newer release allows. When neither schema is cached
 and the network can't be reached, the check exits 2 and asks you to run `strspc schema fetch`. A
 config that passes the schema still exits 2 on an unknown `evaluator.provider`.
 
 Every command that uses the config validates it the same way first: `refs`, `rule show`,
-`standards`, `rule verify`, `sync`, and `status` (against the cached schemas only, as it makes no
-network call). They stop with an error that lists the mismatches. `doctor` reports them as a failed
+`standards`, `rule verify`, `sync` and `status`. They stop with an error that lists the mismatches. `doctor` reports them as a failed
 `config.schema` check and goes on. `schema fetch` reads the config without validating it, so that
 it can fill an empty cache.
 

@@ -454,13 +454,25 @@ func TestWriteStatusEdgeLines(t *testing.T) {
 	}
 }
 
-// status makes no network call: with no config.v1 schema cached it can't
-// validate the config, so it fails and names the remedy.
-func TestStatusColdSchemaCache(t *testing.T) {
+// On a cold schema cache status fetches the config.v1 schema, as check does,
+// so it works on a fresh machine online.
+func TestStatusColdSchemaCacheFetches(t *testing.T) {
+	cache := serveConfigSchema(t)
+	dir := statusProject(t, "", "./rules/")
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "status", dir); err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if _, ok := readCachedSchema(cache, configV1SchemaPath); !ok {
+		t.Error("the fetched config.v1 schema must be kept in the schema cache")
+	}
+}
+
+// Offline with a cold schema cache, status can't validate the config, so it
+// fails and names the remedy.
+func TestStatusColdSchemaCacheOffline(t *testing.T) {
 	useConfigSchemaCache(t)
 	dir := statusProject(t, "", "./rules/")
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "status", dir)
 	assertExit(t, err, exitConfig)
-	testutil.AssertContains(t, err.Error(), "status makes no network call; run `strspc schema fetch`")
-	testutil.AssertNotContains(t, err.Error(), "doctor")
+	testutil.AssertContains(t, err.Error(), "strspc schema fetch")
 }

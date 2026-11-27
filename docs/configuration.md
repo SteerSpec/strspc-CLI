@@ -73,11 +73,13 @@ Realm: dev.steerspec.cli 0.1.0
   Sub-realms: none
 ```
 
-It only reads: it makes no network call and fills no cache, so a source that was never fetched shows
-as `not synced`, and `strspc sync` fetches it. Only `@latest` can go stale, once it resolved longer ago
+It reads the project and fetches nothing from the rule sources, so a source that was never fetched
+shows as `not synced`, and `strspc sync` fetches it. Like every command that uses the config, it
+first validates `.strspc/config.yaml` against `config.v1`, and downloads that schema into the
+[schema cache](reference.md#schema-cache) when no fresh copy is there. Only `@latest` can go stale, once it resolved longer ago
 than `cache.ttl`; a pinned source can't. `--json` prints the same report as one document. It exits 0,
 also in a project with no configuration, 2 when the configuration can't be parsed or doesn't match
-the cached `config.v1` schema (or no such schema is cached: run `strspc schema fetch`), and 4 when the
+`config.v1` (or that schema is neither cached nor reachable: run `strspc schema fetch`), and 4 when the
 `--json` report can't be written.
 
 ## Diagnose problems

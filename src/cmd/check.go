@@ -1097,8 +1097,10 @@ func (o *checkObserver) counts() (hits, misses, calls, skipped int) {
 	return o.hits, o.misses, o.calls, o.skipped
 }
 
-// stateNameToCode maps the long lifecycle state names accepted in fail_on
-// and evaluate_on to their single-letter codes (entity.State*).
+// stateNameToCode maps the long lifecycle state names to their single-letter
+// codes (entity.State*). config.v1 refuses names in fail_on and evaluate_on,
+// so from the config only a looser schema lets one through; flags such as
+// rule show --state still accept them.
 var stateNameToCode = map[string]string{
 	"draft":       entity.StateDraft,
 	"abandoned":   entity.StateAbandoned,

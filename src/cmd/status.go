@@ -17,7 +17,6 @@ import (
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/remote"
-	"github.com/SteerSpec/strspc-manager/src/schema"
 )
 
 // How a source stands, in the state field of statusSource.
@@ -102,11 +101,14 @@ func newStatusCmd() *cobra.Command {
 		Short: "Show the project's rule sources and how they stand",
 		Long: "Show the configuration, rule sources, rule counts by state and realm of a project. Defaults to\n" +
 			"the current directory.\n\n" +
-			"status only reads: it makes no network call and fills no cache, so a source that was never\n" +
+			"status reads the project and fetches nothing from the rule sources, so a source that was never\n" +
 			"synced shows as such. Run strspc sync to fetch it. A pinned source can't go stale; only @latest\n" +
-			"has a TTL.\n\n" +
+			"has a TTL. It validates .strspc/config.yaml against the config.v1 schema first, as every command\n" +
+			"that uses the config does, and downloads that schema into the schema cache when no fresh copy\n" +
+			"is there.\n\n" +
 			"Exit codes: 0 when the report is printed, also for a project with no configuration; 2 when\n" +
-			"the configuration can't be parsed; 4 when the --json report can't be written.",
+			"the configuration can't be parsed or doesn't match config.v1, or no config.v1 schema is cached\n" +
+			"and none can be fetched; 4 when the --json report can't be written.",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -131,19 +133,16 @@ func newStatusCmd() *cobra.Command {
 	return cmd
 }
 
-// collectStatus reads the project at cwd. It makes no network call and writes
-// nothing: the config is validated against the cached config.v1 schema only.
+// collectStatus reads the project at cwd. It fetches nothing from the rule
+// sources and writes nothing in the project. Validating the config may
+// download the config.v1 schema into the schema cache, as check does.
 func collectStatus(ctx context.Context, cwd string) (*statusReport, error) {
 	report := &statusReport{Version: versionInfo.Version}
 	configPath := filepath.Join(cwd, ".strspc", "config.yaml")
 	if _, err := os.Stat(configPath); errors.Is(err, fs.ErrNotExist) {
 		return report, nil
 	}
-	cfg, err := loadStrspcConfig(ctx, cwd, schema.WithClient(offlineHTTPClient()))
-	if errors.Is(err, errConfigSchemaUnavailable) {
-		return nil, errors.New("can't validate .strspc/config.yaml: the config.v1 schema is not cached, " +
-			"and status makes no network call; run `strspc schema fetch` while online")
-	}
+	cfg, err := loadStrspcConfig(ctx, cwd)
 	if err != nil {
 		return nil, err
 	}
