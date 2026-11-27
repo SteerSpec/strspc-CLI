@@ -160,9 +160,11 @@ func checkConfigPinsMoved(data []byte, ups []depUpgrade) error {
 		} `yaml:"rules"`
 	}
 	if yaml.Unmarshal(data, &cfg) != nil {
-		// Not YAML: nothing here can be checked. The upgrade edits the text
-		// only and uses no setting, so it doesn't validate the config against
-		// config.v1 (SEC-004); the next command that uses it does, and refuses it.
+		// Not YAML: nothing here can be checked. The upgrade doesn't validate
+		// the config against config.v1 (SEC-004): it rewrites source pins in
+		// the text, and reads rules[].source here only to refuse an upgrade it
+		// couldn't rewrite. No setting decides what it does. The next command
+		// that uses the config validates it, and refuses it.
 		return nil
 	}
 	for _, r := range cfg.Rules {

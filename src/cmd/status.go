@@ -140,6 +140,10 @@ func collectStatus(ctx context.Context, cwd string) (*statusReport, error) {
 		return report, nil
 	}
 	cfg, err := loadStrspcConfig(ctx, cwd, schema.WithClient(offlineHTTPClient()))
+	if errors.Is(err, errConfigSchemaUnavailable) {
+		return nil, errors.New("can't validate .strspc/config.yaml: the config.v1 schema is not cached, " +
+			"and status makes no network call; run `strspc schema fetch` while online")
+	}
 	if err != nil {
 		return nil, err
 	}

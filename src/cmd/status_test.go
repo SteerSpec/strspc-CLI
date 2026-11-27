@@ -461,5 +461,6 @@ func TestStatusColdSchemaCache(t *testing.T) {
 	dir := statusProject(t, "", "./rules/")
 	_, err := testutil.ExecuteCommand(NewRootCmd(), "status", dir)
 	assertExit(t, err, exitConfig)
-	testutil.AssertContains(t, err.Error(), "strspc schema fetch")
+	testutil.AssertContains(t, err.Error(), "status makes no network call; run `strspc schema fetch`")
+	testutil.AssertNotContains(t, err.Error(), "doctor")
 }
