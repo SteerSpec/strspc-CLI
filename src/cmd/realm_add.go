@@ -123,10 +123,11 @@ const defaultRealmDir = "./rules"
 
 // realmDirArg returns " --dir <dir>" for a suggested command, with dir quoted
 // for a shell, so the command runs as printed; it returns "" when dir is the
-// default the command uses without --dir.
+// default the command uses without --dir. dir is printed with forward slashes,
+// which strspc accepts on Windows too, so a separator never forces quoting.
 func realmDirArg(dir string) string {
-	clean := filepath.Clean(dir)
-	if clean == filepath.Clean(defaultRealmDir) {
+	clean := filepath.ToSlash(filepath.Clean(dir))
+	if clean == "rules" {
 		return ""
 	}
 	return " --dir " + shellQuote(clean)

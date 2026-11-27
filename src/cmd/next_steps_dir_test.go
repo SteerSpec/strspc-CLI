@@ -118,8 +118,8 @@ func TestRealmAddNextStepsDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("realm add: %v\n%s", err, out)
 	}
-	testutil.AssertContains(t, out, `--added-by "github:<login>" --dir `+shellQuote(dir))
-	testutil.AssertContains(t, out, "strspc realm validate --dir "+shellQuote(dir))
+	testutil.AssertContains(t, out, `--added-by "github:<login>" --dir `+shellQuote(filepath.ToSlash(dir)))
+	testutil.AssertContains(t, out, "strspc realm validate --dir "+shellQuote(filepath.ToSlash(dir)))
 }
 
 func TestRealmAddNextStepsDefaultDir(t *testing.T) {
@@ -144,8 +144,8 @@ func TestEntityAddNextStepsDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("entity add: %v\n%s", err, out)
 	}
-	testutil.AssertContains(t, out, `strspc rule add CHILD --body "..." --added-by "github:<login>" --dir `+shellQuote(dir))
-	testutil.AssertContains(t, out, "strspc realm validate --dir "+shellQuote(dir))
+	testutil.AssertContains(t, out, `strspc rule add CHILD --body "..." --added-by "github:<login>" --dir `+shellQuote(filepath.ToSlash(dir)))
+	testutil.AssertContains(t, out, "strspc realm validate --dir "+shellQuote(filepath.ToSlash(dir)))
 }
 
 func TestRealmAddSubrealmNextStepsQuoteDir(t *testing.T) {
@@ -157,8 +157,8 @@ func TestRealmAddSubrealmNextStepsQuoteDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("add-subrealm: %v\n%s", err, out)
 	}
-	testutil.AssertContains(t, out, `strspc realm add MYENTITY --title "My Entity" --dir `+shellQuote(childDir))
-	testutil.AssertContains(t, out, "strspc realm validate --dir "+shellQuote(childDir))
+	testutil.AssertContains(t, out, `strspc realm add MYENTITY --title "My Entity" --dir `+shellQuote(filepath.ToSlash(childDir)))
+	testutil.AssertContains(t, out, "strspc realm validate --dir "+shellQuote(filepath.ToSlash(childDir)))
 }
 
 func TestRealmValidateDirFlag(t *testing.T) {
