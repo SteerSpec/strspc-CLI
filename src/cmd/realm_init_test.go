@@ -615,7 +615,7 @@ func TestFetchSchemaErrors(t *testing.T) {
 		t.Setenv(envSchemaCache, t.TempDir())
 		dir := t.TempDir()
 		err := fetchSchema(dir, "v1.0.0", schemaFiles[0].local)
-		if err == nil || !strings.Contains(err.Error(), "reading schema "+schemaFiles[0].local) {
+		if err == nil || !strings.Contains(err.Error(), "fetching schema "+schemaFiles[0].local+"@v1.0.0: reading the response") {
 			t.Errorf("error = %v, want a read error", err)
 		}
 		if _, statErr := os.Stat(filepath.Join(dir, schemaFiles[0].local)); statErr == nil {

@@ -545,27 +545,32 @@ func fetchSchema(schemaDir, tag, local string) error {
 	if err == nil {
 		key = schemaFileCacheKey(tag, local)
 	}
+	data, cached := []byte(nil), false
 	if key != "" {
-		if data, ok := readCachedSchema(cacheDir, key); ok {
-			// Mark a cache filled by another tool too, so `schema clear`
-			// accepts it; best-effort, the cached copy is usable anyway.
-			_ = markSchemaCache(cacheDir)
-			return os.WriteFile(outPath, data, 0o644)
+		data, cached = readCachedSchema(cacheDir, key)
+	}
+	if cached {
+		// Mark a cache filled by another tool too, so `schema clear`
+		// accepts it; best-effort, the cached copy is usable anyway.
+		_ = markSchemaCache(cacheDir)
+	} else {
+		if data, err = downloadSchema(tag, local); err != nil {
+			return fmt.Errorf("fetching schema %s@%s: %w", local, tag, err)
 		}
-	}
-	body, err := downloadSchema(tag, local)
-	if err != nil {
-		return err
-	}
-	if key != "" {
-		_ = writeCachedSchema(cacheDir, key, body) // best-effort, like the manager's fetcher
+		if key != "" {
+			_ = writeCachedSchema(cacheDir, key, data) // best-effort, like the manager's fetcher
+		}
 	}
 	// Written verbatim: RM015 requires _schema/ to match core's copies, so any
 	// version marker has to come from the core release itself.
-	return os.WriteFile(outPath, body, 0o644)
+	if err := os.WriteFile(outPath, data, 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", outPath, err)
+	}
+	return nil
 }
 
-// downloadSchema downloads the schema local of the core release tag.
+// downloadSchema downloads the schema local of the core release tag. Its
+// errors leave the schema and the tag for the caller to name.
 func downloadSchema(tag, local string) ([]byte, error) {
 	url := schemaBaseURL + "/" + tag + "/" + schemaPath + "/" + local
 
@@ -575,12 +580,12 @@ func downloadSchema(tag, local string) ([]byte, error) {
 		resp, err = schemaHTTPClient.Get(url) //nolint:gosec // tag is validated SemVer; host is a constant
 	}
 	if err != nil {
-		return nil, fmt.Errorf("fetching schema %s@%s: %w", local, tag, err)
+		return nil, fmt.Errorf("downloading: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetching schema %s@%s: HTTP %d", local, tag, resp.StatusCode)
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxSchemaDownload+1))
@@ -588,7 +593,7 @@ func downloadSchema(tag, local string) ([]byte, error) {
 		err = fmt.Errorf("larger than %d bytes", maxSchemaDownload)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("reading schema %s: %w", local, err)
+		return nil, fmt.Errorf("reading the response: %w", err)
 	}
 	return body, nil
 }

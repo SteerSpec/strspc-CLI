@@ -99,16 +99,16 @@ func readCachedSchema(cacheDir, key string) ([]byte, bool) {
 // is not stored.
 func writeCachedSchema(cacheDir, key string, data []byte) error {
 	if len(data) > maxSchemaDownload {
-		return fmt.Errorf("schema larger than %d bytes", maxSchemaDownload)
+		return fmt.Errorf("caching %s: schema larger than %d bytes", key, maxSchemaDownload)
 	}
 	if err := checkSchemaDoc(data); err != nil {
-		return err
+		return fmt.Errorf("caching %s: %w", key, err)
 	}
 	if err := prepareSchemaCache(cacheDir); err != nil {
-		return err
+		return fmt.Errorf("caching %s: %w", key, err)
 	}
 	if err := refuseSymlinkedParents(cacheDir, key); err != nil {
-		return err
+		return fmt.Errorf("caching %s: %w", key, err)
 	}
 	dir := filepath.Dir(filepath.Join(cacheDir, filepath.FromSlash(key)))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
