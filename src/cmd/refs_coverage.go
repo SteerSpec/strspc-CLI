@@ -64,10 +64,11 @@ func buildRefsCoverage(entries []refsCoverageConfig) ([]refsCoverageSet, error) 
 // runRefsCoverage checks each coverage set against checker: every rule of the
 // set's entities, in its states, must be cited by one of the files its globs
 // match in the whole project, whatever paths and patterns the main scan uses.
-// Only RF008 comes from here: the citations in those files are judged by the
-// main scan, when it scans them. A glob that matches no file is a
-// configuration error, since the set would no longer read what it names.
-func runRefsCoverage(cwd string, checker *rulerefs.Checker, sets []refsCoverageSet) ([]result.Diagnostic, error) {
+// The citations in those files are judged too, but a file in checked, the
+// slash paths already judged, is not reported again; runRefsCoverage adds the
+// files it judges to checked. A glob that matches no file is a configuration
+// error, since the set would no longer read what it names.
+func runRefsCoverage(cwd string, checker *rulerefs.Checker, sets []refsCoverageSet, checked map[string]bool) ([]result.Diagnostic, error) {
 	if len(sets) == 0 {
 		return nil, nil
 	}
@@ -103,8 +104,13 @@ func runRefsCoverage(cwd string, checker *rulerefs.Checker, sets []refsCoverageS
 			if err != nil {
 				return nil, err
 			}
-			if ok {
-				checker.CheckText(printableText(f), data)
+			if !ok {
+				continue
+			}
+			found := checker.CheckText(printableText(f), data)
+			if !checked[f] {
+				checked[f] = true
+				diags = append(diags, found.Diagnostics...)
 			}
 		}
 		res, err := checker.Coverage(set.entities, set.states)
