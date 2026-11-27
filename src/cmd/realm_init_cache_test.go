@@ -195,8 +195,29 @@ func TestRealmInitOfflineUsesNewestCachedRelease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("offline init: %v", err)
 	}
-	testutil.AssertContains(t, out, "warning: could not resolve the latest "+coreRealmID+" release (connection refused); using 1.10.0")
+	testutil.AssertContains(t, out, "warning: couldn't resolve the latest "+coreRealmID+" release (connection refused); using cached 1.10.0")
 	assertVendored(t, dir, func(local string) string { return releaseBody("1.10.0", local) })
+}
+
+// TestRealmInitFallbackWarningIsPrintable: any failed lookup, such as a rate
+// limit, falls back, and the warning shows the error with its control
+// characters escaped.
+func TestRealmInitFallbackWarningIsPrintable(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv(envSchemaCache, cache)
+	goOffline(t)
+	latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) {
+		return "", errors.New("rate limited\x1b[2J\rretry later")
+	}
+	cacheRelease(t, cache, "1.25.0")
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", filepath.Join(t.TempDir(), "rules"), "--id", "com.test.demo")
+	if err != nil {
+		t.Fatalf("init after a failed lookup: %v", err)
+	}
+	testutil.AssertContains(t, out, `(rate limited\x1b[2J\rretry later); using cached 1.25.0`)
+	testutil.AssertNotContains(t, out, "\x1b")
+	testutil.AssertNotContains(t, out, "\r")
 }
 
 // TestRealmInitOfflineWithoutUsableCache keeps the error that asks for a pin.

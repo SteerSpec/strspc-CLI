@@ -233,9 +233,9 @@ differs from its version, and a `--core-version` that differs from the dependenc
 
 `realm init` keeps the schemas it copies in the [schema cache](reference.md#schema-cache), by
 release, and reads them from there when they are cached, so a pinned release needs no network the
-second time. When the latest release can't be looked up, such as offline, it uses the newest
-release whose schemas are all cached, and prints a warning naming it. With none cached, it fails and
-asks for `--core-version`.
+second time. When the latest release can't be looked up, such as offline or when rate limited, it
+uses the newest release whose schemas are all cached, and prints a warning naming it and why the
+lookup failed. With none cached, it fails and asks for `--core-version`.
 
 ```bash
 strspc realm dep add com.acme.shared@1.0.0=../shared

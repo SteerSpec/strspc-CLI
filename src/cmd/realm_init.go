@@ -521,7 +521,8 @@ func cachedCoreFallback(w io.Writer, lerr *latestCoreError) (string, error) {
 	if tag == "" {
 		return "", lerr
 	}
-	writeWarning(w, "could not resolve the latest %s release (%v); using %s, the newest release in the schema cache (pass --core-version to pin one)",
+	// writeWarning escapes control characters, so the error prints safely.
+	writeWarning(w, "couldn't resolve the latest %s release (%v); using cached %s, the newest release in the schema cache (pass --core-version to pin one)",
 		coreRealmID, lerr.err, strings.TrimPrefix(tag, "v"))
 	return tag, nil
 }
