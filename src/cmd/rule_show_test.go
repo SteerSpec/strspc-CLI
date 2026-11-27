@@ -273,6 +273,23 @@ func TestRuleShowRenderedForm(t *testing.T) {
 		})
 	}
 
+	// The first source that holds an ID wins, in either form: dev.app renders
+	// its stored 456-123 as 123-456, which dev.lib, later, stores.
+	t.Run("first source wins across forms", func(t *testing.T) {
+		dir := setupRefsProject(t)
+		writeRefsFile(t, dir, "rules/realm.json",
+			`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},
+			  "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}],
+			  "rule_identifier_format": {"euid_position": "closing"}}`)
+		writeInheritEntity(t, filepath.Join(dir, "rules"), "456", "", inheritRule{id: "456-123", state: "P"})
+		writeInheritEntity(t, filepath.Join(dir, "lib"), "123", "", inheritRule{id: "123-456", state: "P"})
+		out, _, err := runRuleShowSplit(t, dir, &ruleShowOptions{jsonOutput: true}, "123-456", "dev.lib:123-456")
+		assertExit(t, err, exitOK)
+		if got := strings.Join(shownIDs(t, out), " "); got != "456-123 123-456" {
+			t.Errorf("rules = %q, want dev.app's 456-123, then dev.lib's 123-456", got)
+		}
+	})
+
 	// A realm that keeps the stored shape has no rendered form.
 	dir := setupRefsProject(t)
 	_, _, err := runRuleShowSplit(t, dir, &ruleShowOptions{}, "APP_001")

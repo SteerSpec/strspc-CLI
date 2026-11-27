@@ -48,6 +48,9 @@ type shownRule struct {
 	Clause   string      `json:"clause,omitempty"`
 	Profiles []string    `json:"profiles,omitempty"`
 	Notes    []shownNote `json:"notes"`
+	// source is the position of the source that holds the rule, so a lookup
+	// that finds it both by stored and by rendered ID keeps the first source.
+	source int
 }
 
 type shownNote struct {
@@ -174,10 +177,15 @@ func runRuleShow(ctx context.Context, out, errOut io.Writer, cwd string, args []
 			var r *shownRule
 			if a.rendered != "" {
 				r = idx.renderedRule(a.realm, a.rendered)
-			} else if r = idx.rule(a.realm, a.id); r == nil {
+			} else {
 				// A rendered ID with a numeric EUID, such as 001-002 for the
-				// stored 002-001, has the stored shape too.
-				r = idx.renderedRule(a.realm, a.id)
+				// stored 002-001, has the stored shape too: the first source
+				// that holds the ID in either form wins, and within a source
+				// the stored form.
+				r = idx.rule(a.realm, a.id)
+				if alt := idx.renderedRule(a.realm, a.id); alt != nil && (r == nil || alt.source < r.source) {
+					r = alt
+				}
 			}
 			if r == nil {
 				unknown = append(unknown, a.raw)
@@ -247,11 +255,19 @@ func newRuleShowIndex(sources []rulerefs.Source) (*ruleShowIndex, error) {
 		rendered:      make(map[string]*shownRule),
 		realmRendered: make(map[string]map[string]*shownRule),
 	}
-	for _, s := range sources {
+	for pos, s := range sources {
 		rules := make(map[string]*shownRule)
 		entities := make(map[string][]*shownRule)
 		for _, ef := range s.Entities {
 			collectShownRules(ef, s.RealmID, rules, entities)
+		}
+		for _, rs := range entities {
+			for _, r := range rs {
+				r.source = pos
+			}
+		}
+		for _, r := range rules {
+			r.source = pos
 		}
 		f, err := render.NewRuleIDFormatter(s.Format)
 		if err != nil {
