@@ -155,3 +155,8 @@ strspc lint rules/ --explain                 # explain findings as they are repo
 `--explain` works on `lint`, `diff`, `realm validate` and `check`. Text output explains each code once,
 under its first occurrence. JSON output adds an `explanation` object to every diagnostic.
 `strspc check --format github` rejects the flag, because annotations cannot carry the text.
+
+`strspc explain --list --json` prints every code with its title, description, fix, module and
+severity. Each release also carries that list as `strspc-CLI_<version>_diagnostics.json`, covered
+by the release's checksums file, so a tool can read the codes of a given version without running
+it. The CLI's own codes are the ones whose module is `strspc`.
