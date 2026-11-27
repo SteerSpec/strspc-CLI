@@ -31,6 +31,15 @@ type addedByManifest struct {
 	Replaced int    `json:"replaced"`
 }
 
+// addedByKept records one override_ack note whose added_by matched but was
+// left as it is: such a note doesn't change once added (NTE-044).
+type addedByKept struct {
+	Entity  string `json:"entity"`
+	Note    string `json:"note"`
+	AddedBy string `json:"added_by"`
+	Path    string `json:"path"`
+}
+
 // addedByResult is the JSON output of `strspc realm rewrite-added-by`.
 type addedByResult struct {
 	DryRun    bool            `json:"dry_run"`
@@ -39,6 +48,9 @@ type addedByResult struct {
 	// Manifests lists the realm.json files, of the realm in --dir and its
 	// sub-realms, whose Realm Notes (NTE-029) had an added_by rewritten.
 	Manifests []addedByManifest `json:"manifests"`
+	// Kept lists the override_ack notes whose added_by matched and that were
+	// left as they are (NTE-044), sub-entities before parents in each file.
+	Kept []addedByKept `json:"kept"`
 	// Skipped lists .json files under --dir that are not entity files (no
 	// valid entity.id). They are never rewritten.
 	Skipped []string `json:"skipped"`
@@ -234,7 +246,9 @@ a --map for the same @handle wins, in any case, as GitHub logins ignore case.
 Each changed file gets a patch version bump and a fresh hash; revisions stay
 as they are, since added_by is not part of what a revision counts. A changed
 realm.json keeps its version and gets its hash recomputed, if it has one. Files
-with nothing to replace are not touched. A file that is a symbolic link is listed
+with nothing to replace are not touched. A note of type override_ack never
+changes once added (NTE-044): its added_by stays, and the command lists it as
+kept; a file whose only matches are such notes is not touched. A file that is a symbolic link is listed
 and never followed, as is a sub-realm directory that is one: rewrite its target
 where it lives. Use --dry-run to see
 what would change without writing.
@@ -282,10 +296,14 @@ Examples:
 					fileMap = githubHandleMap(ef, m)
 				}
 				oldVersion := ef.RuleSet.Version
-				n, err := entityops.RewriteAddedBy(ef, fileMap)
+				rw, err := entityops.RewriteAddedByReport(ef, fileMap)
 				if err != nil {
 					return fmt.Errorf("rewriting %s: %w", path, err)
 				}
+				for _, k := range rw.Kept {
+					res.Kept = append(res.Kept, addedByKept{Entity: k.EntityID, Note: k.NoteID, AddedBy: k.AddedBy, Path: path})
+				}
+				n := rw.Replaced
 				if n == 0 {
 					res.Unchanged++
 					return nil
@@ -311,6 +329,7 @@ Examples:
 				return err
 			}
 			sort.Slice(res.Updated, func(i, j int) bool { return res.Updated[i].Path < res.Updated[j].Path })
+			sort.SliceStable(res.Kept, func(i, j int) bool { return res.Kept[i].Path < res.Kept[j].Path })
 
 			w := cmd.OutOrStdout()
 			if jsonOut {
@@ -319,6 +338,9 @@ Examples:
 				}
 				if res.Manifests == nil {
 					res.Manifests = []addedByManifest{}
+				}
+				if res.Kept == nil {
+					res.Kept = []addedByKept{}
 				}
 				if res.Skipped == nil {
 					res.Skipped = []string{}
@@ -342,6 +364,10 @@ Examples:
 				total += c.Replaced
 				writeln(w, brandStyle.Render(fmt.Sprintf("%s %d added_by in the Realm Notes of %s", verb, c.Replaced, printableRealmID(c.Realm)))+descStyle.Render(fmt.Sprintf(" (%s)", c.Path)))
 			}
+			for _, k := range res.Kept {
+				writeln(w, descStyle.Render(fmt.Sprintf("Kept %s in %s as it is: an override_ack note doesn't change once added (NTE-044); added_by %s (%s)",
+					printableText(k.Note), printableText(k.Entity), printableText(k.AddedBy), k.Path)))
+			}
 			for _, p := range res.Skipped {
 				writeln(w, descStyle.Render(fmt.Sprintf("Skipped %s (not an entity file)", p)))
 			}
@@ -357,6 +383,9 @@ Examples:
 				files += fmt.Sprintf(" and %d realm.json", len(res.Manifests))
 			}
 			summary := fmt.Sprintf("%d added_by in %s %s, %d unchanged, %d skipped", total, files, done, res.Unchanged, len(res.Skipped)+len(res.Links))
+			if len(res.Kept) > 0 {
+				summary += fmt.Sprintf(", %d override_ack note(s) kept", len(res.Kept))
+			}
 			writeln(w, descStyle.Render(summary))
 			return nil
 		},
