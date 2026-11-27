@@ -1113,3 +1113,42 @@ func TestHasPartialFailure(t *testing.T) {
 		t.Error("another error is")
 	}
 }
+
+// conflictStub is a batch provider that checks override conflicts.
+type conflictStub struct {
+	batchStubProvider
+	asked []string
+}
+
+func (c *conflictStub) ConflictPromptVersion() string { return "c1" }
+
+func (c *conflictStub) CheckConflict(_ context.Context, req ruleeval.ConflictRequest) (*ruleeval.ConflictResponse, error) { //nolint:gocritic // ruleeval.ConflictChecker signature
+	c.asked = append(c.asked, req.Rule.Rule.ID)
+	return &ruleeval.ConflictResponse{Conflicts: true, Explanation: "contradicts"}, nil
+}
+
+// rule verify's recording wrapper forwards the conflict check (RE007), and
+// turns it off for a provider that can't check.
+func TestVerifyWrapperForwardsConflictCheck(t *testing.T) {
+	rec := newVerdictRecorder()
+	inner := &conflictStub{}
+	cc, ok := wrapRecording(inner, rec).(ruleeval.ConflictChecker)
+	if !ok || cc.ConflictPromptVersion() != "c1" {
+		t.Fatalf("wrapper hides the conflict check: %v", ok)
+	}
+	req := ruleeval.ConflictRequest{Rule: ruleeval.RuleInput{Rule: entity.Rule{ID: "SAV-001"}}}
+	if resp, err := cc.CheckConflict(context.Background(), req); err != nil || !resp.Conflicts || len(inner.asked) != 1 {
+		t.Errorf("CheckConflict = %+v, %v; asked %v", resp, err, inner.asked)
+	}
+	if len(rec.verdicts) != 0 {
+		t.Error("a conflict answer was recorded as a verdict")
+	}
+
+	plain, _ := wrapRecording(&batchStubProvider{}, rec).(ruleeval.ConflictChecker)
+	if plain.ConflictPromptVersion() != "" {
+		t.Error("a provider without the check must turn it off")
+	}
+	if _, err := plain.CheckConflict(context.Background(), req); err == nil {
+		t.Error("CheckConflict on a provider without it should fail")
+	}
+}
