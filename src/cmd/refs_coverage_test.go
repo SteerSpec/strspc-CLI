@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -69,16 +70,22 @@ func TestRefsCoverageGitHubFormat(t *testing.T) {
 	testutil.AssertContains(t, out, "::error file=.strspc/config.yaml,title=rule-refs RF008::APP-004 (entity APP)")
 }
 
-// A coverage set reads its files wherever they are, but only the main scan
-// judges their citations: a .txt file is not scanned by default.
+// A coverage set reads its files wherever they are, even a .txt file that the
+// main scan doesn't select, and judges their citations as the scan does.
 func TestRefsCoverageStatesAndFilesOutsideTheScan(t *testing.T) {
 	dir := setupRefsCoverage(t, "    - entities: [APP]\n      files: ['notes/*.txt']\n      states: [abandoned]\n")
-	writeRefsFile(t, dir, "notes/a.txt", "APP-002 APP-999\n")
-	_, err := runRefsCmd(t)
+	writeRefsFile(t, dir, "notes/a.txt", "APP-002\n")
+	_, err := runRefsCmd(t, "--allow-state", "A")
 	assertExit(t, err, exitOK)
 
+	writeRefsFile(t, dir, "notes/a.txt", "APP-002\nAPP-999\n")
+	out, err := runRefsCmd(t, "--allow-state", "A")
+	assertExit(t, err, exitViolations)
+	testutil.AssertContains(t, out, "RF001")
+	testutil.AssertContains(t, out, "notes/a.txt:2")
+
 	writeRefsFile(t, dir, "notes/a.txt", "APP-001\n")
-	out, err := runRefsCmd(t)
+	out, err = runRefsCmd(t)
 	assertExit(t, err, exitViolations)
 	testutil.AssertContains(t, out, "APP-002 (entity APP)")
 }
@@ -139,7 +146,7 @@ func TestRefsCoverageSubRealm(t *testing.T) {
 	dir := setupRefsCoverage(t, "    - entities: [SUBE]\n      files: ['agents/*.txt']\n      states: [A]\n")
 	writeRefsSubRealm(t, dir)
 	writeRefsFile(t, dir, "agents/a.txt", "dev.app.sub:SUBE-001\n")
-	_, err := runRefsCmd(t)
+	_, err := runRefsCmd(t, "--allow-state", "A")
 	assertExit(t, err, exitOK)
 
 	writeRefsFile(t, dir, "agents/a.txt", "nothing\n")
@@ -223,4 +230,27 @@ func TestRuleShowIgnoresRefsCoverage(t *testing.T) {
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "show", "APP-001")
 	assertExit(t, err, exitOK)
 	testutil.AssertContains(t, out, "APP-001")
+}
+
+// A file that the main scan and two sets all read is judged once.
+func TestRefsCoverageFileReportedOnce(t *testing.T) {
+	dir := setupRefsCoverage(t, refsCoverageAgents+refsCoverageAgents+
+		"    - entities: [APP]\n      files: ['notes/*.txt']\n"+
+		"    - entities: [APP]\n      files: ['notes/*.txt']\n")
+	writeRefsFile(t, dir, "agents/a.md", "APP-001 APP-004 APP-999\n")
+	writeRefsFile(t, dir, "notes/a.txt", "APP-001 APP-004 APP-998\n")
+	out, err := runRefsCmd(t, "--json")
+	assertExit(t, err, exitViolations)
+	var diags []struct{ Code, Path, Message string }
+	if err := json.Unmarshal([]byte(out), &diags); err != nil {
+		t.Fatalf("output is not JSON: %v\n%s", err, out)
+	}
+	count := map[string]int{}
+	for _, d := range diags {
+		count[d.Code+" "+d.Path]++
+	}
+	want := map[string]int{"RF001 agents/a.md": 1, "RF006 agents/a.md": 1, "RF001 notes/a.txt": 1, "RF006 notes/a.txt": 1}
+	if !maps.Equal(count, want) {
+		t.Errorf("got %v, want %v", count, want)
+	}
 }

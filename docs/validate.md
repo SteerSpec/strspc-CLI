@@ -136,8 +136,9 @@ come out with the others, in text, `--json` and `--format github`.
   Markdown. Ignored files (`.gitignore`), links and binary files don't count.
 - A glob that matches no file is a configuration error (exit 2): the set no longer reads what it
   names. Fix or remove the glob.
-- A set only collects the citations in its files. RF001 to RF007 come from the scan, so a file the
-  scan doesn't select isn't checked for them.
+- A set's files are checked for RF001 to RF007 too, even a file the scan doesn't select. A file
+  that the scan and a set both read, or that two sets read, is checked once, so no finding is
+  reported twice.
 
 Leave out a file that loads its rules at run time with `strspc rule show`: it cites no ID.
 
