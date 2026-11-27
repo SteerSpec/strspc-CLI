@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
+	"github.com/SteerSpec/strspc-manager/src/render"
 	"github.com/SteerSpec/strspc-manager/src/rulerefs"
 )
 
@@ -18,6 +19,11 @@ import (
 // optionally qualified by a realm, in the syntax refs accepts. Group 1 is the
 // realm, group 2 the EUID and group 3 the rule number.
 var ruleShowArgRe = regexp.MustCompile(`^(?:([a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*):)?([A-Za-z0-9]{3,18})(?:-(\d{3}))?$`)
+
+// ruleShowRenderedRe matches a rule ID as a realm's rule_identifier_format
+// renders it when that changes its shape, such as 010-MOD or MOD_010, also
+// realm-qualified. Group 1 is the realm, group 2 the rendered ID.
+var ruleShowRenderedRe = regexp.MustCompile(`^(?:([a-z][a-z0-9]*(?:\.[a-z][a-z0-9]*)*):)?([A-Za-z0-9]{3,18}[-_][A-Za-z0-9]{3,18})$`)
 
 type ruleShowOptions struct {
 	jsonOutput bool
@@ -42,6 +48,9 @@ type shownRule struct {
 	Clause   string      `json:"clause,omitempty"`
 	Profiles []string    `json:"profiles,omitempty"`
 	Notes    []shownNote `json:"notes"`
+	// source is the position of the source that holds the rule, so a lookup
+	// that finds it both by stored and by rendered ID keeps the first source.
+	source int
 }
 
 type shownNote struct {
@@ -64,7 +73,8 @@ func newRuleShowCmd() *cobra.Command {
 			"directory, like refs, so the realm dependencies it pins are included. It has no --dir.\n\n" +
 			"An argument is a rule ID such as MOD-010 or an EUID such as GOTEST, optionally qualified\n" +
 			"by a realm, such as dev.steerspec.core:ENT-001. An unqualified one resolves to the first\n" +
-			"source that holds it. An EUID selects the entity's own rules; a sub-entity is selected\n" +
+			"source that holds it. A rule ID may also be written as its realm's rule_identifier_format\n" +
+			"renders it, such as 010-MOD or MOD_010, the way refs matches it. An EUID selects the entity's own rules; a sub-entity is selected\n" +
 			"by its own EUID. --state narrows the rules an EUID selects; a rule named by its ID is\n" +
 			"shown whatever its state.\n\n" +
 			"Exit codes: 0 found, 1 an argument matched no rule or entity (nothing is printed),\n" +
@@ -101,6 +111,9 @@ type ruleShowArg struct {
 	realm string
 	euid  string
 	id    string // the rule ID; empty when the argument is an EUID
+	// rendered is the rule ID in a realm's rendered form, set when the
+	// argument doesn't have the stored shape; euid and id are then empty.
+	rendered string
 }
 
 func parseRuleShowArg(s string) (ruleShowArg, error) {
@@ -109,6 +122,9 @@ func parseRuleShowArg(s string) (ruleShowArg, error) {
 	}
 	m := ruleShowArgRe.FindStringSubmatch(s)
 	if m == nil {
+		if r := ruleShowRenderedRe.FindStringSubmatch(s); r != nil {
+			return ruleShowArg{raw: s, realm: r[1], rendered: r[2]}, nil
+		}
 		return ruleShowArg{}, fmt.Errorf("invalid argument %q: want a rule ID such as MOD-010 or an EUID such as MOD, optionally realm-qualified", s)
 	}
 	a := ruleShowArg{raw: s, realm: m[1], euid: m[2]}
@@ -136,7 +152,10 @@ func runRuleShow(ctx context.Context, out, errOut io.Writer, cwd string, args []
 	if err != nil {
 		return withExitCode(exitConfig, err)
 	}
-	idx := newRuleShowIndex(sources)
+	idx, err := newRuleShowIndex(sources)
+	if err != nil {
+		return withExitCode(exitConfig, err)
+	}
 
 	want := make(map[string]bool, len(states))
 	for _, s := range states {
@@ -154,8 +173,20 @@ func runRuleShow(ctx context.Context, out, errOut io.Writer, cwd string, args []
 		}
 	}
 	for _, a := range parsed {
-		if a.id != "" {
-			r := idx.rule(a.realm, a.id)
+		if a.id != "" || a.rendered != "" {
+			var r *shownRule
+			if a.rendered != "" {
+				r = idx.renderedRule(a.realm, a.rendered)
+			} else {
+				// A rendered ID with a numeric EUID, such as 001-002 for the
+				// stored 002-001, has the stored shape too: the first source
+				// that holds the ID in either form wins, and within a source
+				// the stored form.
+				r = idx.rule(a.realm, a.id)
+				if alt := idx.renderedRule(a.realm, a.id); alt != nil && (r == nil || alt.source < r.source) {
+					r = alt
+				}
+			}
 			if r == nil {
 				unknown = append(unknown, a.raw)
 				continue
@@ -203,25 +234,58 @@ func validateStateFlag(flag string, codes []string) error {
 // ruleShowIndex holds the rules and entities of the sources, by ID. An
 // unqualified lookup finds the first source that holds the ID, the way
 // rulerefs judges citations; a qualified one looks only in that realm.
+//
+// rendered and realmRendered hold the rules of the sources whose
+// rule_identifier_format changes the shape of a rule ID, by that rendered ID.
 type ruleShowIndex struct {
 	rules         map[string]*shownRule
 	entities      map[string][]*shownRule
 	realmRules    map[string]map[string]*shownRule
 	realmEntities map[string]map[string][]*shownRule
+	rendered      map[string]*shownRule
+	realmRendered map[string]map[string]*shownRule
 }
 
-func newRuleShowIndex(sources []rulerefs.Source) *ruleShowIndex {
+func newRuleShowIndex(sources []rulerefs.Source) (*ruleShowIndex, error) {
 	idx := &ruleShowIndex{
 		rules:         make(map[string]*shownRule),
 		entities:      make(map[string][]*shownRule),
 		realmRules:    make(map[string]map[string]*shownRule),
 		realmEntities: make(map[string]map[string][]*shownRule),
+		rendered:      make(map[string]*shownRule),
+		realmRendered: make(map[string]map[string]*shownRule),
 	}
-	for _, s := range sources {
+	for pos, s := range sources {
 		rules := make(map[string]*shownRule)
 		entities := make(map[string][]*shownRule)
 		for _, ef := range s.Entities {
 			collectShownRules(ef, s.RealmID, rules, entities)
+		}
+		for _, rs := range entities {
+			for _, r := range rs {
+				r.source = pos
+			}
+		}
+		for _, r := range rules {
+			r.source = pos
+		}
+		f, err := render.NewRuleIDFormatter(s.Format)
+		if err != nil {
+			return nil, fmt.Errorf("rule_identifier_format of realm %q: %w", s.RealmID, err)
+		}
+		if f.EUIDClosing || f.IDSplitter != "-" {
+			rendered := make(map[string]*shownRule, len(rules))
+			for id, r := range rules {
+				rendered[renderedRuleID(&f, id)] = r
+			}
+			for id, r := range rendered {
+				if _, dup := idx.rendered[id]; !dup {
+					idx.rendered[id] = r
+				}
+			}
+			if _, dup := idx.realmRendered[s.RealmID]; s.RealmID != "" && !dup {
+				idx.realmRendered[s.RealmID] = rendered
+			}
 		}
 		for id, r := range rules {
 			if _, dup := idx.rules[id]; !dup {
@@ -238,7 +302,14 @@ func newRuleShowIndex(sources []rulerefs.Source) *ruleShowIndex {
 			idx.realmEntities[s.RealmID] = entities
 		}
 	}
-	return idx
+	return idx, nil
+}
+
+// renderedRuleID is id as f renders it, without the brackets,
+// revision and state that f.Format puts around it.
+func renderedRuleID(f *render.RuleIDFormatter, id string) string {
+	full := strings.TrimPrefix(f.Format(&entity.Rule{ID: id}), f.OpenBracket)
+	return strings.TrimSuffix(full, f.RevisionSplitter+"0"+f.StateSplitter+f.CloseBracket)
 }
 
 // collectShownRules adds the rules of ef and of its sub-entities. Within a
@@ -279,6 +350,13 @@ func (idx *ruleShowIndex) rule(realm, id string) *shownRule {
 		return idx.rules[id]
 	}
 	return idx.realmRules[realm][id]
+}
+
+func (idx *ruleShowIndex) renderedRule(realm, id string) *shownRule {
+	if realm == "" {
+		return idx.rendered[id]
+	}
+	return idx.realmRendered[realm][id]
 }
 
 func (idx *ruleShowIndex) entity(realm, euid string) ([]*shownRule, bool) {
