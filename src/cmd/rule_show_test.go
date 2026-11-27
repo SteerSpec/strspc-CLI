@@ -241,6 +241,8 @@ func TestRuleShowRenderedForm(t *testing.T) {
 		writeRefsFile(t, dir, "lib/realm.json",
 			`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.lib", "title": "t", "version": "1.0.0"},
 			  "dependencies": [], "rule_identifier_format": {"euid_position": "closing"}}`)
+		// A numeric EUID, whose rendered IDs have the stored shape too.
+		writeInheritEntity(t, filepath.Join(dir, "lib"), "123", "", inheritRule{id: "123-007", state: "P"})
 		return dir
 	}
 	for _, tt := range []struct {
@@ -251,6 +253,8 @@ func TestRuleShowRenderedForm(t *testing.T) {
 		{"splitter", []string{"APP_001"}, "APP-001"},
 		{"qualified", []string{"dev.app:APP_003"}, "APP-003"},
 		{"EUID closing", []string{"001-ACCT"}, "ACCT-001"},
+		{"numeric EUID closing", []string{"007-123"}, "123-007"},
+		{"numeric EUID stored", []string{"123-007"}, "123-007"},
 		{"stored form still", []string{"APP-002", "ACCT-002"}, "APP-002 ACCT-002"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

@@ -171,9 +171,13 @@ func runRuleShow(ctx context.Context, out, errOut io.Writer, cwd string, args []
 	}
 	for _, a := range parsed {
 		if a.id != "" || a.rendered != "" {
-			r := idx.rule(a.realm, a.id)
+			var r *shownRule
 			if a.rendered != "" {
 				r = idx.renderedRule(a.realm, a.rendered)
+			} else if r = idx.rule(a.realm, a.id); r == nil {
+				// A rendered ID with a numeric EUID, such as 001-002 for the
+				// stored 002-001, has the stored shape too.
+				r = idx.renderedRule(a.realm, a.id)
 			}
 			if r == nil {
 				unknown = append(unknown, a.raw)
@@ -285,7 +289,7 @@ func newRuleShowIndex(sources []rulerefs.Source) (*ruleShowIndex, error) {
 	return idx, nil
 }
 
-// renderedRuleID is the rule ID id as f renders it, without the brackets,
+// renderedRuleID is id as f renders it, without the brackets,
 // revision and state that f.Format puts around it.
 func renderedRuleID(f *render.RuleIDFormatter, id string) string {
 	full := strings.TrimPrefix(f.Format(&entity.Rule{ID: id}), f.OpenBracket)
