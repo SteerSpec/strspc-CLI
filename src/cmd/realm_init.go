@@ -346,18 +346,20 @@ func newRealmInitCmd() *cobra.Command {
 			writeln(w, brandStyle.Render(fmt.Sprintf("Initialized Realm %q in %s", realmID, cleanDir)))
 			writeln(w)
 			writeln(w, descStyle.Render("Next steps:"))
-			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Add entities: ")+cmdStyle.Render("strspc realm add MYENTITY --title \"My Entity\""))
-			step := 2
+			// Each command runs as printed: it names --dir unless dir is the default.
+			dirArg := realmDirArg(cleanDir)
+			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Add entities: ")+cmdStyle.Render("strspc realm add MYENTITY --title \"My Entity\""+dirArg))
 			if meta.Kind == entity.KindStandard {
 				add := "strspc rule add MYENTITY --body \"...\" --clause <clause>"
 				if len(meta.Profiles) > 0 {
 					add += " --profiles " + meta.Profiles[0]
 				}
-				writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Transcribe each clause: ")+cmdStyle.Render(add))
-				step++
+				writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Transcribe each clause: ")+cmdStyle.Render(add+dirArg))
+			} else {
+				writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Add rules: ")+cmdStyle.Render("strspc rule add MYENTITY --body \"...\" --added-by \"github:<login>\""+dirArg))
 			}
-			writeln(w, cmdStyle.Render(fmt.Sprintf("  %d.", step))+descStyle.Render(" Validate: ")+cmdStyle.Render("strspc realm validate"))
-			writeln(w, cmdStyle.Render(fmt.Sprintf("  %d.", step+1))+descStyle.Render(" Reference from config: ")+descStyle.Render("source: ./rules/ in .strspc/config.yaml"))
+			writeln(w, cmdStyle.Render("  3.")+descStyle.Render(" Validate: ")+cmdStyle.Render("strspc realm validate"+dirArg))
+			writeln(w, cmdStyle.Render("  4.")+descStyle.Render(" Reference from config: ")+descStyle.Render("source: "+configSourcePath(cleanDir)+" in .strspc/config.yaml"))
 			writeln(w)
 
 			// Suggest linking to .strspc/config.yaml if it exists.

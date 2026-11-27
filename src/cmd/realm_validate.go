@@ -134,6 +134,7 @@ func newRealmValidateCmd() *cobra.Command {
 		recursive  bool
 		core       bool
 		explain    bool
+		dirFlag    string
 	)
 
 	cmd := &cobra.Command{
@@ -143,14 +144,16 @@ func newRealmValidateCmd() *cobra.Command {
 			"Schemas come from the core version the realm pins. Without a pin, the latest published " +
 			"schemas are used.\n\n" +
 			"With --recursive, also validates sub-realm directories declared in realm.json and checks " +
-			"cross-entity references (e.g. supersedes) globally across the realm tree.",
+			"cross-entity references (e.g. supersedes) globally across the realm tree.\n\n" +
+			"The Realm directory is the path argument or --dir, as on realm init and realm add, and " +
+			"defaults to ./rules. Giving both with different directories is an error.",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			dir := "./rules"
-			if len(args) > 0 {
-				dir = args[0]
+			dir, err := realmValidateDir(args, dirFlag, cmd.Flags().Changed("dir"))
+			if err != nil {
+				return err
 			}
 
 			rf, err := checkValidatedRealm(dir)
@@ -199,8 +202,21 @@ func newRealmValidateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&recursive, "recursive", false, "validate sub-realms and check cross-entity references globally")
 	cmd.Flags().BoolVar(&core, "core", false, "path is the core realm: validate it against its own _schema/")
 	cmd.Flags().BoolVar(&explain, "explain", false, "explain what each diagnostic code means and how to fix it")
+	cmd.Flags().StringVar(&dirFlag, "dir", defaultRealmDir, "realm directory (same as the path argument)")
 
 	return cmd
+}
+
+// realmValidateDir returns the Realm directory realm validate checks: the path
+// argument or --dir, which must name the same directory when both are given.
+func realmValidateDir(args []string, dirFlag string, dirSet bool) (string, error) {
+	if len(args) == 0 {
+		return dirFlag, nil
+	}
+	if dirSet && filepath.Clean(args[0]) != filepath.Clean(dirFlag) {
+		return "", fmt.Errorf("realm validate: path %q and --dir %q name different directories: pass one", args[0], dirFlag)
+	}
+	return args[0], nil
 }
 
 // diagKey identifies a diagnostic for deduplication.

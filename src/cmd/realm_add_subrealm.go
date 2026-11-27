@@ -163,8 +163,8 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 			writeln(w, brandStyle.Render(fmt.Sprintf("Initialized sub-realm %q in %s", realmID, cleanDir)))
 			writeln(w)
 			writeln(w, descStyle.Render("Next steps:"))
-			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Add entities: ")+cmdStyle.Render(fmt.Sprintf("strspc realm add MYENTITY --title \"My Entity\" --dir %s", cleanDir)))
-			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Validate: ")+cmdStyle.Render(fmt.Sprintf("strspc realm validate %s", cleanDir)))
+			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Add entities: ")+cmdStyle.Render("strspc realm add MYENTITY --title \"My Entity\""+realmDirArg(cleanDir)))
+			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Validate: ")+cmdStyle.Render("strspc realm validate"+realmDirArg(cleanDir)))
 			writeln(w)
 
 			return nil
