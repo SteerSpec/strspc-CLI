@@ -271,6 +271,11 @@ A sub-realm inherits its parent's dependencies unless you pass `--no-inherit-dep
 doesn't declare it in the parent: add the directory name to `sub_realms` in the parent's `realm.json`,
 or `realm validate --recursive` skips it.
 
+`add-subrealm` copies the schemas from the parent's `_schema/`. It fetches any that are missing from
+the core release the parent pins, through the schema cache as `realm init` does. When the parent
+pins no release and the latest can't be looked up, it uses the newest release cached in full and
+prints the same warning.
+
 **Keep dependencies current.** Dependabot and Renovate can't read `realm.json`, so a pinned dependency
 drifts silently. `strspc realm dep upgrade` moves each `github://` dependency pinned to a release tag
 to the latest release of its repository, rewrites `version` and the `@vX.Y.Z` in `source`, then

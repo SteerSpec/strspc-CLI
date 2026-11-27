@@ -321,12 +321,7 @@ func newRealmInitCmd() *cobra.Command {
 
 			// Resolve the schema release before touching the filesystem, so a
 			// conflicting or invalid --core-version leaves nothing behind.
-			tag, err := resolveSchemaTag(cmd.Context(), core, realmDeps)
-			// Offline, the newest release in the schema cache stands in for the latest.
-			var lerr *latestCoreError
-			if errors.As(err, &lerr) {
-				tag, err = cachedCoreFallback(cmd.ErrOrStderr(), lerr)
-			}
+			tag, err := resolveSchemaTagOrCached(cmd.Context(), cmd.ErrOrStderr(), core, realmDeps, initPinHint)
 			if err != nil {
 				return err
 			}
@@ -497,24 +492,46 @@ func resolveSchemaTag(ctx context.Context, explicit string, deps []entity.RealmD
 	ref := remote.Ref{Owner: "SteerSpec", Repo: "strspc-rules"}
 	tag, err := latestReleaseTag(ctx, ref, remote.TokenForOwner(ref.Owner))
 	if err != nil {
-		return "", &latestCoreError{err}
+		return "", &latestCoreError{err: err, pinHint: initPinHint}
 	}
 	return coreTag(tag)
 }
 
-// latestCoreError reports that the latest core release couldn't be resolved.
-type latestCoreError struct{ err error }
+// initPinHint tells how to pin a core release for realm init.
+const initPinHint = "pass --core-version to pin one"
+
+// latestCoreError reports that the latest core release couldn't be resolved,
+// with pinHint, how the command that needed it can be given a release.
+type latestCoreError struct {
+	err     error
+	pinHint string
+}
 
 func (e *latestCoreError) Error() string {
-	return "resolving core version for schemas (pass --core-version to pin one): " + e.err.Error()
+	return "resolving core version for schemas (" + e.pinHint + "): " + e.err.Error()
 }
 
 func (e *latestCoreError) Unwrap() error { return e.err }
 
+// resolveSchemaTagOrCached is resolveSchemaTag, except that when the latest
+// core release can't be resolved, such as offline, the newest release in the
+// schema cache stands in for it (cachedCoreFallback), with a warning on w
+// that ends with pinHint, how to pin a release instead. Without a cached
+// release, the error gives pinHint too.
+func resolveSchemaTagOrCached(ctx context.Context, w io.Writer, explicit string, deps []entity.RealmDep, pinHint string) (string, error) {
+	tag, err := resolveSchemaTag(ctx, explicit, deps)
+	var lerr *latestCoreError
+	if errors.As(err, &lerr) {
+		lerr.pinHint = pinHint
+		return cachedCoreFallback(w, lerr, pinHint)
+	}
+	return tag, err
+}
+
 // cachedCoreFallback returns, when the latest core release couldn't be
 // resolved (lerr), the newest release whose schemas are all in the schema
 // cache, and warns on w that it is used. Without one, it returns lerr.
-func cachedCoreFallback(w io.Writer, lerr *latestCoreError) (string, error) {
+func cachedCoreFallback(w io.Writer, lerr *latestCoreError, pinHint string) (string, error) {
 	cacheDir, err := schemaCacheDir()
 	if err != nil {
 		return "", lerr
@@ -524,8 +541,8 @@ func cachedCoreFallback(w io.Writer, lerr *latestCoreError) (string, error) {
 		return "", lerr
 	}
 	// writeWarning escapes control characters, so the error prints safely.
-	writeWarning(w, "couldn't resolve the latest %s release (%v); using cached %s, the newest release in the schema cache (pass --core-version to pin one)",
-		coreRealmID, lerr.err, strings.TrimPrefix(tag, "v"))
+	writeWarning(w, "couldn't resolve the latest %s release (%v); using cached %s, the newest release in the schema cache (%s)",
+		coreRealmID, lerr.err, strings.TrimPrefix(tag, "v"), pinHint)
 	return tag, nil
 }
 
