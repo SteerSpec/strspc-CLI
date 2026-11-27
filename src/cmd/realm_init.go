@@ -555,7 +555,11 @@ func fetchSchema(schemaDir, tag, local string) error {
 		// accepts it; best-effort, the cached copy is usable anyway.
 		_ = markSchemaCache(cacheDir)
 	} else {
-		if data, err = downloadSchema(tag, local); err != nil {
+		if data, err = downloadSchema(tag, local); err == nil {
+			// A proxy's sign-in or error page can come with a 200.
+			err = checkSchemaDoc(data)
+		}
+		if err != nil {
 			return fmt.Errorf("fetching schema %s@%s: %w", local, tag, err)
 		}
 		if key != "" {

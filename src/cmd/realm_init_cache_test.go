@@ -394,8 +394,8 @@ func TestRealmInitMarksCacheOnHit(t *testing.T) {
 	})
 }
 
-// TestOversizedSchemaIsRefused: a download larger than a schema may be fails
-// realm init, and such data is never cached.
+// TestOversizedSchemaIsRefused: a download over the schema size limit makes
+// realm init fail, and such data is never cached.
 func TestOversizedSchemaIsRefused(t *testing.T) {
 	big := []byte(`{"type": "object", "x": "` + strings.Repeat("x", maxSchemaDownload) + `"}`)
 	if err := writeCachedSchema(t.TempDir(), "versions/1.0.0/entity/v1.json", big); err == nil {
@@ -419,5 +419,37 @@ func TestOversizedSchemaIsRefused(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(cache, "versions")); err == nil {
 		t.Error("an oversized download was cached")
+	}
+}
+
+// TestRealmInitRefusesNonSchemaDownload: a 200 that isn't a JSON schema, such
+// as a proxy's sign-in page, fails realm init and is neither vendored nor
+// cached.
+func TestRealmInitRefusesNonSchemaDownload(t *testing.T) {
+	for _, body := range []string{"<html><body>Sign in</body></html>", `{"error": "down"}`} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(body))
+		}))
+		t.Cleanup(server.Close)
+		original := schemaBaseURL
+		schemaBaseURL = server.URL
+		t.Cleanup(func() { schemaBaseURL = original })
+		cache := t.TempDir()
+		t.Setenv(envSchemaCache, cache)
+
+		dir := filepath.Join(t.TempDir(), "rules")
+		_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", dir, "--id", "com.test.demo", "--core-version", "1.0.0")
+		if !errors.Is(err, errNotSchema) || !strings.Contains(err.Error(), "fetching schema "+schemaFiles[0].local+"@v1.0.0") {
+			t.Errorf("%q: error = %v, want errNotSchema naming the schema", body, err)
+		}
+		if entries, _ := os.ReadDir(filepath.Join(dir, "_schema")); len(entries) != 0 {
+			t.Errorf("%q: _schema/ holds %d file(s), want none", body, len(entries))
+		}
+		if _, err := os.Stat(filepath.Join(dir, "realm.json")); err == nil {
+			t.Errorf("%q: realm.json was written", body)
+		}
+		if _, err := os.Stat(filepath.Join(cache, "versions")); err == nil {
+			t.Errorf("%q: the download was cached", body)
+		}
 	}
 }
