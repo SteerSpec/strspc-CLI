@@ -70,7 +70,8 @@ func newRefsCmd() *cobra.Command {
 			"entities, sub-entities included, in its states (D, P and I by default), must be cited in\n" +
 			"at least one file its files globs match in the project (RF008). Only entities of the local\n" +
 			"rule sources can be named. A glob that matches no file is a configuration error. The sets\n" +
-			"run whatever paths, --include and --exclude select.\n\n" +
+			"run whatever paths, --include and --exclude select, and their files are checked for the\n" +
+			"findings above too, each file once.\n\n" +
 			"Exit codes: 0 clean, 1 findings, 2 configuration or resolution error, 4 the JSON output\n" +
 			"can't be written.\n\n" +
 			"A pattern with no slash matches a file name in any directory, and dir/** matches everything\n" +
@@ -132,7 +133,9 @@ func runRefs(ctx context.Context, out, errOut io.Writer, cwd string, paths []str
 	}
 
 	res := &result.Result{}
+	checked := make(map[string]bool, len(files))
 	for _, f := range files {
+		checked[f] = true
 		data, ok, err := readRefsFile(cwd, f)
 		if err != nil {
 			return withExitCode(exitConfig, err)
@@ -142,7 +145,7 @@ func runRefs(ctx context.Context, out, errOut io.Writer, cwd string, paths []str
 		}
 		res.Diagnostics = append(res.Diagnostics, checker.CheckText(printableText(f), data).Diagnostics...)
 	}
-	coverage, err := runRefsCoverage(cwd, checker, project.coverage)
+	coverage, err := runRefsCoverage(cwd, checker, project.coverage, checked)
 	if err != nil {
 		return withExitCode(exitConfig, err)
 	}
