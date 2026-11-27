@@ -97,12 +97,45 @@ ANTHROPIC_API_KEY=... strspc check
 Add `./rules/` to `.strspc/config.yaml` to
 [evaluate your own realm](docs/configuration.md#configure-a-project).
 
+### See a rule enforced
+
+No API key is needed. In a new, empty directory, publish a rule, commit it, then edit its text by
+hand: `strspc diff` refuses the edit, as it would in CI.
+
+```bash
+git init -b main
+strspc realm init --id com.example.demo --title "Demo realm"
+strspc realm add CFG --title "Configuration"
+strspc rule add CFG --body "The CLI MUST write a config file." --added-by github:alice
+strspc rule promote CFG-001
+git add ./rules && git commit -m 'Publish CFG-001'
+# Edit the body of CFG-001 in rules/CFG.json, for example to "The CLI MUST write a YAML config file."
+strspc diff rules/ --base HEAD
+```
+
+`strspc diff` exits 1 (hashes shortened):
+
+```text
+[error] RD007: rule_set.version must be a valid semver and strictly higher than "0.2.0", got "0.2.0" (rules/CFG.json: CFG/rule_set.version)
+[error] RD009: rule_set.timestamp must be updated (rules/CFG.json: CFG/rule_set.timestamp)
+[error] RD002: rule body is immutable in state "P": supersede the rule to change its body (rules/CFG.json: CFG/CFG-001)
+[error] RD008: rule_set.hash mismatch: computed "blake3:0249bd2c…", file has "blake3:4ffec856…" (rules/CFG.json: CFG/rule_set.hash)
+
+4 error(s), 0 warning(s)
+Error: diff found 4 error(s)
+```
+
+RD002 is the lifecycle check: a Published rule's text is final. The other three errors come from
+editing the file by hand, which leaves the version, timestamp and hash stale. To change a Published
+rule, `strspc rule supersede` it ([Author rules](docs/author-rules.md)). Each command prints the
+next one to run, and `strspc --help` lists the whole path.
+
 ## Where to go
 
 | I want to | Go to |
 | --------- | ----- |
 | Install `strspc` | [Installation](#installation) |
-| Write and promote my first rule | [Quick start](#quick-start), [Author rules](docs/author-rules.md) |
+| Write and promote my first rule | [Quick start](#quick-start), [See a rule enforced](#see-a-rule-enforced), [Author rules](docs/author-rules.md) |
 | Understand entities, rules and realms | [Concepts](docs/architecture.md#concepts) |
 | See how the CLI, the manager and the rules fit together | [Architecture](docs/architecture.md#architecture) |
 | Find a command | [Commands](docs/architecture.md#commands) |
