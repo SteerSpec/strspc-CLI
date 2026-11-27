@@ -28,13 +28,27 @@ const (
 	websiteURL  = "https://steerspec.dev"
 )
 
+// helpStep is one command of a path the root help shows, with what it does.
+type helpStep struct{ command, purpose string }
+
 // gettingStarted is the short path the root help shows to someone new to strspc.
-var gettingStarted = []struct{ command, purpose string }{
+var gettingStarted = []helpStep{
 	{"strspc init", "Set up SteerSpec in this project"},
 	{"strspc doctor", "Check your installation and setup"},
 	{"strspc check --static-only", "Run structural checks (no API key needed)"},
 	{"strspc status", "See your rule sources and how they stand"},
 	{"strspc skill --install", "Teach your AI agent the strspc workflow"},
+}
+
+// authoringPath is the root help's shortest way to see a rule enforced
+// without an API key: author a rule, publish it, commit, and strspc diff
+// refuses the next edit to its text.
+var authoringPath = []helpStep{
+	{"strspc realm init --id <realm-id> --title <title>", "Create a realm in ./rules"},
+	{"strspc realm add <EUID> --title <title>", "Add an entity to it"},
+	{"strspc rule add <EUID> --body <text>", "Add a Draft rule"},
+	{"strspc rule promote <EUID>-001", "Publish the rule, then commit"},
+	{"strspc diff rules/ --base HEAD", "See an edit to the Published rule refused"},
 }
 
 var versionInfo VersionInfo
@@ -130,15 +144,8 @@ func customHelp(cmd *cobra.Command, _ []string) {
 
 	// Only the root help guides newcomers; subcommand help stays focused.
 	if !cmd.HasParent() {
-		width := 0
-		for _, s := range gettingStarted {
-			width = max(width, len(s.command)+helpGutter)
-		}
-		writeln(w, brandStyle.Render("Getting started:"))
-		for _, s := range gettingStarted {
-			writeln(w, cmdStyle.Render("  "+padRight(s.command, width))+descStyle.Render(s.purpose))
-		}
-		writeln(w)
+		writeHelpSteps(w, "Getting started:", gettingStarted)
+		writeHelpSteps(w, "Author a rule and see it enforced (no API key needed):", authoringPath)
 	}
 
 	// Flags and Global Flags share one column so their descriptions line up.
@@ -185,6 +192,19 @@ const (
 	// gets it, blank when it has no shorthand, so the long names line up.
 	shortSlot = len("-x, ")
 )
+
+// writeHelpSteps prints a titled list of steps, the purposes in one column.
+func writeHelpSteps(w io.Writer, title string, steps []helpStep) {
+	width := 0
+	for _, s := range steps {
+		width = max(width, len(s.command)+helpGutter)
+	}
+	writeln(w, brandStyle.Render(title))
+	for _, s := range steps {
+		writeln(w, cmdStyle.Render("  "+padRight(s.command, width))+descStyle.Render(s.purpose))
+	}
+	writeln(w)
+}
 
 // padRight pads s with spaces to width; s is returned as is when it is wider.
 func padRight(s string, width int) string {

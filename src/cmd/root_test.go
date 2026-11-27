@@ -163,6 +163,12 @@ func TestRootHelpHasGettingStarted(t *testing.T) {
 	for _, s := range gettingStarted {
 		testutil.AssertContains(t, output, s.command)
 	}
+	// The authoring path ends with strspc diff refusing an edit.
+	testutil.AssertContains(t, output, "Author a rule and see it enforced")
+	for _, s := range authoringPath {
+		testutil.AssertContains(t, output, s.command)
+	}
+	testutil.AssertContains(t, output, "strspc diff rules/ --base HEAD")
 }
 
 func TestSubcommandHelpHasNoGettingStarted(t *testing.T) {

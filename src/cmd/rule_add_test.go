@@ -22,6 +22,9 @@ func TestRuleAddBasic(t *testing.T) {
 
 	testutil.AssertContains(t, out, "TST-001")
 	testutil.AssertContains(t, out, "Draft")
+	// The next step promotes the rule, in the same --dir.
+	testutil.AssertContains(t, out, "Next steps:")
+	testutil.AssertContains(t, out, "strspc rule promote TST-001 --dir "+shellQuote(dir))
 
 	f := loadEntityFile(t, dir, "TST")
 	if len(f.Rules) != 1 {
@@ -58,6 +61,18 @@ func TestRuleAddJSON(t *testing.T) {
 	}
 	if result["state"] != "D" {
 		t.Errorf("expected state D, got %v", result["state"])
+	}
+	testutil.AssertNotContains(t, out, "Next steps:")
+}
+
+func TestAuthoringDirFlag(t *testing.T) {
+	for _, dir := range []string{"./rules", "rules", "rules/"} {
+		if got := authoringDirFlag(dir); got != "" {
+			t.Errorf("authoringDirFlag(%q) = %q, want empty", dir, got)
+		}
+	}
+	if got := authoringDirFlag("my rules"); got != " --dir 'my rules'" {
+		t.Errorf("authoringDirFlag = %q", got)
 	}
 }
 

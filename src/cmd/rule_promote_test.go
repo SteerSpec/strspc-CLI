@@ -28,6 +28,10 @@ func TestRulePromoteDraftToPublished(t *testing.T) {
 	}
 
 	testutil.AssertContains(t, out, "Draft → Published")
+	// The next steps commit the change and show strspc diff protecting it.
+	testutil.AssertContains(t, out, "Next steps:")
+	testutil.AssertContains(t, out, "git add "+shellQuote(dir)+" && git commit -m 'Publish TST-001'")
+	testutil.AssertContains(t, out, "strspc diff "+shellQuote(dir)+" --base HEAD")
 
 	f := loadEntityFile(t, dir, "TST")
 	if f.Rules[0].State != "P" {
@@ -446,6 +450,8 @@ func TestRulePromoteSkipVerify(t *testing.T) {
 	out, err = runPromoteGated(t, dir, "--skip-verify")
 	assertExit(t, err, exitOK)
 	testutil.AssertContains(t, out, "Not verified (--skip-verify)")
+	// Published → Implemented has no next steps of its own.
+	testutil.AssertNotContains(t, out, "Next steps:")
 }
 
 func TestRulePromoteGateCannotRun(t *testing.T) {
@@ -574,6 +580,7 @@ func TestRulePromoteJSON(t *testing.T) {
 	if result.Verify != nil || result.VerifySkipped {
 		t.Errorf("Draft → Published must not verify: %+v", result)
 	}
+	testutil.AssertNotContains(t, out, "Next steps:")
 }
 
 func TestRulePromoteSubEntityGated(t *testing.T) {
