@@ -126,6 +126,7 @@ The specification already covers these, but this CLI doesn't do them yet:
 
 | Item | Status |
 | ---- | ------ |
+| **`refs.coverage`** | `config.v1` accepts it, but `strspc refs` doesn't read it yet, so it reports no rule that no file cites |
 | **OpenAI and Ollama providers** | Reserved names that fail with a not-implemented error |
 | **Fallback without an LLM** | SPEC §8.4 falls back to structural checks; today `strspc check` exits 3 with provider `claude` and no key, so pass `--static-only` |
 | **Cloud mode** | SPEC §8.5 plans a CI action that calls a hosted SteerSpec evaluator, with shared caching and a compliance dashboard. The hosted service is planned, and the CLI has no cloud commands |
