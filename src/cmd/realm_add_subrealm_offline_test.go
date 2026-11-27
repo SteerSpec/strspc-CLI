@@ -61,7 +61,8 @@ func TestRealmAddSubrealmOfflineUsesCachedRelease(t *testing.T) {
 	}
 }
 
-// TestRealmAddSubrealmOfflineWithoutCache keeps the lookup error.
+// TestRealmAddSubrealmOfflineWithoutCache keeps the lookup error, with the
+// hint add-subrealm can follow: it has no --core-version.
 func TestRealmAddSubrealmOfflineWithoutCache(t *testing.T) {
 	t.Setenv(envSchemaCache, t.TempDir())
 	goOffline(t)
@@ -70,7 +71,9 @@ func TestRealmAddSubrealmOfflineWithoutCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	childDir := filepath.Join(t.TempDir(), "child")
-	assertErrContains(t, runAddSubrealm(t, parentDir, childDir), "connection refused")
+	err := runAddSubrealm(t, parentDir, childDir)
+	assertErrContains(t, err, "resolving core version for schemas (pin "+coreRealmID+" in the parent realm to choose one): connection refused")
+	testutil.AssertNotContains(t, err.Error(), "--core-version")
 	if _, err := os.Stat(filepath.Join(childDir, "realm.json")); err == nil {
 		t.Error("realm.json was written although the schemas failed")
 	}
