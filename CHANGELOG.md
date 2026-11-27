@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.46.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.45.0...v1.46.0) (2026-11-27)
+
+
+### Features
+
+* **cli:** lead from rule add to rule promote and strspc diff; fix help layout ([#388](https://github.com/SteerSpec/strspc-CLI/issues/388)) ([6602b2c](https://github.com/SteerSpec/strspc-CLI/commit/6602b2c26bba80b794cc56291970c2a1033faf8f))
+* **refs:** check that every rule of a coverage set is cited (refs.coverage) ([#387](https://github.com/SteerSpec/strspc-CLI/issues/387)) ([0ba0577](https://github.com/SteerSpec/strspc-CLI/commit/0ba0577f73b7c50bfab14d4525182d3916e354c3))
+* **refs:** check the citations in coverage set files ([#390](https://github.com/SteerSpec/strspc-CLI/issues/390)) ([f9feeaf](https://github.com/SteerSpec/strspc-CLI/commit/f9feeafa9a602ddcbdf10d5c24970521bf182502))
+
+
+### Bug Fixes
+
+* **diff:** skip an unchanged file in single-file mode, like directory mode ([#385](https://github.com/SteerSpec/strspc-CLI/issues/385)) ([7db7d64](https://github.com/SteerSpec/strspc-CLI/commit/7db7d642b05b9db64047793e3c5bd20ca6d2104b))
+* **realm:** next steps carry --dir, and realm validate accepts --dir ([#386](https://github.com/SteerSpec/strspc-CLI/issues/386)) ([3a5f50d](https://github.com/SteerSpec/strspc-CLI/commit/3a5f50d06120786d4401d80b039f0edcc8dad6ef))
+* **realm:** realm add-subrealm falls back to cached schemas offline ([#392](https://github.com/SteerSpec/strspc-CLI/issues/392)) ([9543ffc](https://github.com/SteerSpec/strspc-CLI/commit/9543ffc45aecffc59082c28c996a434671bef2e7))
+* **realm:** realm init reads and fills the schema cache, and works offline ([#389](https://github.com/SteerSpec/strspc-CLI/issues/389)) ([e4c56c8](https://github.com/SteerSpec/strspc-CLI/commit/e4c56c81d146d8005e1c1de82742b708b917b2fe))
+
+
+### Refactoring
+
+* **cmd:** one --dir helper for next steps ([#391](https://github.com/SteerSpec/strspc-CLI/issues/391)) ([c66fa33](https://github.com/SteerSpec/strspc-CLI/commit/c66fa33bec512b2fa050f296e2d95858918215bc))
+
 ## [1.45.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.44.0...v1.45.0) (2026-11-27)
 
 
