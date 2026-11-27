@@ -186,7 +186,10 @@ value is checked like the flag's, before anything is written.
 `realm rewrite-added-by` migrates existing values, with a patch bump for each changed entity file. It
 also rewrites the authors of the Realm Notes in the `realm.json` of `--dir` and of its sub-realms, so
 renaming a contributor updates them too; a changed manifest keeps its version and gets its hash
-recomputed, if it has one. A sub-realm directory that is a symbolic link is listed and not followed. For example:
+recomputed, if it has one. A sub-realm directory that is a symbolic link is listed and not followed.
+An `override_ack` note never changes once added, `added_by` included (NTE-044): the command leaves it
+as it is and lists it as kept (`kept` in `--json`), and a file whose only matches are such notes isn't
+touched. `strspc diff` reports any change to an existing `override_ack` note as `RD033`, an error. For example:
 
 ```bash
 strspc realm rewrite-added-by --github-handles --dry-run         # preview @alice → github:alice
