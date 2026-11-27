@@ -31,9 +31,8 @@ func TestRealmInitNextStepsRunAsPrinted(t *testing.T) {
 		t.Fatalf("realm init: %v\n%s", err, out)
 	}
 	testutil.AssertContains(t, out, `strspc realm add MYENTITY --title "My Entity" --dir .`)
-	testutil.AssertContains(t, out, `strspc rule add MYENTITY --body "..." --added-by "github:<login>" --dir .`)
-	testutil.AssertContains(t, out, "strspc realm validate --dir .")
-	testutil.AssertContains(t, out, "source: ./ in .strspc/config.yaml")
+	testutil.AssertContains(t, out, "2. Validate: strspc realm validate --dir .")
+	testutil.AssertContains(t, out, "3. Reference from config: source: ./ in .strspc/config.yaml")
 
 	out, err = testutil.ExecuteCommand(NewRootCmd(), "realm", "add", "MYENTITY", "--title", "My Entity", "--dir", ".")
 	if err != nil {
@@ -59,9 +58,9 @@ func TestRealmInitNextStepsDefaultDir(t *testing.T) {
 	}
 	testutil.AssertNotContains(t, out, "--dir")
 	testutil.AssertContains(t, out, `1. Add entities: strspc realm add MYENTITY --title "My Entity"`)
-	testutil.AssertContains(t, out, `2. Add rules: strspc rule add MYENTITY --body "..." --added-by "github:<login>"`)
-	testutil.AssertContains(t, out, "3. Validate: strspc realm validate\n")
-	testutil.AssertContains(t, out, "4. Reference from config: source: ./rules/ in .strspc/config.yaml")
+	testutil.AssertNotContains(t, out, "strspc rule add")
+	testutil.AssertContains(t, out, "2. Validate: strspc realm validate\n")
+	testutil.AssertContains(t, out, "3. Reference from config: source: ./rules/ in .strspc/config.yaml")
 }
 
 // TestRealmInitNextStepsQuoteDir checks a directory with a space is quoted in
@@ -78,7 +77,7 @@ func TestRealmInitNextStepsQuoteDir(t *testing.T) {
 	}
 	testutil.AssertContains(t, out, `strspc realm add MYENTITY --title "My Entity" --dir 'my rules'`)
 	testutil.AssertContains(t, out, `--clause <clause> --profiles L1 --dir 'my rules'`)
-	testutil.AssertContains(t, out, "strspc realm validate --dir 'my rules'")
+	testutil.AssertContains(t, out, "3. Validate: strspc realm validate --dir 'my rules'")
 	testutil.AssertContains(t, out, "source: ./my rules/ in .strspc/config.yaml")
 }
 
