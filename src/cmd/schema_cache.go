@@ -95,8 +95,12 @@ func readCachedSchema(cacheDir, key string) ([]byte, bool) {
 
 // writeCachedSchema stores data, a downloaded schema, in the cache at key,
 // through a temporary file renamed into place, and marks the cache. Data that
-// isn't a usable schema is not stored.
+// isn't a usable schema, or that readCachedSchema would refuse as too large,
+// is not stored.
 func writeCachedSchema(cacheDir, key string, data []byte) error {
+	if len(data) > maxSchemaDownload {
+		return fmt.Errorf("schema larger than %d bytes", maxSchemaDownload)
+	}
 	if err := checkSchemaDoc(data); err != nil {
 		return err
 	}

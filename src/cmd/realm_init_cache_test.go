@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -304,5 +305,98 @@ func TestWriteCachedSchemaErrors(t *testing.T) {
 				t.Errorf("read-only %s: want an error, got none", readOnly)
 			}
 		}
+	}
+}
+
+// TestSchemaCacheKeepsLookalikes: a file named like a schema with a suffix is
+// neither listed nor deleted.
+func TestSchemaCacheKeepsLookalikes(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv(envSchemaCache, cache)
+	cacheRelease(t, cache, "1.0.0")
+	lookalikes := []string{"entity/v1.json.bak", "versions/1.0.0/realm/v1.json.old", "entity/bootstrap.json.bak"}
+	for _, name := range lookalikes {
+		writeRefsFile(t, cache, name, "keep")
+	}
+	if err := markSchemaCache(cache); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "schema")
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, out, "entity/bootstrap.json")
+	for _, suffix := range []string{".bak", ".old"} {
+		testutil.AssertNotContains(t, out, suffix)
+	}
+	if _, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "clear"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range lookalikes {
+		if _, err := os.Stat(filepath.Join(cache, filepath.FromSlash(name))); err != nil {
+			t.Errorf("schema clear deleted %s: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(cache, "versions", "1.0.0", "entity", "v1.json")); err == nil {
+		t.Error("schema clear kept a schema")
+	}
+}
+
+// TestRealmInitMarksCacheOnHit: a cache another tool filled, without the
+// marker, is marked when init uses it, so schema clear accepts it; a marker
+// that can't be written doesn't fail init.
+func TestRealmInitMarksCacheOnHit(t *testing.T) {
+	runInit := func(t *testing.T) {
+		t.Helper()
+		dir := filepath.Join(t.TempDir(), "rules")
+		if _, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", dir, "--id", "com.test.demo", "--core-version", "1.0.0"); err != nil {
+			t.Fatalf("offline init from the cache: %v", err)
+		}
+		assertVendored(t, dir, func(local string) string { return releaseBody("1.0.0", local) })
+	}
+	t.Run("unmarked", func(t *testing.T) {
+		cache := t.TempDir()
+		t.Setenv(envSchemaCache, cache)
+		goOffline(t)
+		cacheRelease(t, cache, "1.0.0")
+		runInit(t)
+		if _, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "clear"); err != nil {
+			t.Errorf("schema clear after init used the cache: %v", err)
+		}
+	})
+	t.Run("marker can't be written", func(t *testing.T) {
+		cache := t.TempDir()
+		t.Setenv(envSchemaCache, cache)
+		goOffline(t)
+		cacheRelease(t, cache, "1.0.0")
+		writeRefsFile(t, cache, schemaCacheMarker+"/held", "a directory where the marker goes")
+		runInit(t)
+	})
+}
+
+// TestOversizedSchemaIsRefused: a download larger than a schema may be fails
+// realm init, and such data is never cached.
+func TestOversizedSchemaIsRefused(t *testing.T) {
+	big := []byte(`{"type": "object", "x": "` + strings.Repeat("x", maxSchemaDownload) + `"}`)
+	if err := writeCachedSchema(t.TempDir(), "versions/1.0.0/entity/v1.json", big); err == nil {
+		t.Error("an oversized schema was cached")
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(big)
+	}))
+	t.Cleanup(server.Close)
+	original := schemaBaseURL
+	schemaBaseURL = server.URL
+	t.Cleanup(func() { schemaBaseURL = original })
+	cache := t.TempDir()
+	t.Setenv(envSchemaCache, cache)
+
+	dir := filepath.Join(t.TempDir(), "rules")
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--dir", dir, "--id", "com.test.demo", "--core-version", "1.0.0")
+	if err == nil || !strings.Contains(err.Error(), "larger than") {
+		t.Errorf("oversized download: error = %v, want one naming the limit", err)
+	}
+	if _, err := os.Stat(filepath.Join(cache, "versions")); err == nil {
+		t.Error("an oversized download was cached")
 	}
 }

@@ -451,8 +451,10 @@ var schemaStagingDir = regexp.MustCompile(`^\.update-\d+$`)
 // the latest config, entity and realm v1 schemas, a release's entity and
 // realm v1 schemas below versions/X.Y.Z/, the bootstrap schema next to the
 // entity schema, and the temporary files next to them.
-var schemaCacheFile = regexp.MustCompile(`^(config|entity|realm|versions/\d+\.\d+\.\d+/(entity|realm))/(v1\.json|\.schema-cache-[^/]+)$` +
-	`|^(versions/\d+\.\d+\.\d+/)?entity/bootstrap\.json$`)
+var schemaCacheFile = regexp.MustCompile(`^(?:` +
+	`(config|entity|realm|versions/\d+\.\d+\.\d+/(entity|realm))/(v1\.json|\.schema-cache-[^/]+)` +
+	`|(versions/\d+\.\d+\.\d+/)?entity/bootstrap\.json` +
+	`)$`)
 
 // schemaCacheMarker marks a directory `schema fetch`, `schema update` or `realm init` has
 // used as the schema cache, so that `schema clear` deletes only in a real

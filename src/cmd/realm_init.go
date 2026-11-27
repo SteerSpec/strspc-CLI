@@ -547,6 +547,9 @@ func fetchSchema(schemaDir, tag, local string) error {
 	}
 	if key != "" {
 		if data, ok := readCachedSchema(cacheDir, key); ok {
+			// Mark a cache filled by another tool too, so `schema clear`
+			// accepts it; best-effort, the cached copy is usable anyway.
+			_ = markSchemaCache(cacheDir)
 			return os.WriteFile(outPath, data, 0o644)
 		}
 	}
@@ -580,7 +583,10 @@ func downloadSchema(tag, local string) ([]byte, error) {
 		return nil, fmt.Errorf("fetching schema %s@%s: HTTP %d", local, tag, resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxSchemaDownload+1))
+	if err == nil && len(body) > maxSchemaDownload {
+		err = fmt.Errorf("larger than %d bytes", maxSchemaDownload)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("reading schema %s: %w", local, err)
 	}
