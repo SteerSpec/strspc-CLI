@@ -172,3 +172,87 @@ func TestSubcommandHelpHasNoGettingStarted(t *testing.T) {
 	}
 	testutil.AssertNotContains(t, output, "Getting started:")
 }
+
+// helpOf renders customHelp for cmd as plain text.
+func helpOf(t *testing.T, cmd *cobra.Command) string {
+	t.Helper()
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	customHelp(cmd, nil)
+	return buf.String()
+}
+
+// helpLine returns the line of help that holds want, or fails the test.
+func helpLine(t *testing.T, help, want string) string {
+	t.Helper()
+	for _, l := range strings.Split(help, "\n") {
+		if strings.Contains(l, want) {
+			return l
+		}
+	}
+	t.Fatalf("no line holds %q in:\n%s", want, help)
+	return ""
+}
+
+func TestHelpFlagColumnFitsLongestFlag(t *testing.T) {
+	parent := &cobra.Command{Use: "app"}
+	parent.PersistentFlags().Bool("global-switch-flag", false, "a global flag")
+	cmd := &cobra.Command{Use: "leaf", Run: func(*cobra.Command, []string) {}}
+	cmd.Flags().String("a-very-long-flag-name", "", "long flag usage")
+	cmd.Flags().BoolP("quiet", "q", false, "quiet usage")
+	cmd.Flags().Bool("secret", false, "hidden usage")
+	_ = cmd.Flags().MarkHidden("secret")
+	parent.AddCommand(cmd)
+	cmd.InitDefaultHelpFlag()
+
+	help := helpOf(t, cmd)
+
+	long := helpLine(t, help, "--a-very-long-flag-name")
+	if !strings.Contains(long, "--a-very-long-flag-name  long flag usage") {
+		t.Errorf("want two spaces between the name and its description, got %q", long)
+	}
+	// Every description, local or global, starts in the same column.
+	col := strings.Index(long, "long flag usage")
+	for _, want := range []string{"quiet usage", "help for leaf", "a global flag"} {
+		if got := strings.Index(helpLine(t, help, want), want); got != col {
+			t.Errorf("%q starts at column %d, want %d", want, got, col)
+		}
+	}
+	// Long names line up whether or not the flag has a shorthand.
+	if a, b := strings.Index(long, "--"), strings.Index(helpLine(t, help, "-q, --quiet"), "--"); a != b {
+		t.Errorf("--quiet starts at column %d, want %d", b, a)
+	}
+	testutil.AssertNotContains(t, help, "secret")
+	// leaf has no subcommands, so no hint at one.
+	testutil.AssertNotContains(t, help, "[command] --help")
+}
+
+func TestHelpCommandColumnFitsLongestName(t *testing.T) {
+	cmd := &cobra.Command{Use: "app"}
+	cmd.AddCommand(
+		&cobra.Command{Use: "a-long-subcommand", Short: "long one", Run: func(*cobra.Command, []string) {}},
+		&cobra.Command{Use: "go", Short: "short one", Run: func(*cobra.Command, []string) {}},
+		&cobra.Command{Use: "hidden", Short: "hidden one", Hidden: true, Run: func(*cobra.Command, []string) {}},
+	)
+
+	help := helpOf(t, cmd)
+
+	long := helpLine(t, help, "a-long-subcommand")
+	if !strings.Contains(long, "a-long-subcommand  long one") {
+		t.Errorf("want two spaces between the name and its description, got %q", long)
+	}
+	if a, b := strings.Index(long, "long one"), strings.Index(helpLine(t, help, "short one"), "short one"); a != b {
+		t.Errorf("descriptions start at columns %d and %d", a, b)
+	}
+	testutil.AssertNotContains(t, help, "hidden one")
+	testutil.AssertContains(t, help, `Use "app [command] --help"`)
+}
+
+func TestPadRightLeavesWideTextAlone(t *testing.T) {
+	if got := padRight("abcdef", 3); got != "abcdef" {
+		t.Errorf("padRight = %q", got)
+	}
+	if got := padRight("ab", 4); got != "ab  " {
+		t.Errorf("padRight = %q", got)
+	}
+}

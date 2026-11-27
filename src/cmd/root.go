@@ -118,25 +118,33 @@ func customHelp(cmd *cobra.Command, _ []string) {
 
 	if len(visibleCmds) > 0 {
 		writeln(w, brandStyle.Render("Available Commands:"))
+		width := minCommandColumn
 		for _, c := range visibleCmds {
-			name := cmdStyle.Render(fmt.Sprintf("  %-12s", c.Name()))
-			d := descStyle.Render(c.Short)
-			writeln(w, name+d)
+			width = max(width, len(c.Name())+helpGutter)
+		}
+		for _, c := range visibleCmds {
+			writeln(w, cmdStyle.Render("  "+padRight(c.Name(), width))+descStyle.Render(c.Short))
 		}
 		writeln(w)
 	}
 
 	// Only the root help guides newcomers; subcommand help stays focused.
 	if !cmd.HasParent() {
+		width := 0
+		for _, s := range gettingStarted {
+			width = max(width, len(s.command)+helpGutter)
+		}
 		writeln(w, brandStyle.Render("Getting started:"))
 		for _, s := range gettingStarted {
-			writeln(w, cmdStyle.Render(fmt.Sprintf("  %-28s", s.command))+descStyle.Render(s.purpose))
+			writeln(w, cmdStyle.Render("  "+padRight(s.command, width))+descStyle.Render(s.purpose))
 		}
 		writeln(w)
 	}
 
-	localFlags := renderFlags(cmd.LocalFlags())
-	inheritedFlags := renderFlags(cmd.InheritedFlags())
+	// Flags and Global Flags share one column so their descriptions line up.
+	width := max(flagColumn(cmd.LocalFlags()), flagColumn(cmd.InheritedFlags()))
+	localFlags := renderFlags(cmd.LocalFlags(), width)
+	inheritedFlags := renderFlags(cmd.InheritedFlags(), width)
 
 	if len(localFlags) > 0 {
 		writeln(w, brandStyle.Render("Flags:"))
@@ -150,7 +158,10 @@ func customHelp(cmd *cobra.Command, _ []string) {
 		writeln(w)
 	}
 
-	writeln(w, descStyle.Render(fmt.Sprintf("  Use \"%s [command] --help\" for more information about a command.", cmd.CommandPath())))
+	// The hint names a [command], so only a command that has some prints it.
+	if len(visibleCmds) > 0 {
+		writeln(w, descStyle.Render(fmt.Sprintf("  Use \"%s [command] --help\" for more information about a command.", cmd.CommandPath())))
+	}
 
 	// Only the root help carries the licence pointer; subcommand help stays focused.
 	if !cmd.HasParent() {
@@ -163,18 +174,53 @@ func writeln(w io.Writer, a ...any) {
 	_, _ = fmt.Fprintln(w, a...)
 }
 
-func renderFlags(flags *pflag.FlagSet) []string {
+// Help layout. Widths are counted on the plain text, before styling adds
+// escape codes.
+const (
+	// helpGutter is the least space between a name and its description.
+	helpGutter = 2
+	// minCommandColumn keeps short command lists in the column they always had.
+	minCommandColumn = 12
+	// shortSlot is the width of a shorthand prefix such as "-h, ". Every flag
+	// gets it, blank when it has no shorthand, so the long names line up.
+	shortSlot = len("-x, ")
+)
+
+// padRight pads s with spaces to width; s is returned as is when it is wider.
+func padRight(s string, width int) string {
+	if n := width - len(s); n > 0 {
+		return s + strings.Repeat(" ", n)
+	}
+	return s
+}
+
+// flagColumn is the width of the name column for the visible flags of flags:
+// the shorthand slot, the longest "--name" and the gutter. It is 0 when no
+// flag is visible.
+func flagColumn(flags *pflag.FlagSet) int {
+	width := 0
+	flags.VisitAll(func(f *pflag.Flag) {
+		if !f.Hidden {
+			width = max(width, shortSlot+len("--"+f.Name)+helpGutter)
+		}
+	})
+	return width
+}
+
+// renderFlags renders the visible flags of flags, one per line, with the
+// names padded to width.
+func renderFlags(flags *pflag.FlagSet, width int) []string {
 	var lines []string
 	flags.VisitAll(func(f *pflag.Flag) {
 		if f.Hidden {
 			return
 		}
-		short := ""
+		short := strings.Repeat(" ", shortSlot)
 		if f.Shorthand != "" {
 			short = "-" + f.Shorthand + ", "
 		}
-		line := cmdStyle.Render(fmt.Sprintf("  %s--%-12s", short, f.Name)) + descStyle.Render(f.Usage)
-		lines = append(lines, line)
+		name := padRight(short+"--"+f.Name, width)
+		lines = append(lines, cmdStyle.Render("  "+name)+descStyle.Render(f.Usage))
 	})
 	return lines
 }
