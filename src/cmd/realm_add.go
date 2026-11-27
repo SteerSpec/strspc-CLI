@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/entityops"
@@ -101,8 +102,8 @@ func newRealmAddCmd() *cobra.Command {
 			writeln(w, brandStyle.Render(fmt.Sprintf("Created entity %q (%s) in %s", euid, title, entityPath)))
 			writeln(w)
 			writeln(w, descStyle.Render("Next steps:"))
-			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Add rules: ")+cmdStyle.Render(fmt.Sprintf("strspc rule add %s --body \"...\" --added-by \"github:<login>\"", euid)))
-			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Validate: ")+cmdStyle.Render("strspc realm validate"))
+			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Add rules: ")+cmdStyle.Render(fmt.Sprintf("strspc rule add %s --body \"...\" --added-by \"github:<login>\"%s", euid, realmDirArg(dir))))
+			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Validate: ")+cmdStyle.Render("strspc realm validate"+realmDirArg(dir)))
 			writeln(w)
 
 			return nil
@@ -112,7 +113,44 @@ func newRealmAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&title, "title", "", "entity title (required)")
 	cmd.Flags().StringVar(&description, "description", "", "entity description")
 	cmd.Flags().StringVar(&inherits, "inherits", "", "entity whose rule set this entity inherits: EUID or <realm-id>:<EUID>")
-	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
+	cmd.Flags().StringVar(&dir, "dir", defaultRealmDir, "realm directory")
 
 	return cmd
+}
+
+// defaultRealmDir is the Realm directory a command uses without --dir.
+const defaultRealmDir = "./rules"
+
+// realmDirArg returns " --dir <dir>" for a suggested command, with dir quoted
+// for a shell, so the command runs as printed; it returns "" when dir is the
+// default the command uses without --dir. dir is printed with forward slashes,
+// which strspc accepts on Windows too, so a separator never forces quoting.
+func realmDirArg(dir string) string {
+	clean := filepath.ToSlash(filepath.Clean(dir))
+	if clean == "rules" {
+		return ""
+	}
+	return " --dir " + shellQuote(clean)
+}
+
+// configSourcePath returns dir as a source path for .strspc/config.yaml, read
+// from the project root: slash-separated, ending in "/", and starting with
+// "./" when relative and inside the project (so ./rules gives "./rules/").
+func configSourcePath(dir string) string {
+	p := filepath.ToSlash(filepath.Clean(dir))
+	switch {
+	case p == ".":
+		return "./"
+	case filepath.IsAbs(dir), p == "..", strings.HasPrefix(p, "../"):
+		return strings.TrimSuffix(p, "/") + "/"
+	default:
+		return "./" + p + "/"
+	}
+}
+
+// yamlScalar returns s as a YAML scalar that reads back as s: plain when that
+// is safe, quoted otherwise (a "#" or ": " in a path, for instance).
+func yamlScalar(s string) string {
+	out, _ := yaml.Marshal(s) // a string always marshals
+	return strings.TrimSuffix(string(out), "\n")
 }

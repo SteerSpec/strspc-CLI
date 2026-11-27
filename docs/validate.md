@@ -6,7 +6,7 @@ Back to the [README](../README.md).
 
 ```bash
 strspc lint rules/ --strict                    # schema and structure of each entity file
-strspc realm validate rules/ --recursive       # manifest, EUID uniqueness, sub-realms, pins, inheritance
+strspc realm validate --dir rules/ --recursive # manifest, EUID uniqueness, sub-realms, pins, inheritance
 strspc diff rules/ --base origin/develop       # lifecycle transitions vs. a git ref
 strspc diff rules/ --pr 42                     # ... or vs. a PR base (needs gh auth)
 strspc check --static-only                     # resolve sources, verify hashes and references
@@ -18,6 +18,8 @@ These implement the checks of
 takes `--format json`. `lint --cross-ref` adds
 cross-file reference checks in directory mode. `diff` exits 0 when all checks pass and 1 on a
 violation. `lint`, `diff` and `realm validate` exit 4 when `--json` output can't be written.
+`realm validate` takes the Realm directory as a path or with `--dir`, as `realm init` and
+`realm add` do; it defaults to `./rules`.
 
 **Schemas.** `lint` and `realm validate` use the schemas of the `dev.steerspec.core` version the realm
 pins, so a schema change reaches a realm when it bumps its pin. A realm with no pin uses the latest
