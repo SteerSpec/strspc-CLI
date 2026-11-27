@@ -469,6 +469,22 @@ func TestCheckConfigSchemaValid(t *testing.T) {
 	testutil.AssertNotContains(t, output, "CHK002")
 }
 
+// Core 1.27.0's config.v1 accepts the efforts xhigh and max and refs.coverage.
+func TestCheckConfigSchemaValidCore127(t *testing.T) {
+	serveConfigSchema(t)
+	for _, effort := range []string{"xhigh", "max"} {
+		t.Run(effort, func(t *testing.T) {
+			dir, _ := setupCheckProject(t, "null", []string{"I"})
+			writeRawCheckConfig(t, dir, "rules:\n  - source: ./rules/\n    scope: local\nevaluator:\n  provider: null\n  effort: "+effort+
+				"\nfail_on: [I]\nrefs:\n  coverage:\n    - entities: [CMD]\n      files: [docs/*.md]\n")
+
+			output, err := runCheckCmd(t, dir)
+			assertExit(t, err, exitOK)
+			testutil.AssertNotContains(t, output, "CHK002")
+		})
+	}
+}
+
 // An unreachable schema host only shows up in verbose output.
 func TestCheckConfigSchemaUnavailableIsSilent(t *testing.T) {
 	original := newConfigSchemaFetcher
