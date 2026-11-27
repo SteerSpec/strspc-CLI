@@ -149,6 +149,9 @@ func diffFile(headPath, baseRef, repoDir string, strict bool) (*result.Result, e
 		if err != nil {
 			return nil, fmt.Errorf("reading %s at the base: %w", rel, err)
 		}
+		if bytes.Equal(baseData, headData) {
+			return &result.Result{}, nil // file unchanged, like diffDir
+		}
 		res = rulediff.Compare(baseData, headData, opts...)
 	} else {
 		res = rulediff.CompareNew(headData, opts...)
