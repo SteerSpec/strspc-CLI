@@ -52,6 +52,20 @@ func TestMain(m *testing.M) {
 	newValidationSchemaFetcher = newSchemaFetcher
 	newConfigSchemaFetcher = func(string) *schema.Fetcher { return nil }
 	_ = os.Unsetenv(addedByEnv)
+	// Turn off git's automatic maintenance in every repository a test
+	// creates. From git 2.47 the maintenance a commit starts runs detached,
+	// so it can write to .git/objects after the test returns, and the
+	// TempDir cleanup then fails with "directory not empty". Config set
+	// through GIT_CONFIG_COUNT overrides the user's and system config.
+	for k, v := range map[string]string{
+		"GIT_CONFIG_COUNT":   "2",
+		"GIT_CONFIG_KEY_0":   "maintenance.auto",
+		"GIT_CONFIG_VALUE_0": "false",
+		"GIT_CONFIG_KEY_1":   "gc.auto",
+		"GIT_CONFIG_VALUE_1": "0",
+	} {
+		_ = os.Setenv(k, v)
+	}
 	realGitUserEmail = gitUserEmail
 	gitUserEmail = func(string) string { return "" }
 	code := m.Run()
