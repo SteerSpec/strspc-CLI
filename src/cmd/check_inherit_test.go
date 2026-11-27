@@ -281,8 +281,85 @@ func TestCheckCountsInheritedRulesWithoutDependencies(t *testing.T) {
 	writeInheritEntity(t, rules, "SAVACCT", "ACCT", inheritRule{id: "SAVACCT-001", state: "P"})
 	writeCheckConfig(t, dir, "./rules/", "null", nil, nil)
 
-	if got := checkRuleCount(t, dir); got != 5 {
-		t.Errorf("rule_count = %d, want 5 (2 ACCT + 1 own + 2 inherited)", got)
+	// ACCT is a configured source too, so its rules are evaluated once, under
+	// ACCT, not again as SAVACCT's inherited rules.
+	if got := checkRuleCount(t, dir); got != 3 {
+		t.Errorf("rule_count = %d, want 3 (2 ACCT + 1 own)", got)
+	}
+}
+
+// requestsFor returns how many requests for ruleID the provider got under
+// their owner (InheritedBy empty) and as inherited rules.
+func requestsFor(p *recordingProvider, ruleID string) (own, inherited int) {
+	reqs := p.requests(ruleID)
+	for i := range reqs {
+		if reqs[i].InheritedBy == "" {
+			own++
+		} else {
+			inherited++
+		}
+	}
+	return own, inherited
+}
+
+// An inherited rule whose owner is in a configured source that covers the
+// inheriting entity's files is evaluated once, under its owner. The override
+// the inheriting entity declares is still evaluated under it, with the rule
+// it overrides as context (RUL-020).
+func TestCheckEvaluatesInheritedRuleOnceUnderOwner(t *testing.T) {
+	dir := t.TempDir()
+	rules := filepath.Join(dir, "rules")
+	writeRealmManifest(t, rules, "dev.app")
+	writeInheritEntity(t, rules, "ACCT", "", inheritRule{id: "ACCT-001", state: "P"}, inheritRule{id: "ACCT-002", state: "I"})
+	writeInheritEntity(t, rules, "SAVACCT", "ACCT", inheritRule{id: "SAVACCT-001", state: "P", overrides: "dev.app:ACCT-001"})
+	writeCheckConfig(t, dir, "./rules/", "claude", nil, nil)
+	diff := filepath.Join(dir, "change.diff")
+	if err := os.WriteFile(diff, []byte(checkDiff), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := &recordingProvider{}
+	stubEvalProvider(t, p, nil)
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitOK)
+
+	for _, id := range []string{"ACCT-001", "ACCT-002"} {
+		if own, inherited := requestsFor(p, id); own != 1 || inherited != 0 {
+			t.Errorf("%s: %d under ACCT, %d inherited, want 1 and 0", id, own, inherited)
+		}
+	}
+	over := p.requests("SAVACCT-001")
+	if len(over) != 1 || over[0].Overrides != "dev.app:ACCT-001" || over[0].Overridden == nil || over[0].Overridden.ID != "dev.app:ACCT-001" {
+		t.Errorf("SAVACCT-001 requests = %+v, want one overriding dev.app:ACCT-001 with it as context", over)
+	}
+}
+
+// When the owner's source is local to another directory, its copy doesn't
+// see the inheriting entity's files, so the inherited copy stays; a global
+// owner source covers them.
+func TestCheckInheritedRuleKeptForNarrowerOwnerSource(t *testing.T) {
+	for name, c := range map[string]struct {
+		libScope  string
+		inherited int
+	}{
+		"local owner":  {libScope: "local", inherited: 1},
+		"global owner": {libScope: "global", inherited: 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, diff := setupInheritProject(t, "claude", "./rules/")
+			writeRawCheckConfig(t, dir, "rules:\n  - source: ./rules/\n    scope: local\n  - source: ./lib/\n    scope: "+c.libScope+
+				"\nevaluator:\n  provider: claude\n  effort: low\ncache:\n  ttl: 24h\n")
+			writeInheritEntity(t, filepath.Join(dir, "rules"), "SAVACCT", "dev.lib:ACCT", inheritRule{id: "SAVACCT-001", state: "P"})
+			p := &recordingProvider{}
+			stubEvalProvider(t, p, nil)
+
+			_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+			assertExit(t, err, exitOK)
+
+			if own, inherited := requestsFor(p, "ACCT-002"); own != 1 || inherited != c.inherited {
+				t.Errorf("ACCT-002: %d under ACCT, %d inherited, want 1 and %d", own, inherited, c.inherited)
+			}
+		})
 	}
 }
 
