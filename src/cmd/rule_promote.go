@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -87,7 +88,7 @@ func newRulePromoteCmd() *cobra.Command {
 	}
 
 	f := cmd.Flags()
-	f.StringVar(&o.dir, "dir", "./rules", "realm directory")
+	f.StringVar(&o.dir, "dir", defaultRealmDir, "realm directory")
 	f.BoolVar(&o.jsonOut, "json", false, "output as JSON")
 	f.BoolVar(&o.skipVerify, "skip-verify", false, "promote Published → Implemented without verifying the code")
 	f.Float64Var(&o.minConfidence, "min-confidence", defaultMinConfidence,
@@ -199,12 +200,15 @@ func runRulePromote(ctx context.Context, out, errOut io.Writer, ruleID string, o
 // writePublishedNextSteps tells how to see a rule just Published protected:
 // once the change is committed, strspc diff refuses an edit to its text.
 func writePublishedNextSteps(out io.Writer, ruleID, dir string) {
+	// Forward slashes, as realmDirArg prints them: git and strspc take them
+	// on Windows too.
+	path := shellQuote(filepath.ToSlash(dir))
 	writeln(out)
 	writeln(out, descStyle.Render("Next steps:"))
 	writeln(out, cmdStyle.Render("  1.")+descStyle.Render(" Commit the change: ")+
-		cmdStyle.Render("git add "+shellQuote(dir)+" && git commit -m "+shellQuote("Publish "+ruleID)))
+		cmdStyle.Render("git add "+path+" && git commit -m "+shellQuote("Publish "+ruleID)))
 	writeln(out, cmdStyle.Render("  2.")+descStyle.Render(" After the next edit, see the Published rule protected: ")+
-		cmdStyle.Render("strspc diff "+shellQuote(dir)+" --base HEAD"))
+		cmdStyle.Render("strspc diff "+path+" --base HEAD"))
 	writeln(out)
 }
 

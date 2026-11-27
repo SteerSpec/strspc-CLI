@@ -401,7 +401,7 @@ func newRealmInitCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&realmID, "id", "", "realm ID (reverse domain notation, e.g. com.acme.myproject)")
 	cmd.Flags().StringVar(&title, "title", "", "realm title")
-	cmd.Flags().StringVar(&dir, "dir", "./rules", "target directory")
+	cmd.Flags().StringVar(&dir, "dir", defaultRealmDir, "target directory")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing realm")
 	cmd.Flags().StringVar(&core, "core-version", "", "dev.steerspec.core release to vendor schemas from (default: the dev.steerspec.core dependency, else the latest release)")
 	cmd.Flags().StringArrayVar(&deps, "dependency", nil, "realm dependency (format: realm_id@version[=source])")
