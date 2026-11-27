@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -30,6 +31,8 @@ func testConfigSchema(t *testing.T, old bool) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A Windows checkout may have CRLF line endings.
+	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
 	if old {
 		s := strings.Replace(string(data), `"high",
             "xhigh",
@@ -235,7 +238,9 @@ func TestConfigurationDocExampleIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, rest, ok := strings.Cut(string(doc), "```yaml\n")
+	// A Windows checkout may have CRLF line endings.
+	text := strings.ReplaceAll(string(doc), "\r\n", "\n")
+	_, rest, ok := strings.Cut(text, "```yaml\n")
 	example, _, ok2 := strings.Cut(rest, "```")
 	if !ok || !ok2 || !strings.Contains(example, "rules:") {
 		t.Fatal("no YAML example in docs/configuration.md")
