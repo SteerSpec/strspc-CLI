@@ -11,14 +11,14 @@ Back to the [README](../README.md).
 
 ```yaml
 rules:
-  - source: github://SteerSpec/strspc-rules@v1.25.0/rules/core   # bumped per rules release
+  - source: github://SteerSpec/strspc-rules@v1.27.0/rules/core   # bumped per rules release
     scope: global
   - source: ./rules/
     scope: global
 evaluator:
   provider: claude          # requires ANTHROPIC_API_KEY; use "null" to skip AI evaluation
   model: claude-haiku-5-5   # the default
-  effort: medium            # low | medium | high
+  effort: medium            # low | medium | high | xhigh | max
 cache:
   ttl: 24h
 evaluate_on: [D, P, I]      # the default
@@ -57,7 +57,7 @@ Config: .strspc/config.yaml
   Cache TTL: 24h0m0s
 
 Sources:
-  - github://SteerSpec/strspc-rules@v1.25.0/rules/core (global): pinned, cached, 154 rule(s)
+  - github://SteerSpec/strspc-rules@v1.27.0/rules/core (global): pinned, cached, 154 rule(s)
   - ./rules/ (global): local, 13 rule(s)
 
 Rules: 167 total

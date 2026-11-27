@@ -52,6 +52,20 @@ func TestMain(m *testing.M) {
 	newValidationSchemaFetcher = newSchemaFetcher
 	newConfigSchemaFetcher = func(string) *schema.Fetcher { return nil }
 	_ = os.Unsetenv(addedByEnv)
+	// Turn off git's automatic maintenance in every repository a test
+	// creates. From git 2.47 the maintenance a commit starts runs detached,
+	// so it can write to .git/objects after the test returns, and the
+	// TempDir cleanup then fails with "directory not empty". Config set
+	// through GIT_CONFIG_COUNT overrides the user's and system config.
+	for k, v := range map[string]string{
+		"GIT_CONFIG_COUNT":   "2",
+		"GIT_CONFIG_KEY_0":   "maintenance.auto",
+		"GIT_CONFIG_VALUE_0": "false",
+		"GIT_CONFIG_KEY_1":   "gc.auto",
+		"GIT_CONFIG_VALUE_1": "0",
+	} {
+		_ = os.Setenv(k, v)
+	}
 	realGitUserEmail = gitUserEmail
 	gitUserEmail = func(string) string { return "" }
 	code := m.Run()
@@ -455,6 +469,22 @@ func TestCheckConfigSchemaValid(t *testing.T) {
 	testutil.AssertNotContains(t, output, "CHK002")
 }
 
+// Core 1.27.0's config.v1 accepts the effort values xhigh and max.
+func TestCheckConfigSchemaValidEffort(t *testing.T) {
+	serveConfigSchema(t)
+	for _, effort := range []string{"xhigh", "max"} {
+		t.Run(effort, func(t *testing.T) {
+			dir, _ := setupCheckProject(t, "null", []string{"I"})
+			writeRawCheckConfig(t, dir, "rules:\n  - source: ./rules/\n    scope: local\nevaluator:\n  provider: null\n  effort: "+effort+
+				"\nfail_on: [I]\n")
+
+			output, err := runCheckCmd(t, dir)
+			assertExit(t, err, exitOK)
+			testutil.AssertNotContains(t, output, "CHK002")
+		})
+	}
+}
+
 // An unreachable schema host only shows up in verbose output.
 func TestCheckConfigSchemaUnavailableIsSilent(t *testing.T) {
 	original := newConfigSchemaFetcher
@@ -784,7 +814,7 @@ func TestResolveEndpoint(t *testing.T) {
 		{"", "", "proxy.example", "", true},
 	}
 	for _, c := range cases {
-		got, err := resolveEndpoint(c.cfg, c.flag, c.env)
+		got, err := resolveEndpoint("claude", c.cfg, c.flag, c.env)
 		if (err != nil) != c.wantErr || got != c.want {
 			t.Errorf("resolveEndpoint(%q,%q,%q) = %q, %v; want %q, err=%v", c.cfg, c.flag, c.env, got, err, c.want, c.wantErr)
 		}

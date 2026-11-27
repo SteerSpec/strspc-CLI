@@ -50,12 +50,16 @@ func validateCodes(t *testing.T, args ...string) (map[string]result.Severity, er
 func TestRealmValidateReportsOverrideChain(t *testing.T) {
 	for name, c := range map[string]struct {
 		protected bool
-		rule      inheritRule
-		want      []string
+		// visibility is what SAVACCT declares; undeclared, it takes the
+		// narrowest one it inherits (ENT-011).
+		visibility string
+		rule       inheritRule
+		want       []string
+		absent     []string // codes that must not be reported
 	}{
 		"unknown target":              {rule: inheritRule{id: "SAVACCT-001", state: "P", overrides: "dev.lib:ACCT-009"}, want: []string{"RR015"}},
-		"protected entity's rule":     {protected: true, rule: inheritRule{id: "SAVACCT-001", state: "P", overrides: "dev.lib:ACCT-001"}, want: []string{"RR023", "RR024"}},
-		"wider than what it inherits": {protected: true, rule: inheritRule{id: "SAVACCT-001", state: "P"}, want: []string{"RR024"}},
+		"protected entity's rule":     {protected: true, rule: inheritRule{id: "SAVACCT-001", state: "P", overrides: "dev.lib:ACCT-001"}, want: []string{"RR023"}, absent: []string{"RR024"}},
+		"wider than what it inherits": {protected: true, visibility: "public", rule: inheritRule{id: "SAVACCT-001", state: "P"}, want: []string{"RR024"}},
 	} {
 		for _, mode := range [][]string{nil, {"--recursive"}, {"--recursive", "--strict"}} {
 			t.Run(name+" "+strings.Join(mode, " "), func(t *testing.T) {
@@ -64,7 +68,12 @@ func TestRealmValidateReportsOverrideChain(t *testing.T) {
 					body := inheritEntityJSON("ACCT", "", "", inheritRule{id: "ACCT-001", state: "P"}, inheritRule{id: "ACCT-002", state: "I"})
 					writeInheritFile(t, lib, "ACCT", strings.Replace(body, `"description": "d"`, `"description": "d", "visibility": "protected"`, 1))
 				}
-				writeInheritEntity(t, rules, "SAVACCT", "dev.lib:ACCT", c.rule)
+				if c.visibility == "" {
+					writeInheritEntity(t, rules, "SAVACCT", "dev.lib:ACCT", c.rule)
+				} else {
+					body := inheritEntityJSON("SAVACCT", "dev.lib:ACCT", "", c.rule)
+					writeInheritFile(t, rules, "SAVACCT", strings.Replace(body, `"description": "d"`, `"description": "d", "visibility": "`+c.visibility+`"`, 1))
+				}
 
 				codes, err := validateCodes(t, append([]string{rules}, mode...)...)
 				if err == nil {
@@ -73,6 +82,11 @@ func TestRealmValidateReportsOverrideChain(t *testing.T) {
 				for _, code := range c.want {
 					if codes[code] != result.Error {
 						t.Errorf("%s: severity %q, want error (codes %v)", code, codes[code], codes)
+					}
+				}
+				for _, code := range c.absent {
+					if _, found := codes[code]; found {
+						t.Errorf("%s reported, want it absent (codes %v)", code, codes)
 					}
 				}
 			})
@@ -103,6 +117,22 @@ func TestRealmValidatePassesInheritingRealm(t *testing.T) {
 	for _, mode := range [][]string{nil, {"--recursive", "--strict"}} {
 		if codes, err := validateCodes(t, append([]string{rules}, mode...)...); err != nil {
 			t.Errorf("%v: %v (codes %v)", mode, err, codes)
+		}
+	}
+}
+
+// An entity that declares no visibility takes the narrowest one it inherits
+// (ENT-011, strspc-manager v1.57.0), so inheriting a protected entity is no
+// longer wider than it (RR024).
+func TestRealmValidateUndeclaredInheritsVisibility(t *testing.T) {
+	rules, lib := setupValidateInherit(t)
+	body := inheritEntityJSON("ACCT", "", "", inheritRule{id: "ACCT-001", state: "P"}, inheritRule{id: "ACCT-002", state: "I"})
+	writeInheritFile(t, lib, "ACCT", strings.Replace(body, `"description": "d"`, `"description": "d", "visibility": "protected"`, 1))
+	writeInheritEntity(t, rules, "SAVACCT", "dev.lib:ACCT", inheritRule{id: "SAVACCT-001", state: "P"})
+	for _, mode := range [][]string{nil, {"--recursive", "--strict"}} {
+		codes, err := validateCodes(t, append([]string{rules}, mode...)...)
+		if _, rr024 := codes["RR024"]; err != nil || rr024 {
+			t.Errorf("%v: %v (codes %v), want a pass without RR024", mode, err, codes)
 		}
 	}
 }

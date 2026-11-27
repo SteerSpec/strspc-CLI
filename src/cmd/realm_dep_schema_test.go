@@ -188,7 +188,7 @@ func TestSyncCoreSchemasRecordsAFileWhoseWriteFails(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
 
-	synced, err := syncCoreSchemas(context.Background(), dir, depUpgrade{realmID: coreRealmID}, nil)
+	synced, err := syncCoreSchemas(context.Background(), dir, &depUpgrade{realmID: coreRealmID}, nil)
 	if err == nil {
 		t.Skip("a read-only file was writable, as it is for root")
 	}
@@ -247,7 +247,7 @@ func TestRealmDepUpgradeSchemaSyncIgnoresSymlinks(t *testing.T) {
 func TestSyncCoreSchemasErrors(t *testing.T) {
 	t.Run("missing realm directory", func(t *testing.T) {
 		missing := filepath.Join(t.TempDir(), "missing")
-		_, err := syncCoreSchemas(context.Background(), missing, depUpgrade{realmID: coreRealmID}, nil)
+		_, err := syncCoreSchemas(context.Background(), missing, &depUpgrade{realmID: coreRealmID}, nil)
 		if err == nil || !strings.Contains(err.Error(), "opening "+missing) {
 			t.Errorf("error = %v, want opening %s", err, missing)
 		}
@@ -260,7 +260,7 @@ func TestSyncCoreSchemasErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 		fetchUpgradeDep = func(context.Context, string, entity.RealmDep) (string, error) { return coreDir, nil }
-		synced, err := syncCoreSchemas(context.Background(), dir, depUpgrade{realmID: coreRealmID}, nil)
+		synced, err := syncCoreSchemas(context.Background(), dir, &depUpgrade{realmID: coreRealmID}, nil)
 		if err == nil || !strings.Contains(err.Error(), "reading core schema entity.v1.schema.json") {
 			t.Errorf("error = %v, want reading core schema", err)
 		}
@@ -270,7 +270,7 @@ func TestSyncCoreSchemasErrors(t *testing.T) {
 	})
 
 	t.Run("another dependency needs no sync", func(t *testing.T) {
-		synced, err := syncCoreSchemas(context.Background(), t.TempDir(), depUpgrade{realmID: "dev.other"}, nil)
+		synced, err := syncCoreSchemas(context.Background(), t.TempDir(), &depUpgrade{realmID: "dev.other"}, nil)
 		if err != nil || synced != nil {
 			t.Errorf("got %+v, %v; want nothing", synced, err)
 		}

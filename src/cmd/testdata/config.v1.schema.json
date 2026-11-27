@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://steerspec.dev/schemas/config/v1.json",
+  "x-steerspec-core-version": "1.27.0",
   "title": "SteerSpec Config Schema",
   "description": "Schema for .strspc/config.yaml. Generated from SPCFG entity rules by tools/build-schema.py. Do not edit manually.",
   "type": "object",
@@ -67,7 +68,9 @@
           "enum": [
             "low",
             "medium",
-            "high"
+            "high",
+            "xhigh",
+            "max"
           ]
         }
       }
@@ -107,6 +110,57 @@
           "R",
           "T"
         ]
+      }
+    },
+    "refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "coverage": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "entities",
+              "files"
+            ],
+            "properties": {
+              "entities": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 18,
+                  "pattern": "^[a-zA-Z0-9]+$"
+                }
+              },
+              "files": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string"
+                }
+              },
+              "states": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "D",
+                    "A",
+                    "P",
+                    "I",
+                    "R",
+                    "T"
+                  ]
+                }
+              }
+            }
+          }
+        }
       }
     }
   },

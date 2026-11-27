@@ -36,7 +36,7 @@ type schemaSync struct {
 // A cloned realm may hold symlinks, so all access to the realm goes through an
 // os.Root, which refuses any path that escapes dir, and only regular files are
 // rewritten.
-func syncCoreSchemas(ctx context.Context, dir string, up depUpgrade, subRealms []string) ([]schemaSync, error) {
+func syncCoreSchemas(ctx context.Context, dir string, up *depUpgrade, subRealms []string) ([]schemaSync, error) {
 	if up.realmID != coreRealmID {
 		return nil, nil
 	}

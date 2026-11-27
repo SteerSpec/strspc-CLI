@@ -66,7 +66,7 @@ then the empty folders there. Other files and symbolic links are kept.
 | Variable | Used for |
 | -------- | -------- |
 | `ANTHROPIC_API_KEY` | The Claude evaluator |
-| `STRSPC_EVALUATOR_ENDPOINT` | Opt in to a non-Anthropic endpoint: `https://`, or `http://` to a loopback host |
+| `STRSPC_EVALUATOR_ENDPOINT` | Opt in to an endpoint the config may not set ([endpoint safety](check.md#safety-and-configuration-checks)): `https://`, or `http://` to a loopback host |
 | `STRSPC_SCHEMA_CACHE` | Directory of the [schema cache](#schema-cache) |
 | `STRSPC_ADDED_BY` | Default for `--added-by` in `rule add`, `note add` and `rule supersede` |
 | `GITHUB_TOKEN`, then `GH_TOKEN` | Private `github://` sources and higher rate limits |
@@ -104,13 +104,29 @@ schema URLs below: they copy `_schema/` unchanged from a `dev.steerspec.core` re
 | Versioned rules | `https://steerspec.dev/rules/v<version>/` |
 | Schemas of a core release | `https://steerspec.dev/rules/v<version>/_schema/` |
 
+## Usage data
+
+The CLI collects no telemetry. For maintainers, `scripts/usage-report.sh` reads two things GitHub
+already keeps:
+
+- The **download counts** of release archives, per version and platform. `setup-strspc` downloads one
+  archive per CI run, so they mostly count CI runs. They are cumulative: two snapshots give the
+  downloads in between.
+- The **pinned version** of each public SteerSpec repository workflow that calls the strspc workflows
+  or `setup-strspc`. `--include-private` adds private repositories, for local use only: a snapshot of
+  this public repository must not name them.
+
+The **Usage snapshot** workflow runs it weekly and keeps each snapshot as an artifact for 90 days.
+`scripts/usage-report.sh --from <snapshot>.json` renders one again. It can't see `go install`, or a
+binary downloaded once and run many times.
+
 ## Work in progress
 
 The specification already covers these, but this CLI doesn't do them yet:
 
 | Item | Status |
 | ---- | ------ |
-| **`effort: xhigh` and `max`** | The spec and the Claude provider accept them; the published `config.v1` schema doesn't yet, so they give warning `CHK002` |
+| **`refs.coverage`** | `config.v1` accepts it, but `strspc refs` doesn't read it yet, so it reports no rule that no file cites |
 | **OpenAI and Ollama providers** | Reserved names that fail with a not-implemented error |
 | **Fallback without an LLM** | SPEC §8.4 falls back to structural checks; today `strspc check` exits 3 with provider `claude` and no key, so pass `--static-only` |
 | **Cloud mode** | SPEC §8.5 plans a CI action that calls a hosted SteerSpec evaluator, with shared caching and a compliance dashboard. The hosted service is planned, and the CLI has no cloud commands |

@@ -63,7 +63,7 @@ a rule or note added in a branch can be reworded before it merges:
 
 ```bash
 strspc note update CFG-001/02 --body "Reworded after review." --base origin/develop
-strspc rule update CFG-003 --body "The CLI MUST write a YAML config file." --base origin/develop
+strspc rule update CFG-003 --body "The CLI MUST write a YAML config file." --base origin/develop # strspc-refs: ignore
 ```
 
 **Verifying before Implemented (experimental).** A rule should reach Implemented only once the code
@@ -183,7 +183,13 @@ Without `--added-by`, `rule add`, `note add` and `rule supersede` use `$STRSPC_A
 listed contributor whose email is your `git config user.email`, and print which one they used. The
 value is checked like the flag's, before anything is written.
 
-`realm rewrite-added-by` migrates existing values, with a patch bump for each changed file:
+`realm rewrite-added-by` migrates existing values, with a patch bump for each changed entity file. It
+also rewrites the authors of the Realm Notes in the `realm.json` of `--dir` and of its sub-realms, so
+renaming a contributor updates them too; a changed manifest keeps its version and gets its hash
+recomputed, if it has one. A sub-realm directory that is a symbolic link is listed and not followed.
+An `override_ack` note never changes once added, `added_by` included (NTE-044): the command leaves it
+as it is and lists it as kept (`kept` in `--json`), and a file whose only matches are such notes isn't
+touched. `strspc diff` reports any change to an existing `override_ack` note as `RD033`, an error. For example:
 
 ```bash
 strspc realm rewrite-added-by --github-handles --dry-run         # preview @alice → github:alice
@@ -201,6 +207,17 @@ strspc rule add SAVACCT --body "Withdrawals MUST be capped." --added-by github:a
 
 `entity add` also takes `--inherits`, and `rule supersede` takes `--overrides` to keep an override in
 force on the replacement rule.
+
+An override replaces the inherited rule only once it is Published or Implemented. While it is a Draft,
+the inherited rule stays in force. `check` and `rule verify` then ask the AI provider whether the two
+rules conflict, and report a conflict as an RE007 warning. To publish an override, a contributor first
+acknowledges it with an `override_ack` note whose body is the rule's current revision (RUL-022). That
+needs core 1.26.0 or later:
+
+```bash
+strspc note add SAVACCT-001 --type override_ack --body 0 --added-by github:alice # strspc-refs: ignore
+strspc rule promote SAVACCT-001
+```
 
 ## Realms and dependencies
 

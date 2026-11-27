@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -155,6 +156,14 @@ func TestInheritanceFieldsSurviveRewrite(t *testing.T) {
 		t.Fatalf("writing entity file: %v", err)
 	}
 
+	// Publishing an override needs an override_ack note naming its revision
+	// (RUL-022); without one, promote refuses.
+	_, err = testutil.ExecuteCommand(NewRootCmd(), "rule", "promote", "SAVACCT-001", "--dir", dir)
+	testutil.AssertContains(t, fmt.Sprint(err), "override_ack")
+	if out, err := testutil.ExecuteCommand(NewRootCmd(), "note", "add", "SAVACCT-001", "--type", "override_ack",
+		"--body", "0", "--added-by", "github:alice", "--dir", dir); err != nil {
+		t.Fatalf("note add override_ack: %v\n%s", err, out)
+	}
 	if _, err := testutil.ExecuteCommand(NewRootCmd(), "rule", "promote", "SAVACCT-001", "--dir", dir); err != nil {
 		t.Fatalf("promote: %v", err)
 	}

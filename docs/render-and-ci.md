@@ -16,6 +16,8 @@ strspc rule show CMD-001 CFG --json           # a JSON list
 ```
 
 An unqualified ID resolves to the first source that holds it, the way `refs` resolves citations.
+A rule ID may also be written the way its realm's `rule_identifier_format` renders it, when that
+changes its shape: `CMD_001` for `id_splitter: "_"`, or `001-CMD` for `euid_position: closing`.
 `--state` narrows what an EUID selects; a rule named by its ID is shown whatever its state. A
 sub-entity is selected by its own EUID. If any argument matches nothing, nothing is printed and the
 command exits 1; a configuration or resolution error exits 2, and `--json` output that can't be

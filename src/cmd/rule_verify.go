@@ -86,10 +86,10 @@ func addVerifyFlags(f *pflag.FlagSet, o *verifyOptions) {
 	f.StringVar(&o.project, "project", ".", "project directory holding .strspc/config.yaml")
 	f.StringArrayVar(&o.paths, "path", nil, "only read tracked files matching this glob, relative to the project (repeatable)")
 	f.StringArrayVar(&o.excludes, "exclude", nil, "skip tracked files matching this glob, relative to the project (repeatable), e.g. '**/*_test.go'")
-	f.StringVar(&o.check.provider, "provider", "", "AI provider (overrides evaluator.provider): claude")
+	f.StringVar(&o.check.provider, "provider", "", "AI provider (overrides evaluator.provider): "+strings.Join(aiProviderNames(), "|"))
 	f.StringVar(&o.check.model, "model", "", "model identifier (overrides evaluator.model)")
-	f.StringVar(&o.check.effort, "effort", "", "reasoning effort (overrides evaluator.effort): low|medium|high|xhigh|max")
-	f.StringVar(&o.check.endpoint, "endpoint", "", "provider endpoint URL; opts in to a non-Anthropic host (also $"+envEvaluatorEndpoint+")")
+	f.StringVar(&o.check.effort, "effort", "", effortChoices)
+	f.StringVar(&o.check.endpoint, "endpoint", "", endpointFlagHelp)
 	f.BoolVar(&o.check.verbose, "verbose", false, "print resolution and usage details to stderr")
 	f.BoolVar(&o.check.noCache, "no-cache", false, "do not read or write the evaluation cache (.strspc/cache.db)")
 }
@@ -198,7 +198,7 @@ func (r *verifyRun) run(ids []string, o *verifyOptions) error {
 			return r.verifyFail(code, err)
 		}
 		if r.static {
-			return r.verifyFail(exitConfig, errors.New("rule verify needs an AI provider: evaluator.provider is null (or --static-only); set it to claude or pass --provider claude"))
+			return r.verifyFail(exitConfig, fmt.Errorf("rule verify needs an AI provider: evaluator.provider is null (or --static-only); set it to %s or pass --provider %s", aiProviderChoices(), defaultEvalProvider))
 		}
 	}
 	if err := r.resolveSources(); err != nil {
@@ -935,7 +935,8 @@ func (v *verdictRecorder) report(inputs []ruleeval.RuleInput) []verifyRule {
 }
 
 // verdictProvider forwards to a provider and records its verdicts. It
-// forwards the optional Describer and UsageReporter capabilities too.
+// forwards the optional Describer, Auditor, ConflictChecker and
+// UsageReporter capabilities too.
 type verdictProvider struct {
 	inner ruleeval.Provider
 	rec   *verdictRecorder
@@ -970,6 +971,25 @@ func (p *verdictProvider) AuditPromptVersion() string {
 		return a.AuditPromptVersion()
 	}
 	return ""
+}
+
+// ConflictPromptVersion and CheckConflict forward ruleeval.ConflictChecker,
+// so verify checks a Draft override against the rule it overrides (RE007,
+// RUL-023) as check does. "" when the wrapped provider can't, which turns
+// the check off. Conflict answers are not verdicts, so nothing is recorded.
+func (p *verdictProvider) ConflictPromptVersion() string {
+	if c, ok := p.inner.(ruleeval.ConflictChecker); ok {
+		return c.ConflictPromptVersion()
+	}
+	return ""
+}
+
+func (p *verdictProvider) CheckConflict(ctx context.Context, req ruleeval.ConflictRequest) (*ruleeval.ConflictResponse, error) { //nolint:gocritic // ruleeval.ConflictChecker signature
+	c, ok := p.inner.(ruleeval.ConflictChecker)
+	if !ok {
+		return nil, errors.New("provider cannot check override conflicts")
+	}
+	return c.CheckConflict(ctx, req)
 }
 
 func (p *verdictProvider) Usage() ruleeval.Usage {

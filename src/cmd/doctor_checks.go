@@ -17,7 +17,6 @@ import (
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/remote"
 	"github.com/SteerSpec/strspc-manager/src/result"
-	"github.com/SteerSpec/strspc-manager/src/ruleeval/claude"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval/providers"
 	"github.com/SteerSpec/strspc-manager/src/schema"
 )
@@ -27,8 +26,9 @@ import (
 type doctorProject struct {
 	cfg *strspcConfig
 	ttl time.Duration
-	// claude reports that the evaluator is claude, so it needs an API key.
-	claude bool
+	// ai is the row of the AI provider the config sets, nil for none or
+	// one that fails to configure.
+	ai *evalProvider
 	// realmDirs are the local sources holding a realm.json.
 	realmDirs []doctorRealmDir
 }
@@ -249,7 +249,7 @@ func doctorStatesCheck(cfg *strspcConfig) doctorResult {
 // placeholder key and no network, to find the errors check exits 2 on.
 func doctorProviderCheck(env *doctorEnv, cfg *strspcConfig, project *doctorProject) doctorResult {
 	const g = "config"
-	const remedy = "set evaluator.provider to claude, or null for static checks"
+	remedy := "set evaluator.provider to " + aiProviderChoices() + ", or null for static checks"
 	name := strings.TrimSpace(cfg.Evaluator.Provider)
 	if isStaticProviderName(name) {
 		return doctorOutcome(g, "provider", "", doctorPass, "none: static checks only", "")
@@ -260,10 +260,13 @@ func doctorProviderCheck(env *doctorEnv, cfg *strspcConfig, project *doctorProje
 	if err := rejectControlChars("evaluator.model", cfg.Evaluator.Model); err != nil {
 		return doctorOutcome(g, "provider", "", doctorFail, err.Error(), "fix evaluator.model in .strspc/config.yaml")
 	}
-	endpoint, err := resolveEndpoint(cfg.Evaluator.Endpoint, "", env.getenv(envEvaluatorEndpoint))
+	endpoint, err := resolveEndpoint(name, cfg.Evaluator.Endpoint, "", env.getenv(envEvaluatorEndpoint))
 	if err != nil {
 		return doctorOutcome(g, "provider", "", doctorFail, err.Error(), "use an https endpoint (http only to a loopback host): fix "+envEvaluatorEndpoint+
 			", or remove evaluator.endpoint")
+	}
+	if err := checkEffort(name, cfg.Evaluator.Effort); err != nil {
+		return doctorOutcome(g, "provider", "", doctorFail, err.Error(), "remove evaluator.effort from .strspc/config.yaml")
 	}
 	_, err = providers.New(name, providers.Options{
 		APIKey:     "doctor-placeholder", // only the configuration is checked
@@ -274,7 +277,7 @@ func doctorProviderCheck(env *doctorEnv, cfg *strspcConfig, project *doctorProje
 	})
 	switch {
 	case err == nil:
-		project.claude = true
+		project.ai = lookupEvalProvider(name)
 		return doctorOutcome(g, "provider", "", doctorPass, name, "")
 	case errors.Is(err, providers.ErrProviderNotImplemented):
 		return doctorOutcome(g, "provider", "", doctorFail, fmt.Sprintf("provider %q is not implemented yet", name), remedy)
@@ -294,14 +297,16 @@ func doctorCredentialChecks(env *doctorEnv, project *doctorProject) []doctorResu
 	}
 	var out []doctorResult
 	switch {
-	case !project.claude:
+	case project.ai == nil:
 		out = append(out, doctorOutcome(g, "provider", "", doctorSkip, "no AI provider configured, so no key is needed", ""))
-	case env.getenv(claude.EnvAPIKey) == "":
+	case project.ai.keyEnv == "":
+		out = append(out, doctorOutcome(g, "provider", "", doctorSkip, project.ai.name+" takes no API key", ""))
+	case env.getenv(project.ai.keyEnv) == "":
 		out = append(out, doctorOutcome(g, "provider", "", doctorWarn,
-			claude.EnvAPIKey+" is not set: strspc check exits 3 until it is",
-			"export "+claude.EnvAPIKey+", or set evaluator.provider: null"))
+			project.ai.keyEnv+" is not set: strspc check exits 3 until it is",
+			"export "+project.ai.keyEnv+", or set evaluator.provider: null"))
 	default:
-		out = append(out, doctorOutcome(g, "provider", "", doctorPass, claude.EnvAPIKey+" is set", ""))
+		out = append(out, doctorOutcome(g, "provider", "", doctorPass, project.ai.keyEnv+" is set", ""))
 	}
 
 	n := len(out)

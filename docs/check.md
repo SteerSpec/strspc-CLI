@@ -24,7 +24,8 @@ strspc check --format github                 # ::error/::warning annotations + $
 | `--diff-file <path>` | Read a unified diff from a file, with repository-relative paths as `git diff` prints them |
 | `--format human\|json\|github` | Output style; `github` emits annotations and appends a table to `$GITHUB_STEP_SUMMARY` |
 | `--provider`, `--model` | Override `evaluator.provider` and `evaluator.model` |
-| `--endpoint <url>` | Provider endpoint; needed to opt in to a non-Anthropic host. `https://`, or `http://` to a loopback host |
+| `--effort low\|medium\|high\|xhigh\|max` | Override `evaluator.effort`. A provider without a reasoning-effort setting refuses it (exit 2). JSON output reports it as `effort` |
+| `--endpoint <url>` | Provider endpoint; needed to opt in to a host the config may not set ([endpoint safety](#safety-and-configuration-checks)). `https://`, or `http://` to a loopback host |
 | `--static-only` | Skip AI evaluation (also implied by `evaluator.provider: null`) |
 | `--no-cache` | Don't read or write `.strspc/cache.db` |
 | `--verbose` | Print resolution, diff, cache and token-usage details to stderr |
@@ -62,6 +63,11 @@ changing a rule, its notes, the diff or the model invalidates them.
 
 An entity with `inherits` is evaluated on its effective rule set: the rules it inherits, minus those
 replaced by its own rules in `evaluate_on`, plus its own, so `rule_count` includes inherited rules.
+When the entity it inherits from is itself in a configured source, an inherited rule is evaluated once,
+under its owner, and any violation is reported against the owner. The exception is an owner source
+with `scope: local` whose directory doesn't hold the inheriting entity's source, or an inheriting
+source with `scope: global`: the owner's rules don't see all of the inheriting entity's files, so the
+inherited copy is evaluated too.
 The check resolves the chain of every entity of a source that has a `realm.json`. These fail with
 exit 2, also with `--static-only`:
 
@@ -92,9 +98,8 @@ still for that rule alone.
 **Configuration.** Before resolving any source, the check exits 2 on an empty `rules:` list, an unknown
 lifecycle state in `fail_on` or `evaluate_on`, or an unknown `evaluator.provider`. It then validates the
 config against the published `config.v1` schema, kept in the [schema cache](reference.md#schema-cache). Each mismatch
-is warning `CHK002` and never fails the check on its own. Examples are an unknown key, a long state
-name such as `implemented` (accepted, but the schema wants the code), and `effort: xhigh` or `max`
-(accepted by the Claude provider, but not by the schema). When the schema can't be fetched, this
+is warning `CHK002` and never fails the check on its own. Examples are an unknown key, and a long state
+name such as `implemented` (accepted, but the schema wants the code). When the schema can't be fetched, this
 validation is skipped and `--verbose` says so.
 
 **Rule files.** Once the sources are resolved, and before anything is evaluated, the check validates
@@ -131,8 +136,18 @@ and can't be fetched also exits 2: run the `strspc schema fetch` command the err
 the core release when there is one, once while online to check offline afterwards.
 
 **Endpoint safety.** `.strspc/config.yaml` is repository content, so a pull request could point
-`evaluator.endpoint` at a host that would receive your `ANTHROPIC_API_KEY`. The check accepts an
-endpoint from the config only when it's an `https://` URL on `anthropic.com`. Any other endpoint must
+`evaluator.endpoint` at a host that would receive your API key. The check accepts an endpoint from
+the config only on the provider's own hosts:
+
+| Provider | Config endpoint accepted |
+| -------- | ------------------------ |
+| `claude` | `https://` on `anthropic.com` or a subdomain |
+| `openai` | `https://api.openai.com` |
+| `openrouter` | `https://openrouter.ai` |
+| `ollama` | A loopback host, `http://` too: it takes no key |
+
+Only `claude` is available today; the others wait on
+[strspc-manager#67](https://github.com/SteerSpec/strspc-manager/issues/67). Any other endpoint must
 be opted in from outside the repository, with `STRSPC_EVALUATOR_ENDPOINT=<url>` (highest precedence) or
 `--endpoint <url>`. Without that, it exits 2 with a message naming the host.
 An opted-in endpoint must still be an `https://` URL, or `http://` to a loopback host (`localhost`,

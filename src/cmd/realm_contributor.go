@@ -224,9 +224,9 @@ its own, or for a sub-realm its parent's (CTRB-006).`,
 }
 
 // contributorFromFlags builds the entry `contributor add` appends. The id must
-// be a contributor identifier (CTRB-001, CTRB-002); the email a bare address,
-// as entity.FindContributor matches it (CTRB-007); the GitHub ID positive, and
-// only on a github id (CTRB-008), since 0 is written as no ID.
+// be a contributor identifier (CTRB-001, CTRB-002); the email a bare address
+// (isBareEmail), as contributorByEmail matches it (CTRB-007); the GitHub ID
+// positive, and only on a github id (CTRB-008), since 0 is written as no ID.
 func contributorFromFlags(cmd *cobra.Command, id, email string, githubID int64) (entity.Contributor, error) {
 	idp, _, err := entity.ParseContributorID(id)
 	if err != nil {
