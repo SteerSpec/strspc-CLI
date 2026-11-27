@@ -55,9 +55,10 @@ func TestRealmValidateReportsOverrideChain(t *testing.T) {
 		visibility string
 		rule       inheritRule
 		want       []string
+		absent     []string // codes that must not be reported
 	}{
 		"unknown target":              {rule: inheritRule{id: "SAVACCT-001", state: "P", overrides: "dev.lib:ACCT-009"}, want: []string{"RR015"}},
-		"protected entity's rule":     {protected: true, rule: inheritRule{id: "SAVACCT-001", state: "P", overrides: "dev.lib:ACCT-001"}, want: []string{"RR023"}},
+		"protected entity's rule":     {protected: true, rule: inheritRule{id: "SAVACCT-001", state: "P", overrides: "dev.lib:ACCT-001"}, want: []string{"RR023"}, absent: []string{"RR024"}},
 		"wider than what it inherits": {protected: true, visibility: "public", rule: inheritRule{id: "SAVACCT-001", state: "P"}, want: []string{"RR024"}},
 	} {
 		for _, mode := range [][]string{nil, {"--recursive"}, {"--recursive", "--strict"}} {
@@ -81,6 +82,11 @@ func TestRealmValidateReportsOverrideChain(t *testing.T) {
 				for _, code := range c.want {
 					if codes[code] != result.Error {
 						t.Errorf("%s: severity %q, want error (codes %v)", code, codes[code], codes)
+					}
+				}
+				for _, code := range c.absent {
+					if _, found := codes[code]; found {
+						t.Errorf("%s reported, want it absent (codes %v)", code, codes)
 					}
 				}
 			})
