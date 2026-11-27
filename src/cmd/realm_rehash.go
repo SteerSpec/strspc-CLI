@@ -39,18 +39,21 @@ func isSubRealmName(name string) bool {
 	return name != "" && name != "." && name != ".." && filepath.IsLocal(name) && !strings.ContainsAny(name, `/\`)
 }
 
-// rehashRealmTree adds or refreshes the manifest hash (RLMMNFST-013) of the
-// realm.json in the directory rel of root, then of each sub-realm it lists,
-// recursively. top is the --dir root was opened at, for the paths reported. A
-// manifest whose hash already matches is left as it is, byte for byte.
+// walkRealmTree calls visit with the realm.json in the directory rel of root,
+// then with that of each sub-realm it lists, recursively. top is the directory
+// root was opened at, for the paths reported. visit gets the manifest's path
+// relative to root, the path to report and the bytes read, and returns the
+// parsed manifest, whose sub_realms the walk follows.
 //
-// Every manifest read and write goes through root, so it resolves inside --dir
-// even when a directory is swapped for a link while the walk runs: the access
-// then fails. A realm.json or a sub-realm directory that is a link is listed in
-// res.Links and not followed. visited holds the directories entered, so one
-// swapped for a link to another directory of the tree is skipped rather than
-// walked again, and the walk can't loop.
-func rehashRealmTree(v *schemaValidator, root *os.Root, top, rel string, res *realmRehashResult, visited *[]os.FileInfo) error {
+// Every manifest read and write goes through root, so it resolves inside the
+// tree even when a directory is swapped for a link while the walk runs: the
+// access then fails. A realm.json or a sub-realm directory that is a link is
+// added to links and not followed. visited holds the directories entered, so
+// one swapped for a link to another directory of the tree is skipped rather
+// than walked again, and the walk can't loop.
+func walkRealmTree(root *os.Root, top, rel string, links *[]string, visited *[]os.FileInfo,
+	visit func(manifest, path string, data []byte) (*entity.RealmFile, error),
+) error {
 	here, err := root.Stat(rel)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", filepath.Join(top, rel), err)
@@ -68,7 +71,7 @@ func rehashRealmTree(v *schemaValidator, root *os.Root, top, rel string, res *re
 	// A dangling link is listed too, not reported as missing.
 	fi, err := root.Lstat(manifest)
 	if err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		res.Links = append(res.Links, path)
+		*links = append(*links, path)
 		return nil
 	}
 	if err != nil || !fi.Mode().IsRegular() {
@@ -81,44 +84,9 @@ func rehashRealmTree(v *schemaValidator, root *os.Root, top, rel string, res *re
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", path, err)
 	}
-	// SEC-004: the manifest is checked against its schema before it is changed.
-	if err := v.validateRealmManifest(path, data); err != nil {
-		return fmt.Errorf("validating before rehashing: %w", err)
-	}
-	rf, err := entity.ParseRealm(data)
+	rf, err := visit(manifest, path, data)
 	if err != nil {
-		return fmt.Errorf("parsing %s: %w", path, err)
-	}
-
-	computed, err := entity.ComputeRealmHash(data)
-	if err != nil {
-		return fmt.Errorf("computing the manifest hash of %s: %w", path, err)
-	}
-	if rf.Hash != "" && rf.Hash == computed {
-		res.Unchanged++
-	} else {
-		if rf.Hash == "" {
-			if err := checkCoreAccepts(dir, path, "hash", manifestMinCore); err != nil {
-				return err
-			}
-		}
-		change := realmRehashChange{Realm: rf.Realm.ID, Path: path}
-		if rf.Hash != "" {
-			old := rf.Hash
-			change.OldHash = &old
-		}
-		out, err := marshalRealmManifest(rf, true)
-		if err != nil {
-			return err
-		}
-		if err := v.ctx.Err(); err != nil {
-			return fmt.Errorf("interrupted before writing %s: %w", path, err)
-		}
-		if err := replaceFileIn(root, manifest, out, "realm.json"); err != nil {
-			return err
-		}
-		change.NewHash = rf.Hash
-		res.Updated = append(res.Updated, change)
+		return err
 	}
 
 	for _, name := range rf.SubRealms {
@@ -132,17 +100,66 @@ func rehashRealmTree(v *schemaValidator, root *os.Root, top, rel string, res *re
 			return fmt.Errorf("reading sub-realm %s: %w", subDir, err)
 		}
 		if fi.Mode()&os.ModeSymlink != 0 {
-			res.Links = append(res.Links, subDir)
+			*links = append(*links, subDir)
 			continue
 		}
 		if !fi.IsDir() {
 			return fmt.Errorf("%s lists sub-realm %q, which is not a directory", path, name)
 		}
-		if err := rehashRealmTree(v, root, top, subRel, res, visited); err != nil {
+		if err := walkRealmTree(root, top, subRel, links, visited, visit); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// rehashRealmTree adds or refreshes the manifest hash (RLMMNFST-013) of the
+// realm.json in the directory rel of root, then of each sub-realm it lists,
+// recursively, with the guards of walkRealmTree. top is the --dir root was
+// opened at. A manifest whose hash already matches is left as it is, byte for
+// byte.
+func rehashRealmTree(v *schemaValidator, root *os.Root, top, rel string, res *realmRehashResult, visited *[]os.FileInfo) error {
+	return walkRealmTree(root, top, rel, &res.Links, visited, func(manifest, path string, data []byte) (*entity.RealmFile, error) {
+		// SEC-004: the manifest is checked against its schema before it is changed.
+		if err := v.validateRealmManifest(path, data); err != nil {
+			return nil, fmt.Errorf("validating before rehashing: %w", err)
+		}
+		rf, err := entity.ParseRealm(data)
+		if err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", path, err)
+		}
+		computed, err := entity.ComputeRealmHash(data)
+		if err != nil {
+			return nil, fmt.Errorf("computing the manifest hash of %s: %w", path, err)
+		}
+		if rf.Hash != "" && rf.Hash == computed {
+			res.Unchanged++
+			return rf, nil
+		}
+		if rf.Hash == "" {
+			if err := checkCoreAccepts(filepath.Dir(path), path, "hash", manifestMinCore); err != nil {
+				return nil, err
+			}
+		}
+		change := realmRehashChange{Realm: rf.Realm.ID, Path: path}
+		if rf.Hash != "" {
+			old := rf.Hash
+			change.OldHash = &old
+		}
+		out, err := marshalRealmManifest(rf, true)
+		if err != nil {
+			return nil, err
+		}
+		if err := v.ctx.Err(); err != nil {
+			return nil, fmt.Errorf("interrupted before writing %s: %w", path, err)
+		}
+		if err := replaceFileIn(root, manifest, out, "realm.json"); err != nil {
+			return nil, err
+		}
+		change.NewHash = rf.Hash
+		res.Updated = append(res.Updated, change)
+		return rf, nil
+	})
 }
 
 func newRealmRehashCmd() *cobra.Command {
