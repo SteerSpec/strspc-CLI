@@ -227,3 +227,50 @@ func TestRuleShowJSONWriteError(t *testing.T) {
 	err := runRuleShow(context.Background(), failingWriter{}, &bytes.Buffer{}, dir, []string{"APP-001"}, &ruleShowOptions{jsonOutput: true})
 	assertExit(t, err, exitOutput)
 }
+
+// TestRuleShowRenderedForm looks a rule up by its ID as its realm's
+// rule_identifier_format renders it, the way refs matches a citation.
+func TestRuleShowRenderedForm(t *testing.T) {
+	setup := func(t *testing.T) string {
+		t.Helper()
+		dir := setupRefsProject(t)
+		writeRefsFile(t, dir, "rules/realm.json",
+			`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.app", "title": "t", "version": "1.0.0"},
+			  "dependencies": [{"realm_id": "dev.lib", "version": "1.0.0", "source": "../lib/"}],
+			  "rule_identifier_format": {"id_splitter": "_"}}`)
+		writeRefsFile(t, dir, "lib/realm.json",
+			`{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.lib", "title": "t", "version": "1.0.0"},
+			  "dependencies": [], "rule_identifier_format": {"euid_position": "closing"}}`)
+		return dir
+	}
+	for _, tt := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"splitter", []string{"APP_001"}, "APP-001"},
+		{"qualified", []string{"dev.app:APP_003"}, "APP-003"},
+		{"EUID closing", []string{"001-ACCT"}, "ACCT-001"},
+		{"stored form still", []string{"APP-002", "ACCT-002"}, "APP-002 ACCT-002"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			out, _, err := runRuleShowSplit(t, setup(t), &ruleShowOptions{jsonOutput: true}, tt.args...)
+			assertExit(t, err, exitOK)
+			if got := strings.Join(shownIDs(t, out), " "); got != tt.want {
+				t.Errorf("rules = %q, want %q", got, tt.want)
+			}
+		})
+	}
+	for _, arg := range []string{"APP_999", "ACCT_001", "dev.lib:APP_001", "001-APP"} {
+		t.Run("unknown "+arg, func(t *testing.T) {
+			_, _, err := runRuleShowSplit(t, setup(t), &ruleShowOptions{}, arg)
+			assertExit(t, err, exitViolations)
+			testutil.AssertContains(t, err.Error(), arg)
+		})
+	}
+
+	// A realm that keeps the stored shape has no rendered form.
+	dir := setupRefsProject(t)
+	_, _, err := runRuleShowSplit(t, dir, &ruleShowOptions{}, "APP_001")
+	assertExit(t, err, exitViolations)
+}
