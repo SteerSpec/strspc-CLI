@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -30,7 +31,7 @@ func statusProject(t *testing.T, ttl string, sources ...string) string {
 	for _, s := range sources {
 		fmt.Fprintf(&b, "  - source: %s\n    scope: global\n", s)
 	}
-	b.WriteString("evaluator:\n  provider: claude\n  model: claude-sonnet-5-5\nfail_on: [implemented, P]\n")
+	b.WriteString("evaluator:\n  provider: claude\n  model: claude-sonnet-5-5\nfail_on: [I, P]\n")
 	if ttl != "" {
 		fmt.Fprintf(&b, "cache:\n  ttl: %s\n", ttl)
 	}
@@ -90,7 +91,9 @@ func TestStatusConfigurationErrors(t *testing.T) {
 		want   string
 	}{
 		{"not YAML", "rules: [", "parsing config.yaml"},
-		{"bad TTL", "rules: []\ncache:\n  ttl: soon\n", "parsing cache.ttl"},
+		{"bad TTL", "rules:\n  - source: ./rules/\n    scope: local\ncache:\n  ttl: soon\n", "parsing cache.ttl"},
+		{"schema mismatch", "rules: []\n", "does not match the latest config.v1 schema"},
+		{"empty", "", "does not match the latest config.v1 schema"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -375,7 +378,7 @@ func TestStatusOutputIsPrintable(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			dir := statusProject(t, "", source)
 			writeRefsFile(t, dir, "ok/realm.json", `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "::error::a\u001b[31m", "title": "t", "version": "1.0.0"}}`)
-			report, err := collectStatus(dir)
+			report, err := collectStatus(context.Background(), dir)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -449,4 +452,14 @@ func TestWriteStatusEdgeLines(t *testing.T) {
 	} {
 		testutil.AssertContains(t, out, want)
 	}
+}
+
+// status makes no network call: with no config.v1 schema cached it can't
+// validate the config, so it fails and names the remedy.
+func TestStatusColdSchemaCache(t *testing.T) {
+	useConfigSchemaCache(t)
+	dir := statusProject(t, "", "./rules/")
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "status", dir)
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, err.Error(), "strspc schema fetch")
 }

@@ -275,8 +275,8 @@ func TestDoctorConfigSchemaFromCacheOnly(t *testing.T) {
 
 	writeRefsFile(t, h.cacheDir, "strspc/schemas/config/v1.json", `{"type":"object","additionalProperties":false,"properties":{"evaluator":{}}}`)
 	report, err = runDoctorJSON(t, dir)
-	assertExit(t, err, exitOK)
-	assertDoctorStatus(t, report, "config.schema", "", doctorWarn)
+	assertExit(t, err, exitViolations)
+	assertDoctorStatus(t, report, "config.schema", "", doctorFail)
 
 	writeRefsFile(t, h.cacheDir, "strspc/schemas/config/v1.json", allowSchema)
 	report, _ = runDoctorJSON(t, dir)

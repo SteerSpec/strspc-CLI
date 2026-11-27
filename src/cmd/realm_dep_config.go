@@ -160,7 +160,10 @@ func checkConfigPinsMoved(data []byte, ups []depUpgrade) error {
 		} `yaml:"rules"`
 	}
 	if yaml.Unmarshal(data, &cfg) != nil {
-		return nil // not parseable here; the schema check reports it
+		// Not YAML: nothing here can be checked. The upgrade edits the text
+		// only and uses no setting, so it doesn't validate the config against
+		// config.v1 (SEC-004); the next command that uses it does, and refuses it.
+		return nil
 	}
 	for _, r := range cfg.Rules {
 		for i := range ups {

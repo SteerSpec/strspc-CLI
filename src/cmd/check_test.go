@@ -19,14 +19,15 @@ import (
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/evalcache"
+	"github.com/SteerSpec/strspc-manager/src/result"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval/providers"
 	"github.com/SteerSpec/strspc-manager/src/schema"
 )
 
-// TestMain disables the config schema fetch for the whole package: check
-// would otherwise contact steerspec.dev from every test that gets past the
-// hard configuration checks. Tests that exercise the schema validation
+// TestMain serves the schemas from this repository for the whole package, so
+// no test contacts steerspec.dev: every command validates config.yaml and the
+// rule files it reads before using them (SEC-004). Tests of the schema fetch
 // install a local server with serveConfigSchema.
 //
 // It also keeps the --added-by default from reading the developer's
@@ -50,7 +51,26 @@ func TestMain(m *testing.M) {
 		return newCachedSchemaFetcher(append(opts, schema.WithLocalDir(localSchemas))...)
 	}
 	newValidationSchemaFetcher = newSchemaFetcher
-	newConfigSchemaFetcher = func(string) *schema.Fetcher { return nil }
+	// config.yaml is validated before use too: serve the config.v1 schema of
+	// testdata from a local _schema/ directory. A test of the cache or of the
+	// network replaces newConfigSchemaFetcher.
+	localConfigSchema, err := os.MkdirTemp("", "strspc-test-config-schema-")
+	if err != nil {
+		panic(err)
+	}
+	configSchema, err := os.ReadFile(filepath.Join("testdata", "config.v1.schema.json"))
+	if err != nil {
+		panic(err)
+	}
+	if err := os.MkdirAll(filepath.Join(localConfigSchema, "_schema"), 0o755); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(filepath.Join(localConfigSchema, "_schema", "config.v1.schema.json"), configSchema, 0o600); err != nil {
+		panic(err)
+	}
+	newConfigSchemaFetcher = func(_ string, opts ...schema.Option) *schema.Fetcher {
+		return newCachedSchemaFetcher(append(opts, schema.WithLocalDir(localConfigSchema))...)
+	}
 	_ = os.Unsetenv(addedByEnv)
 	// Turn off git's automatic maintenance in every repository a test
 	// creates. From git 2.47 the maintenance a commit starts runs detached,
@@ -70,18 +90,31 @@ func TestMain(m *testing.M) {
 	gitUserEmail = func(string) string { return "" }
 	code := m.Run()
 	_ = os.RemoveAll(schemaCache)
+	_ = os.RemoveAll(localConfigSchema)
 	os.Exit(code)
 }
 
-// serveConfigSchema serves src/cmd/testdata/config.v1.schema.json from a
-// local HTTP server and points the check's schema fetcher at it for the
-// duration of the test.
-func serveConfigSchema(t *testing.T) {
+// useConfigSchemaCache gives the test a schema cache of its own, empty, and
+// makes the config schema fetcher read it with no local copy and no network,
+// as an offline run does. It returns the cache directory.
+func useConfigSchemaCache(t *testing.T) string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("testdata", "config.v1.schema.json"))
-	if err != nil {
-		t.Fatal(err)
+	dir := t.TempDir()
+	t.Setenv(envSchemaCache, dir)
+	original := newConfigSchemaFetcher
+	newConfigSchemaFetcher = func(_ string, opts ...schema.Option) *schema.Fetcher {
+		return newCachedSchemaFetcher(append([]schema.Option{schema.WithClient(offlineHTTPClient())}, opts...)...)
 	}
+	t.Cleanup(func() { newConfigSchemaFetcher = original })
+	return dir
+}
+
+// serveConfigSchema serves src/cmd/testdata/config.v1.schema.json from a
+// local HTTP server as the latest config.v1 schema, with a schema cache of
+// the test's own. It returns the cache directory.
+func serveConfigSchema(t *testing.T) string {
+	t.Helper()
+	data := testConfigSchema(t, false)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/"+configV1SchemaPath, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -90,12 +123,25 @@ func serveConfigSchema(t *testing.T) {
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
+	dir := t.TempDir()
+	t.Setenv(envSchemaCache, dir)
 	original := newConfigSchemaFetcher
-	newConfigSchemaFetcher = func(cwd string) *schema.Fetcher {
-		return schema.New(
-			schema.WithBaseURL(server.URL),
-			schema.WithCacheDir(filepath.Join(cwd, ".strspc", "cache", "schemas")),
-		)
+	newConfigSchemaFetcher = func(_ string, opts ...schema.Option) *schema.Fetcher {
+		return newCachedSchemaFetcher(append([]schema.Option{schema.WithBaseURL(server.URL)}, opts...)...)
+	}
+	t.Cleanup(func() { newConfigSchemaFetcher = original })
+	return dir
+}
+
+// allowAnyConfig validates config.yaml against a schema that accepts any
+// mapping, as a looser schema could, to reach the checks made after it.
+func allowAnyConfig(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	writeSchemaCacheFile(t, filepath.Join(dir, "_schema"), "config.v1.schema.json", []byte(`{"type": "object"}`), 0)
+	original := newConfigSchemaFetcher
+	newConfigSchemaFetcher = func(_ string, opts ...schema.Option) *schema.Fetcher {
+		return newCachedSchemaFetcher(append(opts, schema.WithLocalDir(dir))...)
 	}
 	t.Cleanup(func() { newConfigSchemaFetcher = original })
 }
@@ -374,6 +420,8 @@ func writeRawCheckConfig(t *testing.T, dir, content string) {
 // #94: structural problems in config.yaml are configuration errors (exit 2)
 // reported before any source is resolved. The source directory does not
 // exist on purpose: a resolution failure would also exit 2 but with RSV002.
+// config.v1 refuses most of these already (TestCheckConfigSchemaError); a
+// schema that allows them still meets these checks.
 func TestCheckConfigValidationExits2(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -403,6 +451,7 @@ func TestCheckConfigValidationExits2(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			allowAnyConfig(t)
 			dir := t.TempDir()
 			writeRawCheckConfig(t, dir, tc.config)
 
@@ -417,8 +466,21 @@ func TestCheckConfigValidationExits2(t *testing.T) {
 	}
 }
 
-// Long state names and lower-case codes stay accepted after validation.
-func TestCheckAcceptsStateNames(t *testing.T) {
+// config.v1 wants state codes: a long state name or a lower-case code is
+// refused before the config is used.
+func TestCheckRefusesStateNames(t *testing.T) {
+	dir, _ := setupCheckProject(t, "null", []string{"implemented", "p", " D "})
+
+	output, err := runCheckCmd(t, dir)
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, output, "[error] CHK002")
+	testutil.AssertContains(t, output, "/fail_on/0")
+	testutil.AssertNotContains(t, output, "Checked")
+}
+
+// Past the schema, the codes are still normalised as before.
+func TestCheckNormalisesStateCodes(t *testing.T) {
+	allowAnyConfig(t)
 	dir, _ := setupCheckProject(t, "null", []string{"implemented", "p", " D "})
 	writeCheckConfig(t, dir, "./rules/", "null", []string{"Implemented", "p"}, []string{"draft", "P", "i"})
 
@@ -437,31 +499,54 @@ func TestCheckEmptyRulesJSONCarriesError(t *testing.T) {
 	if jerr := json.Unmarshal([]byte(output), &out); jerr != nil {
 		t.Fatalf("invalid JSON: %v\n%s", jerr, output)
 	}
-	if out.OK || out.ExitCode != exitConfig || !strings.Contains(out.Error, "SPCFG-004") {
-		t.Errorf("JSON envelope = %+v, want exit 2 with the SPCFG-004 cause", out)
+	if out.OK || out.ExitCode != exitConfig || !strings.Contains(out.Error, "/rules") {
+		t.Errorf("JSON envelope = %+v, want exit 2 with the schema mismatch at /rules", out)
 	}
 }
 
-// #94: the loaded config is validated against the config.v1 schema; a
-// mismatch is a CHK002 warning and never fails the check on its own.
-func TestCheckConfigSchemaWarning(t *testing.T) {
-	serveConfigSchema(t)
-	dir, _ := setupCheckProject(t, "null", []string{"I"})
-	writeRawCheckConfig(t, dir, "rules:\n  - source: ./rules/\n    scope: local\nevaluator:\n  provider: null\n  effort: bogus\nfail_on: [I]\nunknown_key: 1\n")
+// configSchemaMismatch is a config.yaml config.v1 refuses in two places.
+const configSchemaMismatch = "rules:\n  - source: ./rules/\n    scope: local\nevaluator:\n  provider: null\n  effort: bogus\nfail_on: [I]\nunknown_key: 1\n"
 
-	output, err := runCheckCmd(t, dir)
-	assertExit(t, err, exitOK)
-	testutil.AssertContains(t, output, "[warning] CHK002")
-	testutil.AssertContains(t, output, "/evaluator/effort")
-	testutil.AssertContains(t, output, "unknown_key")
-	testutil.AssertContains(t, output, "Checked 4 rule(s) from 1 source(s)")
-	if _, serr := os.Stat(filepath.Join(dir, ".strspc", "cache", "schemas")); serr != nil {
-		t.Errorf("schema cache must live under .strspc/cache: %v", serr)
+// SEC-004: config.yaml is validated against config.v1 before it is used. A
+// mismatch is one CHK002 error per violation and exits 2, ahead of the
+// provider check (exit 3), in every format.
+func TestCheckConfigSchemaError(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	for _, format := range []string{formatHuman, formatJSON, formatGitHub} {
+		t.Run(format, func(t *testing.T) {
+			t.Setenv("GITHUB_STEP_SUMMARY", "")
+			dir, _ := setupCheckProject(t, "claude", []string{"I"})
+			writeRawCheckConfig(t, dir, strings.Replace(configSchemaMismatch, "provider: null", "provider: claude", 1))
+
+			output, err := runCheckCmd(t, dir, "--format", format)
+			assertExit(t, err, exitConfig)
+			testutil.AssertContains(t, err.Error(), ".strspc/config.yaml does not match the latest config.v1 schema")
+			switch format {
+			case formatHuman:
+				testutil.AssertContains(t, output, "[error] CHK002")
+				testutil.AssertContains(t, output, "/evaluator/effort")
+				testutil.AssertContains(t, output, "unknown_key")
+			case formatJSON:
+				var out checkOutput
+				if jerr := json.Unmarshal([]byte(output), &out); jerr != nil {
+					t.Fatalf("invalid JSON: %v\n%s", jerr, output)
+				}
+				if out.OK || out.ExitCode != exitConfig || len(out.Diagnostics) != 2 {
+					t.Fatalf("JSON = %+v, want exit 2 and two diagnostics", out)
+				}
+				for _, d := range out.Diagnostics {
+					if d.Code != "CHK002" || d.Severity != result.Error || d.Path != ".strspc/config.yaml" {
+						t.Errorf("diagnostic = %+v, want a CHK002 error on .strspc/config.yaml", d)
+					}
+				}
+			case formatGitHub:
+				testutil.AssertContains(t, output, "::error file=.strspc/config.yaml,title=strspc CHK002::")
+			}
+		})
 	}
 }
 
 func TestCheckConfigSchemaValid(t *testing.T) {
-	serveConfigSchema(t)
 	dir, _ := setupCheckProject(t, "null", []string{"I"})
 
 	output, err := runCheckCmd(t, dir)
@@ -471,7 +556,6 @@ func TestCheckConfigSchemaValid(t *testing.T) {
 
 // Core 1.27.0's config.v1 accepts the effort values xhigh and max.
 func TestCheckConfigSchemaValidEffort(t *testing.T) {
-	serveConfigSchema(t)
 	for _, effort := range []string{"xhigh", "max"} {
 		t.Run(effort, func(t *testing.T) {
 			dir, _ := setupCheckProject(t, "null", []string{"I"})
@@ -485,21 +569,50 @@ func TestCheckConfigSchemaValidEffort(t *testing.T) {
 	}
 }
 
-// An unreachable schema host only shows up in verbose output.
-func TestCheckConfigSchemaUnavailableIsSilent(t *testing.T) {
-	original := newConfigSchemaFetcher
-	newConfigSchemaFetcher = func(cwd string) *schema.Fetcher {
-		return schema.New(
-			schema.WithBaseURL("http://127.0.0.1:1"),
-			schema.WithCacheDir(filepath.Join(cwd, ".strspc", "cache", "schemas")),
-		)
-	}
-	t.Cleanup(func() { newConfigSchemaFetcher = original })
+// The schema is fetched into the shared schema cache, and the cached copy
+// serves when the network is gone.
+func TestCheckConfigSchemaFetchedThenCached(t *testing.T) {
+	cache := serveConfigSchema(t)
 	dir, _ := setupCheckProject(t, "null", []string{"I"})
 
-	output, err := runCheckCmd(t, dir, "--verbose")
+	_, err := runCheckCmd(t, dir)
 	assertExit(t, err, exitOK)
-	testutil.AssertContains(t, output, "config schema: validation skipped")
+	if _, ok := readCachedSchema(cache, configV1SchemaPath); !ok {
+		t.Fatal("the config.v1 schema must be kept in the schema cache")
+	}
+	useConfigSchemaCache(t)
+	t.Setenv(envSchemaCache, cache)
+	_, err = runCheckCmd(t, dir)
+	assertExit(t, err, exitOK)
+}
+
+// A cold schema cache offline fails closed: nothing in the config is used,
+// and the error names `strspc schema fetch`.
+func TestCheckConfigSchemaColdCacheFailsClosed(t *testing.T) {
+	useConfigSchemaCache(t)
+	dir, _ := setupCheckProject(t, "null", []string{"I"})
+
+	output, err := runCheckCmd(t, dir, "--format", "json")
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, err.Error(), "strspc schema fetch")
+	testutil.AssertContains(t, output, "strspc schema fetch")
+}
+
+// Offline, a stale latest copy that predates a release cached since doesn't
+// refuse what the release accepts.
+func TestCheckConfigSchemaNewerReleaseAccepted(t *testing.T) {
+	cache := useConfigSchemaCache(t)
+	writeSchemaCacheFile(t, cache, configV1SchemaPath, testConfigSchema(t, true), 48*time.Hour)
+	dir, _ := setupCheckProject(t, "null", []string{"I"})
+	writeRawCheckConfig(t, dir, "rules:\n  - source: ./rules/\n    scope: local\nevaluator:\n  provider: null\n  effort: max\nfail_on: [I]\n")
+
+	output, err := runCheckCmd(t, dir)
+	assertExit(t, err, exitConfig)
+	testutil.AssertContains(t, output, "/evaluator/effort")
+
+	writeSchemaCacheFile(t, cache, releaseCacheKey("v"+testReleaseVersion, configV1SchemaPath), testConfigSchema(t, false), 0)
+	output, err = runCheckCmd(t, dir)
+	assertExit(t, err, exitOK)
 	testutil.AssertNotContains(t, output, "CHK002")
 }
 
@@ -553,7 +666,7 @@ func TestCheckCompliant(t *testing.T) {
 }
 
 func TestCheckViolationInFailOnFails(t *testing.T) {
-	dir, diff := setupCheckProject(t, "claude", []string{"implemented"})
+	dir, diff := setupCheckProject(t, "claude", []string{"I"})
 	p := &stubProvider{verdicts: map[string]*ruleeval.EvalResponse{
 		"TST-001": violatedResponse("Run has no doc comment"),
 		"TST-002": violatedResponse("error not wrapped"),

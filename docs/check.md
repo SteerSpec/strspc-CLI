@@ -95,12 +95,21 @@ still for that rule alone.
 
 ## Safety and configuration checks
 
-**Configuration.** Before resolving any source, the check exits 2 on an empty `rules:` list, an unknown
-lifecycle state in `fail_on` or `evaluate_on`, or an unknown `evaluator.provider`. It then validates the
-config against the published `config.v1` schema, kept in the [schema cache](reference.md#schema-cache). Each mismatch
-is warning `CHK002` and never fails the check on its own. Examples are an unknown key, and a long state
-name such as `implemented` (accepted, but the schema wants the code). When the schema can't be fetched, this
-validation is skipped and `--verbose` says so.
+**Configuration.** Before it uses anything in `.strspc/config.yaml`, the check validates the file
+against the published `config.v1` schema, kept in the [schema cache](reference.md#schema-cache). Each
+mismatch is error `CHK002`, shown in every `--format`, and the check exits 2 before it looks at the
+provider (exit 3). Examples are an unknown key, an empty `rules:` list, an empty file, and a long state
+name such as `implemented`: the schema wants the code `I`. The config is valid when it matches the
+latest `config.v1` or the `config.v1` of the newest core release in the cache, so an older cached
+latest copy, used offline, doesn't refuse what a newer release allows. When neither schema is cached
+and the network can't be reached, the check exits 2 and asks you to run `strspc schema fetch`. It then
+exits 2 on an unknown lifecycle state in `fail_on` or `evaluate_on`, or an unknown
+`evaluator.provider`.
+
+Every command that uses the config validates it the same way first: `refs`, `standards`, `rule
+verify`, `sync`, and `status` (against the cached schemas only, as it makes no network call). They
+exit 2 and list the mismatches. `doctor` reports them as a failed `config.schema` check and goes on.
+`schema fetch` reads the config without validating it, so that it can fill an empty cache.
 
 **Rule files.** Once the sources are resolved, and before anything is evaluated, the check validates
 what it reads against the entity and realm schemas. That covers four things:

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/remote"
+	"github.com/SteerSpec/strspc-manager/src/schema"
 )
 
 // How a source stands, in the state field of statusSource.
@@ -113,7 +115,7 @@ func newStatusCmd() *cobra.Command {
 			if len(args) > 0 {
 				cwd = args[0]
 			}
-			report, err := collectStatus(cwd)
+			report, err := collectStatus(cmd.Context(), cwd)
 			if err != nil {
 				return withExitCode(exitConfig, err)
 			}
@@ -130,14 +132,14 @@ func newStatusCmd() *cobra.Command {
 }
 
 // collectStatus reads the project at cwd. It makes no network call and writes
-// nothing.
-func collectStatus(cwd string) (*statusReport, error) {
+// nothing: the config is validated against the cached config.v1 schema only.
+func collectStatus(ctx context.Context, cwd string) (*statusReport, error) {
 	report := &statusReport{Version: versionInfo.Version}
 	configPath := filepath.Join(cwd, ".strspc", "config.yaml")
 	if _, err := os.Stat(configPath); errors.Is(err, fs.ErrNotExist) {
 		return report, nil
 	}
-	cfg, err := loadStrspcConfig(cwd)
+	cfg, err := loadStrspcConfig(ctx, cwd, schema.WithClient(offlineHTTPClient()))
 	if err != nil {
 		return nil, err
 	}
