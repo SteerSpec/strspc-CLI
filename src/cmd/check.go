@@ -641,6 +641,12 @@ func (r *checkRun) collectDiff() error {
 // inheritance chain contributes its effective rule set, a rule of a configured
 // source that inheriting entities replace is annotated as such, and a rule
 // with an `extends` note carries the rules it names.
+//
+// An inherited rule whose owner entity is itself in a configured source is
+// evaluated once, under its owner, when that copy is judged against every file
+// the inheriting entity's copy would be: so each verdict and violation is
+// reported once. An override the inheriting entity declares is its own rule,
+// and stays (RUL-020).
 func (r *checkRun) buildInputs() {
 	labelBase := r.repoDir
 	if labelBase == "" {
@@ -654,9 +660,42 @@ func (r *checkRun) buildInputs() {
 	}
 	overriddenBy := inherit.OverriddenBy(sets...)
 
+	// The configured sources holding each entity, by <realm-id>:<EUID>. An
+	// entity of a sub-realm is under the source realm's ID, as the Realm
+	// resolution names the owner of a rule inherited from it.
+	owners := make(map[string][]evaluatedSource)
+	for _, rf := range r.resolved {
+		realmID, ok := r.sourceRealms[rf.Origin.Source]
+		if !ok {
+			continue
+		}
+		src := evaluatedSource{label: r.sourceLabel(rf, labelBase), scope: rf.Origin.Scope}
+		var walk func(*entity.File)
+		walk = func(f *entity.File) {
+			key := realmID + ":" + f.Entity.ID
+			owners[key] = append(owners[key], src)
+			for i := range f.SubEntities {
+				walk(&f.SubEntities[i])
+			}
+		}
+		walk(rf.File)
+	}
+
 	for _, rf := range r.resolved {
 		label := r.sourceLabel(rf, labelBase)
-		ins := r.entityInputs(rf.File, rf.Path, effective)
+		here := evaluatedSource{label: label, scope: rf.Origin.Scope}
+		evaluatedElsewhere := func(ir *inherit.Rule) bool {
+			if ir.InheritedBy == "" {
+				return false
+			}
+			for _, o := range owners[ir.OwnerRealm+":"+ir.Owner] {
+				if o.covers(here) {
+					return true
+				}
+			}
+			return false
+		}
+		ins := r.entityInputs(rf.File, rf.Path, effective, evaluatedElsewhere)
 		ruleeval.AnnotateRealmKind(ins, rf.RealmKind)
 		for i := range ins {
 			ins[i].Source = label
@@ -670,14 +709,41 @@ func (r *checkRun) buildInputs() {
 	}
 }
 
+// evaluatedSource is a configured source as it bounds what its rules are
+// judged against: a local source's rules only see files under its directory.
+type evaluatedSource struct {
+	label string
+	scope ruleresolve.Scope
+}
+
+// covers reports whether rules of s are judged against every file that rules
+// of t are: s is global, is the same source, or is a local directory holding
+// t, itself local. Labels of local directories end in "/".
+func (s evaluatedSource) covers(t evaluatedSource) bool {
+	switch {
+	case s.scope != ruleresolve.ScopeLocal || s == t:
+		return true
+	case t.scope != ruleresolve.ScopeLocal || strings.Contains(s.label, "://") || strings.Contains(t.label, "://"):
+		return false
+	}
+	return (s.label == "./" && !strings.HasPrefix(t.label, "../")) || strings.HasPrefix(t.label, s.label)
+}
+
 // entityInputs returns the rule inputs of f and its sub-entities. An entity
 // that declares `inherits` without a resolved chain is outside any realm
 // that could resolve it: its own rules are kept and CHK003 reports the rest
-// as not evaluated.
-func (r *checkRun) entityInputs(f *entity.File, path string, effective map[string][]inherit.Rule) []ruleeval.RuleInput {
+// as not evaluated. An inherited rule for which skip is true is left out, as
+// it is evaluated under its owner.
+func (r *checkRun) entityInputs(f *entity.File, path string, effective map[string][]inherit.Rule, skip func(*inherit.Rule) bool) []ruleeval.RuleInput {
 	var ins []ruleeval.RuleInput
 	if rules, ok := effective[f.Entity.ID]; ok {
-		ins = ruleeval.RuleInputsFromEffective(f.Entity.ID, rules)
+		kept := make([]inherit.Rule, 0, len(rules))
+		for i := range rules {
+			if !skip(&rules[i]) {
+				kept = append(kept, rules[i])
+			}
+		}
+		ins = ruleeval.RuleInputsFromEffective(f.Entity.ID, kept)
 	} else {
 		own := *f
 		own.SubEntities = nil
@@ -693,7 +759,7 @@ func (r *checkRun) entityInputs(f *entity.File, path string, effective map[strin
 		}
 	}
 	for i := range f.SubEntities {
-		ins = append(ins, r.entityInputs(&f.SubEntities[i], path, effective)...)
+		ins = append(ins, r.entityInputs(&f.SubEntities[i], path, effective, skip)...)
 	}
 	return ins
 }
