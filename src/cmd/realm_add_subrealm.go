@@ -94,8 +94,10 @@ func newRealmAddSubrealmCmd() *cobra.Command {
 			// Schemas missing from the parent are fetched from the core release the
 			// parent pins (else the latest), even when its deps are not inherited.
 			// Resolved at most once, so every fetched file comes from one release.
+			// Offline, the newest release in the schema cache stands in for the latest.
 			schemaTag := sync.OnceValues(func() (string, error) {
-				return resolveSchemaTag(cmd.Context(), "", parentRealm.Dependencies)
+				return resolveSchemaTagOrCached(cmd.Context(), cmd.ErrOrStderr(), "", parentRealm.Dependencies,
+					"pin "+coreRealmID+" in the parent realm to choose one")
 			})
 
 			// Create target directory.

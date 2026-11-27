@@ -43,7 +43,7 @@ path the workflow caches.
 them from there. A pinned release that is cached, from an earlier init or from
 `schema fetch --core-version`, needs no network. Without a pin, when the latest release can't be looked
 up, init uses the newest release cached in full and prints a warning naming it and why the lookup
-failed.
+failed. `realm add-subrealm` does the same for the schemas its parent lacks.
 
 On Windows, `schema fetch` refuses a source in `.strspc/config.yaml` that is a network or device path
 (`\\host\share`), and any symbolic link or junction in the paths it reads from a project. Pass a share,
