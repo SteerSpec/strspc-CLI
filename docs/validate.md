@@ -33,7 +33,9 @@ the dependency's manifest, and a `_schema/` file that differs from the pinned `d
 **Inheritance.** `realm validate` also resolves the realm as `check` does, with or without
 `--recursive`, and reports what only resolving it finds: an `inherits` or `overrides` that names nothing
 (RR013, RR015), an override visibility forbids (RR023), an entity wider than the one it inherits
-(RR024), and the other realm-resolve codes. A dependency it can't reach (an invalid source, a missing
+(RR024), a sub-entity wider than a container whose visibility comes through inheritance (RR026), and
+the other realm-resolve codes. An entity that declares no `visibility` takes the narrowest one declared
+by an entity it reaches through `parent` and `inherits`, and is `public` only when none declares one. A dependency it can't reach (an invalid source, a missing
 directory or manifest, a failed fetch: RR001, RR002, RR012) stays a warning, as realm-lint's RM016
 does, so that it still runs offline. A dependency it reaches but whose files don't load is an error,
 as in `check`, and `--strict` makes every
