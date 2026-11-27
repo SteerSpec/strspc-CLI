@@ -30,8 +30,8 @@ func TestRulePromoteDraftToPublished(t *testing.T) {
 	testutil.AssertContains(t, out, "Draft → Published")
 	// The next steps commit the change and show strspc diff protecting it.
 	testutil.AssertContains(t, out, "Next steps:")
-	testutil.AssertContains(t, out, "git add "+shellQuote(dir)+" && git commit -m 'Publish TST-001'")
-	testutil.AssertContains(t, out, "strspc diff "+shellQuote(dir)+" --base HEAD")
+	testutil.AssertContains(t, out, "git add "+shellQuote(filepath.ToSlash(dir))+" && git commit -m 'Publish TST-001'")
+	testutil.AssertContains(t, out, "strspc diff "+shellQuote(filepath.ToSlash(dir))+" --base HEAD")
 
 	f := loadEntityFile(t, dir, "TST")
 	if f.Rules[0].State != "P" {

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -130,7 +129,7 @@ Examples:
 			writeln(w)
 			writeln(w, descStyle.Render("Next steps:"))
 			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Publish it once its text is final: ")+
-				cmdStyle.Render("strspc rule promote "+newRuleID+authoringDirFlag(dir)))
+				cmdStyle.Render("strspc rule promote "+newRuleID+realmDirArg(dir)))
 			writeln(w)
 
 			return nil
@@ -139,7 +138,7 @@ Examples:
 
 	cmd.Flags().StringVar(&body, "body", "", "rule statement text (required)")
 	cmd.Flags().StringVar(&addedBy, "added-by", "", "contributor identifier such as github:<login>; must name a contributor when the realm lists any. Defaults to $STRSPC_ADDED_BY, then to the contributor whose email is your git user.email")
-	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
+	cmd.Flags().StringVar(&dir, "dir", defaultRealmDir, "realm directory")
 	cmd.Flags().StringVar(&subEntity, "sub-entity", "", "target this sub-entity of <entity_id> instead of the entity itself")
 	cmd.Flags().StringVar(&overrides, "overrides", "", "inherited rule this rule replaces for the entity: <EUID>-NNN or <realm-id>:<EUID>-NNN")
 	cmd.Flags().StringVar(&clause, "clause", "", "in a Standard Realm, the clause of the standard the rule transcribes, such as V1.1.1")
@@ -147,18 +146,6 @@ Examples:
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 
 	return cmd
-}
-
-// defaultAuthoringDir is the default --dir of the rule authoring commands.
-const defaultAuthoringDir = "./rules"
-
-// authoringDirFlag is the --dir argument a suggested rule command needs to
-// reach dir: empty for the default ./rules, " --dir <dir>" otherwise.
-func authoringDirFlag(dir string) string {
-	if filepath.Clean(dir) == filepath.Clean(defaultAuthoringDir) {
-		return ""
-	}
-	return " --dir " + shellQuote(dir)
 }
 
 // checkStandardFlags refuses --clause or --profiles, even given empty, outside

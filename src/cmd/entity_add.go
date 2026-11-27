@@ -125,7 +125,7 @@ Examples:
 	cmd.Flags().StringVar(&title, "title", "", "sub-entity title (required)")
 	cmd.Flags().StringVar(&description, "description", "", "sub-entity description")
 	cmd.Flags().StringVar(&inherits, "inherits", "", "entity whose rule set this sub-entity inherits: EUID or <realm-id>:<EUID>")
-	cmd.Flags().StringVar(&dir, "dir", "./rules", "realm directory")
+	cmd.Flags().StringVar(&dir, "dir", defaultRealmDir, "realm directory")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 
 	return cmd
