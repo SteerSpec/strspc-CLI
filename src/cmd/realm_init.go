@@ -359,7 +359,7 @@ func newRealmInitCmd() *cobra.Command {
 				writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Add rules: ")+cmdStyle.Render("strspc rule add MYENTITY --body \"...\" --added-by \"github:<login>\""+dirArg))
 			}
 			writeln(w, cmdStyle.Render("  3.")+descStyle.Render(" Validate: ")+cmdStyle.Render("strspc realm validate"+dirArg))
-			writeln(w, cmdStyle.Render("  4.")+descStyle.Render(" Reference from config: ")+descStyle.Render("source: "+configSourcePath(cleanDir)+" in .strspc/config.yaml"))
+			writeln(w, cmdStyle.Render("  4.")+descStyle.Render(" Reference from config: ")+descStyle.Render("source: "+yamlScalar(configSourcePath(cleanDir))+" in .strspc/config.yaml"))
 			writeln(w)
 
 			// Suggest linking to .strspc/config.yaml if it exists.

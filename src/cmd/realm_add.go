@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/entityops"
@@ -144,4 +145,11 @@ func configSourcePath(dir string) string {
 	default:
 		return "./" + p + "/"
 	}
+}
+
+// yamlScalar returns s as a YAML scalar that reads back as s: plain when that
+// is safe, quoted otherwise (a "#" or ": " in a path, for instance).
+func yamlScalar(s string) string {
+	out, _ := yaml.Marshal(s) // a string always marshals
+	return strings.TrimSuffix(string(out), "\n")
 }

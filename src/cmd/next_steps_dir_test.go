@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 )
 
@@ -80,6 +82,34 @@ func TestRealmInitNextStepsQuoteDir(t *testing.T) {
 	testutil.AssertContains(t, out, "source: ./my rules/ in .strspc/config.yaml")
 }
 
+// TestRealmInitNextStepsYAMLSource checks the config source line stays valid
+// YAML for a directory holding "#", which would otherwise start a comment.
+func TestRealmInitNextStepsYAMLSource(t *testing.T) {
+	setupSchemaServer(t)
+	chdirTemp(t)
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "init", "--id", "com.example.demo", "--dir", "my #rules")
+	if err != nil {
+		t.Fatalf("realm init: %v\n%s", err, out)
+	}
+	testutil.AssertContains(t, out, "source: './my #rules/' in .strspc/config.yaml")
+}
+
+func TestYAMLScalar(t *testing.T) {
+	for _, in := range []string{"./rules/", "./my #rules/", "./a: b/", "'x/", `"x/`, "./my rules/"} {
+		var got map[string]string
+		if err := yaml.Unmarshal([]byte("source: "+yamlScalar(in)), &got); err != nil {
+			t.Fatalf("yamlScalar(%q) = %s: %v", in, yamlScalar(in), err)
+		}
+		if got["source"] != in {
+			t.Errorf("yamlScalar(%q) = %s, reads back as %q", in, yamlScalar(in), got["source"])
+		}
+	}
+	if got := yamlScalar("./rules/"); got != "./rules/" {
+		t.Errorf("yamlScalar(./rules/) = %s, want it plain", got)
+	}
+}
+
 func TestRealmAddNextStepsDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "my rules")
 	setupValidRealm(t, dir)
@@ -145,6 +175,12 @@ func TestRealmValidateDirFlag(t *testing.T) {
 	// The same directory both ways is accepted.
 	if out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir+string(filepath.Separator), "--dir", dir); err != nil {
 		t.Fatalf("realm validate path --dir same: %v\n%s", err, out)
+	}
+
+	// A relative path and an absolute --dir naming the same directory work.
+	t.Chdir(dir)
+	if out, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", ".", "--dir", dir); err != nil {
+		t.Fatalf("realm validate . --dir <abs>: %v\n%s", err, out)
 	}
 
 	_, err = testutil.ExecuteCommand(NewRootCmd(), "realm", "validate", dir, "--dir", t.TempDir())

@@ -213,10 +213,21 @@ func realmValidateDir(args []string, dirFlag string, dirSet bool) (string, error
 	if len(args) == 0 {
 		return dirFlag, nil
 	}
-	if dirSet && filepath.Clean(args[0]) != filepath.Clean(dirFlag) {
+	if dirSet && !sameDir(args[0], dirFlag) {
 		return "", fmt.Errorf("realm validate: path %q and --dir %q name different directories: pass one", args[0], dirFlag)
 	}
 	return args[0], nil
+}
+
+// sameDir reports whether a and b spell the same directory, relative to the
+// working directory or absolute.
+func sameDir(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		absA, absB = filepath.Clean(a), filepath.Clean(b)
+	}
+	return absA == absB
 }
 
 // diagKey identifies a diagnostic for deduplication.
