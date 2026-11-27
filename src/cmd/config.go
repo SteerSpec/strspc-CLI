@@ -27,6 +27,17 @@ type strspcConfig struct {
 	} `yaml:"evaluator"`
 	EvaluateOn []string `yaml:"evaluate_on"`
 	FailOn     []string `yaml:"fail_on"`
+	Refs       struct {
+		Coverage []refsCoverageConfig `yaml:"coverage"`
+	} `yaml:"refs"`
+}
+
+// refsCoverageConfig is one entry of refs.coverage: every rule of entities in
+// one of states must be cited by at least one file matching files.
+type refsCoverageConfig struct {
+	Entities []string `yaml:"entities"`
+	Files    []string `yaml:"files"`
+	States   []string `yaml:"states"`
 }
 
 // loadStrspcConfig reads and parses .strspc/config.yaml under cwd.
