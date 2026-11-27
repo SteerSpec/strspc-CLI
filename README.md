@@ -127,8 +127,9 @@ Error: diff found 4 error(s)
 
 RD002 is the lifecycle check: a Published rule's text is final. The other three errors come from
 editing the file by hand, which leaves the version, timestamp and hash stale. To change a Published
-rule, `strspc rule supersede` it ([Author rules](docs/author-rules.md)). Each command prints the
-next one to run, and `strspc --help` lists the whole path.
+rule, `strspc rule supersede` it ([Author rules](docs/author-rules.md)). From `realm init` to
+`rule promote`, each command above prints the next one to run, and `strspc --help` lists the whole
+path.
 
 ## Where to go
 
