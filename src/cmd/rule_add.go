@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -126,6 +127,11 @@ Examples:
 			writeStandardFields(w, clause, profiles)
 			writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", oldVersion, version)))
 			writeAddedBySource(w, addedBy, addedBySource)
+			writeln(w)
+			writeln(w, descStyle.Render("Next steps:"))
+			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Publish it once its text is final: ")+
+				cmdStyle.Render("strspc rule promote "+newRuleID+authoringDirFlag(dir)))
+			writeln(w)
 
 			return nil
 		},
@@ -141,6 +147,18 @@ Examples:
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "output as JSON")
 
 	return cmd
+}
+
+// defaultAuthoringDir is the default --dir of the rule authoring commands.
+const defaultAuthoringDir = "./rules"
+
+// authoringDirFlag is the --dir argument a suggested rule command needs to
+// reach dir: empty for the default ./rules, " --dir <dir>" otherwise.
+func authoringDirFlag(dir string) string {
+	if filepath.Clean(dir) == filepath.Clean(defaultAuthoringDir) {
+		return ""
+	}
+	return " --dir " + shellQuote(dir)
 }
 
 // checkStandardFlags refuses --clause or --profiles, even given empty, outside

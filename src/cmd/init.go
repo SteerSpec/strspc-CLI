@@ -141,9 +141,12 @@ Examples:
 			writeln(w)
 			writeln(w, descStyle.Render("Next steps:"))
 			writeln(w, cmdStyle.Render("  1.")+descStyle.Render(" Review .strspc/config.yaml (rule sources, evaluator provider)"))
-			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Add local rules: ")+cmdStyle.Render("strspc realm init"))
-			writeln(w, cmdStyle.Render("  3.")+descStyle.Render(" Validate rules: ")+cmdStyle.Render("strspc lint rules/ --strict"))
-			writeln(w, cmdStyle.Render("  4.")+descStyle.Render(" Run structural checks: ")+cmdStyle.Render("strspc check --static-only"))
+			writeln(w, cmdStyle.Render("  2.")+descStyle.Render(" Run structural checks (fetches the core rules on first run): ")+cmdStyle.Render("strspc check --static-only"))
+			// The path that shows a rule enforced without an API key (#376).
+			writeln(w, cmdStyle.Render("  3.")+descStyle.Render(" Author a local rule: ")+cmdStyle.Render("strspc realm init --id <realm-id> --title <title>"))
+			writeln(w, cmdStyle.Render("  4.")+descStyle.Render(" See it enforced, no API key needed: follow the next steps to ")+
+				cmdStyle.Render("strspc rule promote")+descStyle.Render(" and ")+cmdStyle.Render("strspc diff")+
+				descStyle.Render(", listed in ")+cmdStyle.Render("strspc --help"))
 			writeln(w)
 			writeln(w, descStyle.Render("Using an AI agent? Give it the strspc workflow: ")+cmdStyle.Render("strspc skill --install"))
 			writeln(w, descStyle.Render("Reference: "+readmeURL))

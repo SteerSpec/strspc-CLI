@@ -56,6 +56,29 @@ strspc rule add CFG --sub-entity CFGIO --body "Writes MUST be atomic." --added-b
 strspc entity rehash --all                                     # fix hashes after a bulk import
 ```
 
+**`diff` refuses an edit to a Published rule.** Commit the promotion, then change the rule's text
+by hand: `strspc diff` against the commit exits 1 with RD002. Editing the file by hand also leaves
+the version, timestamp and hash stale, so RD007, RD009 and RD008 come with it:
+
+```bash
+strspc rule promote CFG-001                                                    # D → P
+git add ./rules && git commit -m 'Publish CFG-001'
+# Edit the body of CFG-001 in rules/CFG.json, then:
+strspc diff rules/ --base HEAD
+```
+
+```text
+[error] RD007: rule_set.version must be a valid semver and strictly higher than "0.2.0", got "0.2.0" (rules/CFG.json: CFG/rule_set.version)
+[error] RD009: rule_set.timestamp must be updated (rules/CFG.json: CFG/rule_set.timestamp)
+[error] RD002: rule body is immutable in state "P": supersede the rule to change its body (rules/CFG.json: CFG/CFG-001)
+[error] RD008: rule_set.hash mismatch: computed "blake3:…", file has "blake3:…" (rules/CFG.json: CFG/rule_set.hash)
+
+4 error(s), 0 warning(s)
+Error: diff found 4 error(s)
+```
+
+`rule supersede` is the way to change it, as above.
+
 **Revising in a branch.** Each `rule update` and `note update` adds one to the revision, but `diff`
 wants a rule or note the base doesn't hold at revision 0 (RD004, RD015), and one the base holds one
 revision past it (RD013). Pass the base `diff` compares with, and the revision is set against it, so
