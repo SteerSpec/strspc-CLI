@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.45.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.44.0...v1.45.0) (2026-11-27)
+
+
+### Features
+
+* **check:** per-provider endpoint policy, one provider table and check --effort ([#358](https://github.com/SteerSpec/strspc-CLI/issues/358)) ([3ef5c11](https://github.com/SteerSpec/strspc-CLI/commit/3ef5c11e0123d7c09900b23ff0dafdff6c985e27))
+* **ci:** cache the strspc archive in setup-strspc ([#363](https://github.com/SteerSpec/strspc-CLI/issues/363)) ([3f3c971](https://github.com/SteerSpec/strspc-CLI/commit/3f3c971287953b06b125a204b715f77724793ccf))
+* **deps:** bump strspc-manager to v1.56.0 for the override model of core 1.26.0 ([#364](https://github.com/SteerSpec/strspc-CLI/issues/364)) ([51427e7](https://github.com/SteerSpec/strspc-CLI/commit/51427e79758006b0e5e3c6368641010f1b3df253))
+* **deps:** bump strspc-manager to v1.57.0 for inherited visibility ([#378](https://github.com/SteerSpec/strspc-CLI/issues/378)) ([612ae90](https://github.com/SteerSpec/strspc-CLI/commit/612ae9073293d02cd5a416782d5168e64fee0876))
+* **deps:** bump strspc-manager to v1.58.0 ([#381](https://github.com/SteerSpec/strspc-CLI/issues/381)) ([991cec3](https://github.com/SteerSpec/strspc-CLI/commit/991cec37ece480557ca7e141dfff074cea2db779))
+* **realm:** bump the config.yaml core pin in realm dep upgrade ([#360](https://github.com/SteerSpec/strspc-CLI/issues/360)) ([d9e60d6](https://github.com/SteerSpec/strspc-CLI/commit/d9e60d654e7136683015156e58e1ceb1ab3487f3))
+* **realm:** rewrite-added-by also rewrites the authors of Realm Notes ([#370](https://github.com/SteerSpec/strspc-CLI/issues/370)) ([9db13a2](https://github.com/SteerSpec/strspc-CLI/commit/9db13a2ae7f3f8812723f8f5fa6bdadbeac6312a))
+* **realm:** rewrite-added-by lists the override_ack notes it keeps (manager v1.59.0) ([#382](https://github.com/SteerSpec/strspc-CLI/issues/382)) ([08502cf](https://github.com/SteerSpec/strspc-CLI/commit/08502cfb34b3837a41c1a62890b8b8a765cb1db9))
+* **rule:** rule show accepts rule IDs in their realm's rendered form ([#366](https://github.com/SteerSpec/strspc-CLI/issues/366)) ([dd35257](https://github.com/SteerSpec/strspc-CLI/commit/dd3525744f529924e03e401099d4e69ff792d983))
+
+
+### Bug Fixes
+
+* **check:** evaluate an inherited rule once when its owner is a configured source ([#379](https://github.com/SteerSpec/strspc-CLI/issues/379)) ([f4f2403](https://github.com/SteerSpec/strspc-CLI/commit/f4f2403b2fe9b412e02a23a1e092211c80f9741b))
+
 ## [1.44.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.43.0...v1.44.0) (2026-11-26)
 
 
