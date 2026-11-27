@@ -183,7 +183,10 @@ Without `--added-by`, `rule add`, `note add` and `rule supersede` use `$STRSPC_A
 listed contributor whose email is your `git config user.email`, and print which one they used. The
 value is checked like the flag's, before anything is written.
 
-`realm rewrite-added-by` migrates existing values, with a patch bump for each changed file:
+`realm rewrite-added-by` migrates existing values, with a patch bump for each changed entity file. It
+also rewrites the authors of the Realm Notes in the `realm.json` of `--dir` and of its sub-realms, so
+renaming a contributor updates them too; a changed manifest keeps its version and gets its hash
+recomputed, if it has one. A sub-realm directory that is a symbolic link is listed and not followed. For example:
 
 ```bash
 strspc realm rewrite-added-by --github-handles --dry-run         # preview @alice → github:alice

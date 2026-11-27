@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"sort"
 	"strings"
 
@@ -20,17 +23,29 @@ type addedByChange struct {
 	Version    string `json:"version"`
 }
 
+// addedByManifest records one realm.json whose Realm Notes had their
+// added_by rewritten.
+type addedByManifest struct {
+	Realm    string `json:"realm"`
+	Path     string `json:"path"`
+	Replaced int    `json:"replaced"`
+}
+
 // addedByResult is the JSON output of `strspc realm rewrite-added-by`.
 type addedByResult struct {
 	DryRun    bool            `json:"dry_run"`
 	Updated   []addedByChange `json:"updated"`
 	Unchanged int             `json:"unchanged"`
+	// Manifests lists the realm.json files, of the realm in --dir and its
+	// sub-realms, whose Realm Notes (NTE-029) had an added_by rewritten.
+	Manifests []addedByManifest `json:"manifests"`
 	// Skipped lists .json files under --dir that are not entity files (no
 	// valid entity.id). They are never rewritten.
 	Skipped []string `json:"skipped"`
-	// Links lists .json files under --dir that are symbolic links. They are
-	// never followed, so no link can make the command write outside --dir; a
-	// target inside --dir is rewritten under its own path.
+	// Links lists .json files under --dir that are symbolic links, and
+	// sub-realm directories that are. They are never followed, so no link can
+	// make the command write outside --dir; a target inside --dir is rewritten
+	// under its own path.
 	Links []string `json:"links"`
 }
 
@@ -89,11 +104,29 @@ func mappedHandle(m map[string]string, addedBy string) (string, bool) {
 // another case, that mapping applies instead, so a --map wins for every
 // spelling of the login. It returns a new map; m is not changed.
 func githubHandleMap(f *entity.File, m map[string]string) map[string]string {
+	var addedBy []string
+	var walk func(*entity.File)
+	walk = func(e *entity.File) {
+		for i := range e.Rules {
+			addedBy = append(addedBy, e.Rules[i].AddedBy)
+		}
+		for _, n := range e.Notes {
+			addedBy = append(addedBy, n.AddedBy)
+		}
+		for i := range e.SubEntities {
+			walk(&e.SubEntities[i])
+		}
+	}
+	walk(f)
+	return githubHandleMapFor(addedBy, m)
+}
+
+// githubHandleMapFor is githubHandleMap for the added_by values given.
+func githubHandleMapFor(addedBys []string, m map[string]string) map[string]string {
 	out := make(map[string]string, len(m))
 	for k, v := range m {
 		out[k] = v
 	}
-	var walk func(*entity.File)
 	add := func(addedBy string) {
 		handle, ok := strings.CutPrefix(addedBy, "@")
 		if !ok {
@@ -111,20 +144,69 @@ func githubHandleMap(f *entity.File, m map[string]string) map[string]string {
 			out[addedBy] = id
 		}
 	}
-	walk = func(e *entity.File) {
-		for i := range e.Rules {
-			r := &e.Rules[i]
-			add(r.AddedBy)
-		}
-		for _, n := range e.Notes {
-			add(n.AddedBy)
-		}
-		for i := range e.SubEntities {
-			walk(&e.SubEntities[i])
-		}
+	for _, a := range addedBys {
+		add(a)
 	}
-	walk(f)
 	return out
+}
+
+// rewriteRealmNotes rewrites the added_by of the Realm Notes (NTE-029) of the
+// realm.json in dir and of its sub-realms, with the guards of walkRealmTree,
+// and records each manifest changed in res. A manifest with a hash gets it
+// recomputed (RLMMNFST-014); its version stays as it is, as with any other
+// manifest edit. A manifest with nothing to replace is not touched. When dir
+// holds no realm.json there are no Realm Notes, and nothing is done.
+func rewriteRealmNotes(v *schemaValidator, dir string, m map[string]string, githubHandles, dryRun bool, res *addedByResult) error {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return fmt.Errorf("opening %s: %w", dir, err)
+	}
+	defer func() { _ = root.Close() }()
+	if _, err := root.Lstat("realm.json"); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	return walkRealmTree(root, dir, ".", &res.Links, &[]os.FileInfo{}, func(manifest, path string, data []byte) (*entity.RealmFile, error) {
+		// SEC-004: the manifest is checked against its schema before it is changed.
+		if err := v.validateRealmManifest(path, data); err != nil {
+			return nil, fmt.Errorf("validating before rewriting: %w", err)
+		}
+		rf, err := entity.ParseRealm(data)
+		if err != nil {
+			return nil, fmt.Errorf("parsing %s: %w", path, err)
+		}
+		noteMap := m
+		if githubHandles {
+			addedBy := make([]string, len(rf.Notes))
+			for i := range rf.Notes {
+				addedBy[i] = rf.Notes[i].AddedBy
+			}
+			noteMap = githubHandleMapFor(addedBy, m)
+		}
+		n := 0
+		for i := range rf.Notes {
+			if to, ok := noteMap[rf.Notes[i].AddedBy]; ok && to != rf.Notes[i].AddedBy {
+				rf.Notes[i].AddedBy = to
+				n++
+			}
+		}
+		if n == 0 {
+			return rf, nil
+		}
+		if !dryRun {
+			out, err := marshalRealmManifest(rf, rf.Hash != "")
+			if err != nil {
+				return nil, err
+			}
+			if err := v.ctx.Err(); err != nil {
+				return nil, fmt.Errorf("interrupted before writing %s: %w", path, err)
+			}
+			if err := replaceFileIn(root, manifest, out, "realm.json"); err != nil {
+				return nil, err
+			}
+		}
+		res.Manifests = append(res.Manifests, addedByManifest{Realm: rf.Realm.ID, Path: path, Replaced: n})
+		return rf, nil
+	})
 }
 
 // newRealmRewriteAddedByCmd returns `strspc realm rewrite-added-by`, which
@@ -142,16 +224,19 @@ func newRealmRewriteAddedByCmd() *cobra.Command {
 		Use:   "rewrite-added-by",
 		Short: "Rewrite the added_by of rules and notes to contributor identifiers",
 		Long: `Rewrite the added_by of every rule and note in the entity files under --dir,
-sub-entities and sub-realms included, to a contributor identifier such as
+sub-entities and sub-realms included, and of the Realm Notes in the realm.json
+of --dir and of each sub-realm it lists, to a contributor identifier such as
 github:<login> (CTRB-003).
 
 --map OLD=NEW replaces each added_by equal to OLD with NEW, and may be given
 more than once. --github-handles replaces each @handle with github:<handle>;
 a --map for the same @handle wins, in any case, as GitHub logins ignore case.
 Each changed file gets a patch version bump and a fresh hash; revisions stay
-as they are, since added_by is not part of what a revision counts. Files with
-nothing to replace are not touched. A file that is a symbolic link is listed
-and never followed: rewrite its target where it lives. Use --dry-run to see
+as they are, since added_by is not part of what a revision counts. A changed
+realm.json keeps its version and gets its hash recomputed, if it has one. Files
+with nothing to replace are not touched. A file that is a symbolic link is listed
+and never followed, as is a sub-realm directory that is one: rewrite its target
+where it lives. Use --dry-run to see
 what would change without writing.
 
 Examples:
@@ -222,12 +307,18 @@ Examples:
 			if err != nil {
 				return err
 			}
+			if err := rewriteRealmNotes(validator, dir, m, githubHandles, dryRun, &res); err != nil {
+				return err
+			}
 			sort.Slice(res.Updated, func(i, j int) bool { return res.Updated[i].Path < res.Updated[j].Path })
 
 			w := cmd.OutOrStdout()
 			if jsonOut {
 				if res.Updated == nil {
 					res.Updated = []addedByChange{}
+				}
+				if res.Manifests == nil {
+					res.Manifests = []addedByManifest{}
 				}
 				if res.Skipped == nil {
 					res.Skipped = []string{}
@@ -247,6 +338,10 @@ Examples:
 				writeln(w, brandStyle.Render(fmt.Sprintf("%s %d added_by in %s", verb, c.Replaced, c.Entity))+descStyle.Render(fmt.Sprintf(" (%s)", c.Path)))
 				writeln(w, descStyle.Render(fmt.Sprintf("  Entity version: %s → %s", c.OldVersion, c.Version)))
 			}
+			for _, c := range res.Manifests {
+				total += c.Replaced
+				writeln(w, brandStyle.Render(fmt.Sprintf("%s %d added_by in the Realm Notes of %s", verb, c.Replaced, printableRealmID(c.Realm)))+descStyle.Render(fmt.Sprintf(" (%s)", c.Path)))
+			}
 			for _, p := range res.Skipped {
 				writeln(w, descStyle.Render(fmt.Sprintf("Skipped %s (not an entity file)", p)))
 			}
@@ -257,7 +352,11 @@ Examples:
 			if dryRun {
 				done = "to rewrite (dry run, nothing written)"
 			}
-			summary := fmt.Sprintf("%d added_by in %d entity file(s) %s, %d unchanged, %d skipped", total, len(res.Updated), done, res.Unchanged, len(res.Skipped)+len(res.Links))
+			files := fmt.Sprintf("%d entity file(s)", len(res.Updated))
+			if len(res.Manifests) > 0 {
+				files += fmt.Sprintf(" and %d realm.json", len(res.Manifests))
+			}
+			summary := fmt.Sprintf("%d added_by in %s %s, %d unchanged, %d skipped", total, files, done, res.Unchanged, len(res.Skipped)+len(res.Links))
 			writeln(w, descStyle.Render(summary))
 			return nil
 		},
