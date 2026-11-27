@@ -81,8 +81,8 @@ func TestSchemaFetchProject(t *testing.T) {
 	testutil.AssertContains(t, out, "Schema cache: "+cache)
 	for _, p := range []string{
 		"config/v1.json", "entity/v1.json", "realm/v1.json",
-		"versions/1.2.3/entity/v1.json", "versions/1.2.3/realm/v1.json",
-		"versions/1.3.0/entity/v1.json", "versions/1.3.0/realm/v1.json",
+		"versions/1.2.3/entity/v1.json", "versions/1.2.3/realm/v1.json", "versions/1.2.3/entity/bootstrap.json",
+		"versions/1.3.0/entity/v1.json", "versions/1.3.0/realm/v1.json", "versions/1.3.0/entity/bootstrap.json",
 	} {
 		cachedSchema(t, cache, p)
 	}
@@ -160,6 +160,8 @@ func TestSchemaClear(t *testing.T) {
 	assertExit(t, err, exitOK)
 	writeRefsFile(t, cache, "unrelated.txt", "keep")
 	writeRefsFile(t, cache, ".update-123/config/v1.json", "{}")
+	// The latest bootstrap schema, cached when a release lacks its own.
+	writeRefsFile(t, cache, "entity/bootstrap.json", "{}")
 
 	out, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "clear")
 	assertExit(t, err, exitOK)

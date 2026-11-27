@@ -16,6 +16,7 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/SteerSpec/strspc-manager/src/entity"
 	"github.com/SteerSpec/strspc-manager/src/remote"
+	"github.com/SteerSpec/strspc-manager/src/schema"
 	"github.com/spf13/cobra"
 )
 
@@ -26,13 +27,35 @@ var schemaBaseURL = "https://raw.githubusercontent.com/SteerSpec/strspc-rules"
 // schemaPath is the directory holding the schemas inside the strspc-rules repository.
 const schemaPath = "rules/core/_schema"
 
-// schemaFiles lists the schemas vendored under _schema/ (same names upstream).
+// schemaFiles lists the schemas vendored under _schema/ (same names upstream),
+// with the path each is kept at in the schema cache, below versions/X.Y.Z/.
 var schemaFiles = []struct {
 	local string
+	cache string
 }{
-	{"bootstrap.schema.json"},
-	{"entity.v1.schema.json"},
-	{"realm.v1.schema.json"},
+	{"bootstrap.schema.json", schema.BootstrapPath},
+	{"entity.v1.schema.json", schema.EntityV1Path},
+	{"realm.v1.schema.json", schema.RealmV1Path},
+}
+
+// schemaFileCachePaths lists the cache path of every schema in schemaFiles.
+func schemaFileCachePaths() []string {
+	paths := make([]string, 0, len(schemaFiles))
+	for _, sf := range schemaFiles {
+		paths = append(paths, sf.cache)
+	}
+	return paths
+}
+
+// schemaFileCacheKey returns the cache key of the vendored schema local of the
+// core release tag, or "" when it isn't cached.
+func schemaFileCacheKey(tag, local string) string {
+	for _, sf := range schemaFiles {
+		if sf.local == local {
+			return releaseCacheKey(tag, sf.cache)
+		}
+	}
+	return ""
 }
 
 // realmJSON is the structure written to realm.json.
@@ -299,6 +322,11 @@ func newRealmInitCmd() *cobra.Command {
 			// Resolve the schema release before touching the filesystem, so a
 			// conflicting or invalid --core-version leaves nothing behind.
 			tag, err := resolveSchemaTag(cmd.Context(), core, realmDeps)
+			// Offline, the newest release in the schema cache stands in for the latest.
+			var lerr *latestCoreError
+			if errors.As(err, &lerr) {
+				tag, err = cachedCoreFallback(cmd.ErrOrStderr(), lerr)
+			}
 			if err != nil {
 				return err
 			}
@@ -469,9 +497,36 @@ func resolveSchemaTag(ctx context.Context, explicit string, deps []entity.RealmD
 	ref := remote.Ref{Owner: "SteerSpec", Repo: "strspc-rules"}
 	tag, err := latestReleaseTag(ctx, ref, remote.TokenForOwner(ref.Owner))
 	if err != nil {
-		return "", fmt.Errorf("resolving core version for schemas (pass --core-version to pin one): %w", err)
+		return "", &latestCoreError{err}
 	}
 	return coreTag(tag)
+}
+
+// latestCoreError reports that the latest core release couldn't be resolved.
+type latestCoreError struct{ err error }
+
+func (e *latestCoreError) Error() string {
+	return "resolving core version for schemas (pass --core-version to pin one): " + e.err.Error()
+}
+
+func (e *latestCoreError) Unwrap() error { return e.err }
+
+// cachedCoreFallback returns, when the latest core release couldn't be
+// resolved (lerr), the newest release whose schemas are all in the schema
+// cache, and warns on w that it is used. Without one, it returns lerr.
+func cachedCoreFallback(w io.Writer, lerr *latestCoreError) (string, error) {
+	cacheDir, err := schemaCacheDir()
+	if err != nil {
+		return "", lerr
+	}
+	tag := newestCachedRelease(cacheDir, schemaFileCachePaths())
+	if tag == "" {
+		return "", lerr
+	}
+	// writeWarning escapes control characters, so the error prints safely.
+	writeWarning(w, "couldn't resolve the latest %s release (%v); using cached %s, the newest release in the schema cache (pass --core-version to pin one)",
+		coreRealmID, lerr.err, strings.TrimPrefix(tag, "v"))
+	return tag, nil
 }
 
 func fetchSchemas(schemaDir, tag string) error {
@@ -483,9 +538,48 @@ func fetchSchemas(schemaDir, tag string) error {
 	return nil
 }
 
+// fetchSchema writes the schema local of the core release tag into schemaDir.
+// A release's schemas never change, so a copy in the schema cache is used
+// without the network; a download is stored there for next time, best-effort.
 func fetchSchema(schemaDir, tag, local string) error {
-	url := schemaBaseURL + "/" + tag + "/" + schemaPath + "/" + local
 	outPath := filepath.Join(schemaDir, local)
+	key := ""
+	cacheDir, err := schemaCacheDir()
+	if err == nil {
+		key = schemaFileCacheKey(tag, local)
+	}
+	data, cached := []byte(nil), false
+	if key != "" {
+		data, cached = readCachedSchema(cacheDir, key)
+	}
+	if cached {
+		// Mark a cache filled by another tool too, so `schema clear`
+		// accepts it; best-effort, the cached copy is usable anyway.
+		_ = markSchemaCache(cacheDir)
+	} else {
+		if data, err = downloadSchema(tag, local); err == nil {
+			// A proxy's sign-in or error page can come with a 200.
+			err = checkSchemaDoc(data)
+		}
+		if err != nil {
+			return fmt.Errorf("fetching schema %s@%s: %w", local, tag, err)
+		}
+		if key != "" {
+			_ = writeCachedSchema(cacheDir, key, data) // best-effort, like the manager's fetcher
+		}
+	}
+	// Written verbatim: RM015 requires _schema/ to match core's copies, so any
+	// version marker has to come from the core release itself.
+	if err := os.WriteFile(outPath, data, 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", outPath, err)
+	}
+	return nil
+}
+
+// downloadSchema downloads the schema local of the core release tag. Its
+// errors leave the schema and the tag for the caller to name.
+func downloadSchema(tag, local string) ([]byte, error) {
+	url := schemaBaseURL + "/" + tag + "/" + schemaPath + "/" + local
 
 	err := validateHTTPS(url)
 	var resp *http.Response
@@ -493,22 +587,22 @@ func fetchSchema(schemaDir, tag, local string) error {
 		resp, err = schemaHTTPClient.Get(url) //nolint:gosec // tag is validated SemVer; host is a constant
 	}
 	if err != nil {
-		return fmt.Errorf("fetching schema %s@%s: %w", local, tag, err)
+		return nil, fmt.Errorf("downloading: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("fetching schema %s@%s: HTTP %d", local, tag, resp.StatusCode)
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxSchemaDownload+1))
+	if err == nil && len(body) > maxSchemaDownload {
+		err = fmt.Errorf("larger than %d bytes", maxSchemaDownload)
+	}
 	if err != nil {
-		return fmt.Errorf("reading schema %s: %w", local, err)
+		return nil, fmt.Errorf("reading the response: %w", err)
 	}
-
-	// Written verbatim: RM015 requires _schema/ to match core's copies, so any
-	// version marker has to come from the core release itself.
-	return os.WriteFile(outPath, body, 0o644)
+	return body, nil
 }
 
 func printConfigSuggestion(w io.Writer, realmDir string) {
