@@ -26,9 +26,10 @@ import (
 // realm schemas of a realm that pins no core version.
 var latestSchemaPaths = []string{configV1SchemaPath, schema.EntityV1Path, schema.RealmV1Path}
 
-// releaseSchemaPaths are the schemas lint and realm validate read for a realm
-// pinned to a core release.
-var releaseSchemaPaths = []string{schema.EntityV1Path, schema.RealmV1Path}
+// releaseSchemaPaths are the schemas `schema fetch` caches for a core
+// release: the entity and realm schemas lint and realm validate read for a
+// realm pinned to it, and the bootstrap schema realm init also vendors.
+var releaseSchemaPaths = []string{schema.EntityV1Path, schema.RealmV1Path, schema.BootstrapPath}
 
 // schemaCacheEntries are the top-level names the schema fetcher writes in the
 // cache: one directory per latest schema family, and versions/ for releases.
@@ -60,7 +61,9 @@ func newSchemaCmd() *cobra.Command {
 			"is used offline. A core release's schemas never change; a latest schema is refreshed after\n" +
 			"an hour when the network can be reached.\n\n" +
 			"Without a subcommand, schema lists the cache. `schema fetch` fills it for a project, so\n" +
-			"that validation works offline afterwards.\n\n" +
+			"that validation works offline afterwards. `realm init` also keeps the schemas it vendors\n" +
+			"there: offline, it reads a pinned release's schemas from the cache, and without a pin it\n" +
+			"uses the newest release cached in full, with a warning.\n\n" +
 			"Examples:\n" +
 			"  strspc schema\n" +
 			"  " + envSchemaCache + "=/path/to/cache strspc schema",
@@ -93,10 +96,11 @@ func newSchemaFetchCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fetch [path]",
 		Short: "Download the schemas a project needs into the cache",
-		Long: "Fetch the latest config, entity and realm schemas, and the entity and realm schemas of the\n" +
-			"core release that each local realm pins: the local sources of .strspc/config.yaml in path\n" +
-			"(default: the current directory) that hold a realm.json, their sub-realms, and each --dir.\n" +
-			"--core-version adds a release. A schema already cached is not downloaded again. Exits 1\n" +
+		Long: "Fetch the latest config, entity and realm schemas, and the entity, realm and bootstrap\n" +
+			"schemas of the core release that each local realm pins: the local sources of\n" +
+			".strspc/config.yaml in path (default: the current directory) that hold a realm.json, their\n" +
+			"sub-realms, and each --dir. --core-version adds a release, so that `realm init --core-version`\n" +
+			"works offline too. A schema already cached is not downloaded again. Exits 1\n" +
 			"when a schema can't be fetched and 2 when the configuration or a realm can't be read.\n\n" +
 			"Examples:\n" +
 			"  strspc schema fetch\n" +
@@ -143,8 +147,8 @@ func newSchemaClearCmd() *cobra.Command {
 		Short: "Delete the cached schemas",
 		Long: "Delete every schema in the cache. The next command that validates downloads the schemas it\n" +
 			"needs again, and fails offline until it can: run `strspc schema fetch` while online. Only the\n" +
-			"default location, or a directory `schema fetch` or `schema update` has used, is cleared; any\n" +
-			"other $" + envSchemaCache + " exits 2.\n\n" +
+			"default location, or a directory `schema fetch`, `schema update` or `realm init` has used, is\n" +
+			"cleared; any other $" + envSchemaCache + " exits 2.\n\n" +
 			"Examples:\n" +
 			"  strspc schema clear",
 		Args:          cobra.NoArgs,
@@ -439,17 +443,18 @@ func checkSchemaCacheDir(cacheDir string) error {
 	return nil
 }
 
-// schemaCacheFile matches exactly the cache entries strspc's fetches write:
-// the latest config, entity and realm v1 schemas, a release's entity and
-// realm v1 schemas below versions/X.Y.Z/, and the fetcher's temporary files
-// next to them.
 // schemaStagingDir matches the staging directories `schema update` creates
 // with os.MkdirTemp(cacheDir, ".update-").
 var schemaStagingDir = regexp.MustCompile(`^\.update-\d+$`)
 
-var schemaCacheFile = regexp.MustCompile(`^((config|entity|realm)|versions/\d+\.\d+\.\d+/(entity|realm))/(v1\.json|\.schema-cache-[^/]+)$`)
+// schemaCacheFile matches exactly the cache entries strspc's fetches write:
+// the latest config, entity and realm v1 schemas, a release's entity and
+// realm v1 schemas below versions/X.Y.Z/, the bootstrap schema next to the
+// entity schema, and the temporary files next to them.
+var schemaCacheFile = regexp.MustCompile(`^(config|entity|realm|versions/\d+\.\d+\.\d+/(entity|realm))/(v1\.json|\.schema-cache-[^/]+)$` +
+	`|^(versions/\d+\.\d+\.\d+/)?entity/bootstrap\.json$`)
 
-// schemaCacheMarker marks a directory `schema fetch` or `schema update` has
+// schemaCacheMarker marks a directory `schema fetch`, `schema update` or `realm init` has
 // used as the schema cache, so that `schema clear` deletes only in a real
 // schema cache.
 const schemaCacheMarker = ".strspc-schema-cache"
@@ -667,7 +672,7 @@ func listSchemaCache(w io.Writer, now time.Time) error {
 		return rows[i].path < rows[j].path
 	})
 	for _, r := range rows {
-		writeln(w, fmt.Sprintf("  %-26s %-16s %s", r.label, r.path, r.note))
+		writeln(w, fmt.Sprintf("  %-26s %-21s %s", r.label, r.path, r.note))
 	}
 	return nil
 }

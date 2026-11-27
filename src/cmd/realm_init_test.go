@@ -39,6 +39,9 @@ func setupSchemaServer(t *testing.T) *[]string {
 	original := schemaBaseURL
 	schemaBaseURL = server.URL
 	t.Cleanup(func() { schemaBaseURL = original })
+	// realm init caches what it fetches: a cache of its own keeps each test's
+	// requests from depending on what another test cached.
+	t.Setenv(envSchemaCache, t.TempDir())
 
 	latest := latestReleaseTag
 	latestReleaseTag = func(context.Context, remote.Ref, string) (string, error) { return testLatestCoreTag, nil }
@@ -342,6 +345,7 @@ func TestRealmInitSchemaFetchError(t *testing.T) {
 	original := schemaBaseURL
 	schemaBaseURL = server.URL
 	t.Cleanup(func() { schemaBaseURL = original })
+	t.Setenv(envSchemaCache, t.TempDir()) // nothing cached for this release
 
 	dir := t.TempDir()
 	target := filepath.Join(dir, "rules")
@@ -592,6 +596,7 @@ func TestFetchSchemaErrors(t *testing.T) {
 		original := schemaBaseURL
 		t.Cleanup(func() { schemaBaseURL = original })
 		schemaBaseURL = "http://[::1"
+		t.Setenv(envSchemaCache, t.TempDir())
 		err := fetchSchema(t.TempDir(), "v1.0.0", schemaFiles[0].local)
 		if err == nil || !strings.Contains(err.Error(), "fetching schema "+schemaFiles[0].local+"@v1.0.0") {
 			t.Errorf("error = %v, want a fetch error", err)
@@ -607,6 +612,7 @@ func TestFetchSchemaErrors(t *testing.T) {
 		original := schemaBaseURL
 		t.Cleanup(func() { schemaBaseURL = original })
 		schemaBaseURL = server.URL
+		t.Setenv(envSchemaCache, t.TempDir())
 		dir := t.TempDir()
 		err := fetchSchema(dir, "v1.0.0", schemaFiles[0].local)
 		if err == nil || !strings.Contains(err.Error(), "reading schema "+schemaFiles[0].local) {
