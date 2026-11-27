@@ -660,7 +660,9 @@ func (r *checkRun) buildInputs() {
 	}
 	overriddenBy := inherit.OverriddenBy(sets...)
 
-	// The configured sources holding each entity, by <realm-id>:<EUID>.
+	// The configured sources holding each entity, by <realm-id>:<EUID>. An
+	// entity of a sub-realm is under the source realm's ID, as the Realm
+	// resolution names the owner of a rule inherited from it.
 	owners := make(map[string][]evaluatedSource)
 	for _, rf := range r.resolved {
 		realmID, ok := r.sourceRealms[rf.Origin.Source]
@@ -715,9 +717,16 @@ type evaluatedSource struct {
 }
 
 // covers reports whether rules of s are judged against every file that rules
-// of t are: s is global, or is the same source.
+// of t are: s is global, is the same source, or is a local directory holding
+// t, itself local. Labels of local directories end in "/".
 func (s evaluatedSource) covers(t evaluatedSource) bool {
-	return s.scope != ruleresolve.ScopeLocal || s == t
+	switch {
+	case s.scope != ruleresolve.ScopeLocal || s == t:
+		return true
+	case t.scope != ruleresolve.ScopeLocal || strings.Contains(s.label, "://") || strings.Contains(t.label, "://"):
+		return false
+	}
+	return (s.label == "./" && !strings.HasPrefix(t.label, "../")) || strings.HasPrefix(t.label, s.label)
 }
 
 // entityInputs returns the rule inputs of f and its sub-entities. An entity

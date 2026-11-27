@@ -65,8 +65,9 @@ An entity with `inherits` is evaluated on its effective rule set: the rules it i
 replaced by its own rules in `evaluate_on`, plus its own, so `rule_count` includes inherited rules.
 When the entity it inherits from is itself in a configured source, an inherited rule is evaluated once,
 under its owner, and any violation is reported against the owner. The exception is an owner source
-with `scope: local` other than the inheriting entity's own source: its rules don't see the inheriting
-entity's files, so the inherited copy is evaluated too.
+with `scope: local` whose directory doesn't hold the inheriting entity's source, or an inheriting
+source with `scope: global`: the owner's rules don't see all of the inheriting entity's files, so the
+inherited copy is evaluated too.
 The check resolves the chain of every entity of a source that has a `realm.json`. These fail with
 exit 2, also with `--static-only`:
 

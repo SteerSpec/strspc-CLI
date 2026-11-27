@@ -13,6 +13,7 @@ import (
 
 	"github.com/SteerSpec/strspc-CLI/src/internal/testutil"
 	"github.com/SteerSpec/strspc-manager/src/ruleeval"
+	"github.com/SteerSpec/strspc-manager/src/ruleresolve"
 )
 
 // inheritRule is a rule of a test entity written by writeInheritEntity.
@@ -511,4 +512,62 @@ func TestCheckWarnsWhenInheritsHasNoRealm(t *testing.T) {
 	assertExit(t, err, exitOK)
 	testutil.AssertContains(t, output, "CHK003")
 	testutil.AssertContains(t, output, "SAVACCT")
+}
+
+// An owner in a sub-realm of a configured source, named by the sub-realm's
+// own ID, is found under it.
+func TestCheckInheritedRuleOfConfiguredSubRealmOnce(t *testing.T) {
+	dir, diff := setupInheritProject(t, "claude", "./rules/")
+	lib := filepath.Join(dir, "lib")
+	if err := os.Remove(filepath.Join(lib, "ACCT.json")); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"$schema": "./_schema/realm.v1.schema.json", "realm": {"id": "dev.lib", "title": "t", "version": "1.0.0"}, "sub_realms": ["sub"]}`
+	if err := os.WriteFile(filepath.Join(lib, "realm.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(lib, "sub")
+	writeRealmManifest(t, sub, "dev.lib.sub")
+	writeInheritEntity(t, sub, "ACCT", "", inheritRule{id: "ACCT-001", state: "P"}, inheritRule{id: "ACCT-002", state: "I"})
+	writeInheritEntity(t, filepath.Join(dir, "rules"), "SAVACCT", "dev.lib.sub:ACCT", inheritRule{id: "SAVACCT-001", state: "P"})
+	writeRawCheckConfig(t, dir, "rules:\n  - source: ./rules/\n    scope: local\n  - source: ./lib/\n    scope: global\n"+
+		"evaluator:\n  provider: claude\n  effort: low\ncache:\n  ttl: 24h\n")
+	p := &recordingProvider{}
+	stubEvalProvider(t, p, nil)
+
+	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
+	assertExit(t, err, exitOK)
+
+	if own, inherited := requestsFor(p, "ACCT-002"); own != 1 || inherited != 0 {
+		t.Errorf("ACCT-002: %d under ACCT, %d inherited, want 1 and 0", own, inherited)
+	}
+}
+
+func TestEvaluatedSourceCovers(t *testing.T) {
+	local := func(label string) evaluatedSource {
+		return evaluatedSource{label: label, scope: ruleresolve.ScopeLocal}
+	}
+	global := func(label string) evaluatedSource {
+		return evaluatedSource{label: label, scope: ruleresolve.ScopeGlobal}
+	}
+	for _, c := range []struct {
+		name  string
+		s, t  evaluatedSource
+		cover bool
+	}{
+		{"global owner", global("lib/"), local("rules/"), true},
+		{"same source", local("rules/"), local("rules/"), true},
+		{"parent directory", local("rules/"), local("rules/app/"), true},
+		{"repository root", local("./"), local("rules/"), true},
+		{"root doesn't hold a parent", local("./"), local("../shared/"), false},
+		{"sibling directory", local("lib/"), local("rules/"), false},
+		{"prefix isn't a parent", local("rules/"), local("rules2/"), false},
+		{"child directory", local("rules/app/"), local("rules/"), false},
+		{"global inheritor", local("./"), global("rules/"), false},
+		{"remote owner", local("github://o/r/rules"), local("rules/"), false},
+	} {
+		if got := c.s.covers(c.t); got != c.cover {
+			t.Errorf("%s: %+v covers %+v = %v, want %v", c.name, c.s, c.t, got, c.cover)
+		}
+	}
 }
