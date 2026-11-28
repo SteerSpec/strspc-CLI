@@ -108,6 +108,8 @@ decides, and the config must match it:
   core release the expired copy names in `x-steerspec-core-version`. Then the release copy decides.
 
 When neither schema is cached and the network can't be reached, the check exits 2 and asks you to run `strspc schema fetch`. A
+latest copy that is there but isn't a usable schema also exits 2, without falling back to the release
+copy: run `strspc schema clear`, then `strspc schema fetch`. A
 config that passes the schema still exits 2 on an unknown `evaluator.provider`.
 
 Every command that uses the config validates it the same way first: `refs`, `rule show`,

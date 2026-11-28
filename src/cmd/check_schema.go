@@ -59,6 +59,13 @@ var newConfigSchemaFetcher = func(_ string, opts ...schema.Option) *schema.Fetch
 var errConfigSchemaUnavailable = errors.New("the config.v1 schema is not cached and can't be fetched; " +
 	"run `strspc schema fetch` while online")
 
+// errConfigSchemaUnusable marks a latest config.v1 schema that was fetched or
+// read from the cache but can't be compiled. It is final: falling back to a
+// release copy would let a broken latest copy hand the decision to an older
+// schema.
+var errConfigSchemaUnusable = errors.New("the latest config.v1 schema can't be used; " +
+	"run `strspc schema clear`, then `strspc schema fetch` while online")
+
 // configSchemaError reports a config.yaml the config.v1 schema refuses. The
 // message lists at most maxViolationsShown violations; check reports each one
 // as a CHK002 diagnostic.
@@ -124,7 +131,9 @@ func loadStrspcConfig(ctx context.Context, cwd string, opts ...schema.Option) (*
 // core release's copy in cacheDir ("": none), the cache latest also uses.
 // One of them decides, as described above. It returns nil when that schema
 // accepts raw, a *configSchemaError listing its violations when it doesn't,
-// and an error wrapping errConfigSchemaUnavailable when neither is available.
+// an error wrapping errConfigSchemaUnavailable when neither is available, and
+// one wrapping errConfigSchemaUnusable when the latest copy is there but
+// doesn't compile.
 func validateConfig(ctx context.Context, latest *schema.Fetcher, cacheDir string, raw []byte) error {
 	var doc any
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
@@ -140,10 +149,14 @@ func validateConfig(ctx context.Context, latest *schema.Fetcher, cacheDir string
 	latestErr := errors.New("no schema fetcher")
 	if latest != nil {
 		latestData, latestErr = latest.Fetch(ctx, configV1SchemaPath)
+		if errors.Is(latestErr, errNotSchema) {
+			// Downloaded, but not a schema: there, and unusable.
+			return fmt.Errorf("can't validate .strspc/config.yaml: %w: %w", errConfigSchemaUnusable, latestErr)
+		}
 		if latestErr != nil {
 			latestErr = fmt.Errorf("fetching %s: %w", configV1SchemaPath, latestErr)
-		} else {
-			latestC, latestErr = compileSchemaBytes(latestData)
+		} else if latestC, latestErr = compileSchemaBytes(latestData); latestErr != nil {
+			return fmt.Errorf("can't validate .strspc/config.yaml: %w: %w", errConfigSchemaUnusable, latestErr)
 		}
 	}
 	var releaseC *jsonschema.Schema
@@ -152,8 +165,9 @@ func validateConfig(ctx context.Context, latest *schema.Fetcher, cacheDir string
 		if tag := newestCachedRelease(cacheDir, []string{configV1SchemaPath}); tag != "" {
 			// newestCachedRelease has read it already: a usable schema.
 			data, _ := readCachedSchema(cacheDir, releaseCacheKey(tag, configV1SchemaPath))
-			if c, err := compileSchemaBytes(data); err == nil {
-				releaseC, release = c, semver.MustParse(strings.TrimPrefix(tag, "v"))
+			v, verr := semver.StrictNewVersion(strings.TrimPrefix(tag, "v"))
+			if c, err := compileSchemaBytes(data); err == nil && verr == nil {
+				releaseC, release = c, v
 			}
 		}
 	}
@@ -208,7 +222,11 @@ func releaseIsNewer(release *semver.Version, latest []byte) bool {
 	if json.Unmarshal(latest, &meta) != nil || !schemaVersion.MatchString(meta.CoreVersion) {
 		return false
 	}
-	return release.GreaterThan(semver.MustParse(meta.CoreVersion))
+	named, err := semver.StrictNewVersion(meta.CoreVersion) // downloaded: may not parse, such as a component past uint64
+	if err != nil {
+		return false
+	}
+	return release.GreaterThan(named)
 }
 
 // jsonValue converts a decoded YAML document to the values a JSON document

@@ -215,7 +215,7 @@ func doctorConfigSchemaCheck(env *doctorEnv, raw []byte) doctorResult {
 		return doctorOutcome(g, "schema", "", doctorFail, msg, "fix .strspc/config.yaml; strspc check lists every mismatch")
 	case errors.Is(err, errConfigSchemaUnavailable) && errors.Is(err, errDoctorOffline):
 		return doctorOutcome(g, "schema", "", doctorSkip, "the config.v1 schema is not cached", "strspc schema fetch")
-	case errors.Is(err, errConfigSchemaUnavailable):
+	case errors.Is(err, errConfigSchemaUnavailable), errors.Is(err, errConfigSchemaUnusable):
 		return doctorOutcome(g, "schema", "", doctorSkip, err.Error(), "strspc schema update")
 	default:
 		return doctorOutcome(g, "schema", "", doctorFail, err.Error(), "fix the YAML in .strspc/config.yaml")

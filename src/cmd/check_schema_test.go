@@ -365,6 +365,8 @@ func TestReleaseIsNewer(t *testing.T) {
 		{"1.20.0", `{"x-steerspec-core-version": "next"}`, false},
 		{"1.20.0", `{}`, false},
 		{"1.20.0", `not json`, false},
+		{"1.20.0", `{"x-steerspec-core-version": "1.99999999999999999999.0"}`, false},
+		{"1.20.0", `{"x-steerspec-core-version": "18446744073709551616.0.0"}`, false},
 	} {
 		if got := releaseIsNewer(v(tc.release), []byte(tc.latest)); got != tc.want {
 			t.Errorf("releaseIsNewer(%s, %s) = %v, want %v", tc.release, tc.latest, got, tc.want)
@@ -388,5 +390,41 @@ func TestLatestIsStale(t *testing.T) {
 	writeSchemaCacheFile(t, dir, configV1SchemaPath, data, 0)
 	if latestIsStale(dir, data) {
 		t.Error("a copy within its TTL is not stale")
+	}
+}
+
+// A latest copy that is there but can't be used is final: the release copy
+// doesn't take over, and the error names the remedy. That covers a local
+// copy that doesn't compile, and a download the fetcher refuses as no schema.
+func TestValidateConfigUnusableLatestFailsClosed(t *testing.T) {
+	for name, latest := range map[string]string{"not JSON": "{not json", "not a schema": `{"type": 7}`} {
+		t.Run(name, func(t *testing.T) {
+			local := t.TempDir()
+			writeSchemaCacheFile(t, filepath.Join(local, "_schema"), "config.v1.schema.json", []byte(latest), 0)
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(latest)) }))
+			t.Cleanup(srv.Close)
+			dir := t.TempDir()
+			writeSchemaCacheFile(t, dir, releaseCacheKey("v"+testReleaseVersion, configV1SchemaPath), testConfigSchema(t, false), 0)
+			for _, fetcher := range []*schema.Fetcher{
+				schema.New(schema.WithLocalDir(local), schema.WithCacheDir(dir), schema.WithClient(offlineHTTPClient())),
+				schema.New(schema.WithBaseURL(srv.URL), schema.WithCacheDir(dir), withSchemasOnly()),
+			} {
+				err := validateConfig(context.Background(), fetcher, dir, []byte(validTestConfig))
+				if !errors.Is(err, errConfigSchemaUnusable) {
+					t.Fatalf("got %v, want errConfigSchemaUnusable", err)
+				}
+				testutil.AssertContains(t, err.Error(), "strspc schema fetch")
+			}
+		})
+	}
+}
+
+// The release copy still decides when the latest one can't be had at all.
+func TestValidateConfigUnreachableLatestFallsBack(t *testing.T) {
+	dir := t.TempDir()
+	writeSchemaCacheFile(t, dir, releaseCacheKey("v"+testReleaseVersion, configV1SchemaPath), testConfigSchema(t, false), 0)
+	fetcher := schema.New(schema.WithBaseURL("http://127.0.0.1:1"), schema.WithCacheDir(dir), withSchemasOnly())
+	if err := validateConfig(context.Background(), fetcher, dir, []byte(validTestConfig)); err != nil {
+		t.Fatalf("got %v, want the release copy to accept the config", err)
 	}
 }
