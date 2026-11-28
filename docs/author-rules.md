@@ -292,6 +292,9 @@ copies are replaced by them, so the realm doesn't trip RM015 (schema drift). Thi
 that inherit the pin; one that pins its own core is left alone. Files the core release doesn't hold
 are left alone too. If the new version breaks the realm, `realm.json` and the schema files are
 restored and the command exits non-zero.
+The repository's `.strspc/config.yaml`, when there is one, gets the same pin change. It is validated
+against `config.v1` first, as every command that reads it does: a config that doesn't match, or no
+schema to check it against, stops the upgrade before any file is written.
 Dependencies are never downgraded. Sources that aren't `github://` references, and those on `@latest`,
 a branch or a commit SHA, are skipped. See [GitHub sources](reference.md#github-sources) for private
 repositories.
