@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.47.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.46.0...v1.47.0) (2026-11-28)
+
+
+### Features
+
+* **release:** publish the diagnostic codes as a release asset ([#395](https://github.com/SteerSpec/strspc-CLI/issues/395)) ([6bc2e6e](https://github.com/SteerSpec/strspc-CLI/commit/6bc2e6e62b3c4f2d784ce57532e718aa82608163))
+
+
+### Bug Fixes
+
+* **config:** one config.v1 schema decides; a fresh latest isn't overruled ([#401](https://github.com/SteerSpec/strspc-CLI/issues/401)) ([8a28e53](https://github.com/SteerSpec/strspc-CLI/commit/8a28e5386a84f2c92ae25704b1fc1adf287f95db))
+* **config:** validate config.yaml against config.v1 before use; CHK002 is an error ([#396](https://github.com/SteerSpec/strspc-CLI/issues/396)) ([72c228a](https://github.com/SteerSpec/strspc-CLI/commit/72c228a51ab73a2c6af04438f56a52d43db62679))
+
 ## [1.46.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.45.0...v1.46.0) (2026-11-27)
 
 
