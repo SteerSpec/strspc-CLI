@@ -311,6 +311,9 @@ func filterDiff(diff, subDir string) string {
 		if ok && excludedFromDiff(p, subDir) {
 			continue
 		}
+		if !ok && moveTouchesExclude(sec, subDir) {
+			continue
+		}
 		b.WriteString(sec)
 	}
 	return b.String()
@@ -326,6 +329,39 @@ func isDeletionSection(section string) bool {
 		}
 		if strings.HasPrefix(line, "deleted file mode ") || strings.TrimSpace(line) == "+++ /dev/null" {
 			return true
+		}
+	}
+	return false
+}
+
+// moveTouchesExclude reports whether a section with no `+++` line, such as
+// a pure rename or copy, names an excluded path on either side of its
+// `rename from`/`rename to`/`copy from`/`copy to` headers. Its
+// `diff --git a/X b/Y` header names two paths, so diffHeaderPath can't
+// read it, and the section would otherwise be kept. Such a section
+// carries no content, so dropping it loses nothing that is evaluated.
+func moveTouchesExclude(section, subDir string) bool {
+	_, rest, _ := strings.Cut(section, "\n")
+	for _, line := range strings.Split(rest, "\n") {
+		if strings.HasPrefix(line, "@@") {
+			return false
+		}
+		for _, prefix := range []string{"rename from ", "rename to ", "copy from ", "copy to "} {
+			v, ok := strings.CutPrefix(line, prefix)
+			if !ok {
+				continue
+			}
+			v = strings.TrimSpace(v)
+			if strings.HasPrefix(v, "\"") {
+				unq, err := strconv.Unquote(v)
+				if err != nil {
+					return true // unreadable path: don't risk showing an excluded file
+				}
+				v = unq
+			}
+			if excludedFromDiff(path.Clean(filepath.ToSlash(v)), subDir) {
+				return true
+			}
 		}
 	}
 	return false
