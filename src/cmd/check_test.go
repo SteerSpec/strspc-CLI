@@ -1368,3 +1368,24 @@ func TestCheckCancelledContextDoesNotWaitForCacheLock(t *testing.T) {
 	testutil.AssertContains(t, out.String(), "continuing without cache")
 	testutil.AssertContains(t, out.String(), context.DeadlineExceeded.Error())
 }
+
+// A fresh latest schema decides alone: a cached release copy that accepts
+// what it refuses doesn't let the config through.
+func TestCheckConfigSchemaFreshLatestDecides(t *testing.T) {
+	cache := useConfigSchemaCache(t)
+	writeSchemaCacheFile(t, cache, configV1SchemaPath, testConfigSchemaFor(t, true, "1.20.0"), 0)
+	writeSchemaCacheFile(t, cache, releaseCacheKey("v"+testReleaseVersion, configV1SchemaPath), testConfigSchema(t, false), 0)
+	dir, _ := setupCheckProject(t, "null", []string{"I"})
+	writeRawCheckConfig(t, dir, "rules:\n  - source: ./rules/\n    scope: local\nevaluator:\n  provider: null\n  effort: max\nfail_on: [I]\n")
+
+	output, err := runCheckCmd(t, dir, "--format", "json")
+	assertExit(t, err, exitConfig)
+	var out checkOutput
+	if jerr := json.Unmarshal([]byte(output), &out); jerr != nil {
+		t.Fatalf("invalid JSON: %v\n%s", jerr, output)
+	}
+	if len(out.Diagnostics) != 1 || out.Diagnostics[0].Code != "CHK002" || out.Diagnostics[0].Severity != result.Error {
+		t.Fatalf("diagnostics = %+v, want one CHK002 error", out.Diagnostics)
+	}
+	testutil.AssertContains(t, out.Diagnostics[0].Message, "the latest config.v1 schema")
+}

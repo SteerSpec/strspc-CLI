@@ -37,9 +37,11 @@ latest schema is refreshed after an hour, when the network can be reached.
 
 Run `strspc schema fetch` once while online to validate offline afterwards, for example before a
 pre-commit hook runs `strspc check`. A command that can't read or fetch the schema it needs fails
-rather than use a file it hasn't validated. For `.strspc/config.yaml`, the latest `config.v1` and
-the one of the newest core release cached both count: the config is valid when either accepts it. In CI, cache the directory or set `STRSPC_SCHEMA_CACHE` to a
-path the workflow caches.
+rather than use a file it hasn't validated. For `.strspc/config.yaml`, a current latest `config.v1`
+decides. The one of the newest core release cached decides only when there is no latest copy, or
+when the only latest copy has expired and names an older core release
+([check](check.md#safety-and-configuration-checks) has the details). In CI, cache the directory or
+set `STRSPC_SCHEMA_CACHE` to a path the workflow caches.
 
 `strspc realm init` keeps the schemas it vendors in the same cache, below `versions/`, and reads
 them from there. A pinned release that is cached, from an earlier init or from
