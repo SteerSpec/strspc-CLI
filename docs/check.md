@@ -31,7 +31,7 @@ strspc check --format github                 # ::error/::warning annotations + $
 | `--verbose` | Print resolution, diff, cache and token-usage details to stderr |
 
 Diff selection precedence: `--diff-file` > `--staged` > `--pr` > `--base` > `$GITHUB_BASE_REF`
-(`origin/<ref>`, fetched when missing) > working tree vs HEAD. Files under `.strspc/` and `rules/` are
+(`origin/<ref>`, fetched when missing) > working tree vs HEAD. Files under `.strspc/` and `rules/`, and `.beads/issues.jsonl`, are
 never evaluated. The check only writes inside `.strspc/` (`cache/`, `cache.db`).
 
 | Exit code | Meaning |
@@ -113,7 +113,8 @@ copy: run `strspc schema clear`, then `strspc schema fetch`. A
 config that passes the schema still exits 2 on an unknown `evaluator.provider`.
 
 Every command that uses the config validates it the same way first: `refs`, `rule show`,
-`standards`, `rule verify`, `sync` and `status`. They stop with an error that lists the mismatches. `doctor` reports them as a failed
+`standards`, `rule verify`, `sync`, `status`, and `realm dep upgrade` before it rewrites the pins in
+it. They stop with an error that lists the mismatches. `doctor` reports them as a failed
 `config.schema` check and goes on. `schema fetch` reads the config without validating it, so that
 it can fill an empty cache.
 

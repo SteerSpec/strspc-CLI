@@ -726,7 +726,7 @@ func TestRealmDepUpgradeRewritesFlowStyleConfigPin(t *testing.T) {
 	}
 
 	// Quoted, in a block entry, with a trailing comment.
-	quoted := "rules:\n  - source: \"github://SteerSpec/strspc-rules@v9.9.9/rules/core\" # core\n"
+	quoted := "rules:\n  - source: \"github://SteerSpec/strspc-rules@v9.9.9/rules/core\" # core\n    scope: global\n"
 	dir2 := setupUpgradeTest(t, "v9.9.9", nil)
 	cfg2 := withRepoConfig(t, dir2)
 	in := strings.Replace(quoted, "v9.9.9", "v1.8.0", 1)
@@ -786,7 +786,7 @@ func TestRealmDepUpgradeLeavesCommentedConfigSources(t *testing.T) {
 func TestRealmDepUpgradeCheckJSONReportsUnrewritableConfig(t *testing.T) {
 	dir := setupUpgradeTest(t, "v9.9.9", nil)
 	cfg := withRepoConfig(t, dir)
-	folded := "rules:\n  - source: >-\n      github://SteerSpec/strspc-rules@v1.8.0/rules/core\n"
+	folded := "rules:\n  - source: >-\n      github://SteerSpec/strspc-rules@v1.8.0/rules/core\n    scope: global\n"
 	if err := os.WriteFile(cfg, []byte(folded), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -798,5 +798,59 @@ func TestRealmDepUpgradeCheckJSONReportsUnrewritableConfig(t *testing.T) {
 	r := decodeUpgradeReport(t, out)
 	if len(r.Errors) != 1 || !strings.Contains(r.Errors[0], "update it by hand") {
 		t.Errorf("unexpected report: %+v", r)
+	}
+}
+
+// SEC-004: the upgrade validates the repository's config against config.v1
+// before it reads the pins in it. A config that doesn't match stops the
+// upgrade before any file is written, with --check too.
+func TestRealmDepUpgradeRefusesInvalidConfig(t *testing.T) {
+	for _, args := range [][]string{nil, {"--check"}} {
+		t.Run(strings.Join(append([]string{"upgrade"}, args...), " "), func(t *testing.T) {
+			dir := setupUpgradeTest(t, "v9.9.9", nil)
+			cfg := withRepoConfig(t, dir)
+			invalid := upgradeConfigYAML + "unknown_key: 1\n"
+			if err := os.WriteFile(cfg, []byte(invalid), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			manifest := readFile(t, filepath.Join(dir, "realm.json"))
+
+			_, err := testutil.ExecuteCommand(NewRootCmd(), append([]string{"realm", "dep", "upgrade", "--dir", dir}, args...)...)
+			if err == nil {
+				t.Fatal("expected the invalid config to stop the upgrade")
+			}
+			testutil.AssertContains(t, err.Error(), "does not match the latest config.v1 schema")
+			testutil.AssertContains(t, err.Error(), "unknown_key")
+			if got := readFile(t, cfg); got != invalid {
+				t.Errorf("config.yaml changed: %q", got)
+			}
+			if got := readFile(t, filepath.Join(dir, "realm.json")); got != manifest {
+				t.Errorf("realm.json changed:\n%s", got)
+			}
+			if _, err := os.Stat(filepath.Join(dir, "_schema")); err == nil {
+				t.Error("schemas were synced")
+			}
+		})
+	}
+}
+
+// Offline with no config.v1 schema cached, the upgrade fails closed and
+// names the remedy.
+func TestRealmDepUpgradeColdSchemaCacheFailsClosed(t *testing.T) {
+	dir := setupUpgradeTest(t, "v9.9.9", nil)
+	cfg := withRepoConfig(t, dir)
+	useConfigSchemaCache(t)
+	manifest := readFile(t, filepath.Join(dir, "realm.json"))
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "realm", "dep", "upgrade", "--dir", dir)
+	if err == nil {
+		t.Fatal("expected the upgrade to fail without a config schema")
+	}
+	testutil.AssertContains(t, err.Error(), "strspc schema fetch")
+	if got := readFile(t, cfg); got != upgradeConfigYAML {
+		t.Errorf("config.yaml changed: %q", got)
+	}
+	if got := readFile(t, filepath.Join(dir, "realm.json")); got != manifest {
+		t.Errorf("realm.json changed:\n%s", got)
 	}
 }

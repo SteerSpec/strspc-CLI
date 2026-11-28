@@ -1309,7 +1309,10 @@ func TestCheckDiffFileExcludesRulesAndConfig(t *testing.T) {
 	dir, _ := setupCheckProject(t, "claude", []string{"I"})
 	mixed := checkDiff +
 		"diff --git a/.strspc/config.yaml b/.strspc/config.yaml\n--- a/.strspc/config.yaml\n+++ b/.strspc/config.yaml\n@@ -1 +1 @@\n-x\n+y\n" +
-		"diff --git a/rules/TST.json b/rules/TST.json\n--- a/rules/TST.json\n+++ b/rules/TST.json\n@@ -1 +1 @@\n-{}\n+{ }\n"
+		"diff --git a/rules/TST.json b/rules/TST.json\n--- a/rules/TST.json\n+++ b/rules/TST.json\n@@ -1 +1 @@\n-{}\n+{ }\n" +
+		"diff --git a/.beads/issues.jsonl b/.beads/issues.jsonl\n--- a/.beads/issues.jsonl\n+++ b/.beads/issues.jsonl\n@@ -1 +1 @@\n-{}\n+{\"status\":\"open\"}\n" +
+		"diff --git a/.beads/hooks/pre-commit b/.beads/hooks/pre-commit\n--- a/.beads/hooks/pre-commit\n+++ b/.beads/hooks/pre-commit\n@@ -1 +1 @@\n-#!/bin/sh\n+#!/bin/sh -e\n" +
+		"diff --git a/.beads/issues.jsonl.bak b/.beads/issues.jsonl.bak\n--- a/.beads/issues.jsonl.bak\n+++ b/.beads/issues.jsonl.bak\n@@ -1 +1 @@\n-a\n+b\n"
 	diff := filepath.Join(dir, "mixed.diff")
 	if err := os.WriteFile(diff, []byte(mixed), 0o644); err != nil {
 		t.Fatal(err)
@@ -1320,8 +1323,15 @@ func TestCheckDiffFileExcludesRulesAndConfig(t *testing.T) {
 	_, err := runCheckCmd(t, dir, "--diff-file", diff, "--no-cache")
 	assertExit(t, err, exitOK)
 	seen := p.seenDiff()
-	if !strings.Contains(seen, "src/main.go") || strings.Contains(seen, ".strspc/") || strings.Contains(seen, "rules/TST.json") {
+	if !strings.Contains(seen, "src/main.go") || strings.Contains(seen, ".strspc/") || strings.Contains(seen, "rules/TST.json") || strings.Contains(seen, ".beads/issues.jsonl\n") {
 		t.Errorf("provider saw an unfiltered diff:\n%s", seen)
+	}
+	// Only the tracker's export is excluded: its hooks are code, and a file
+	// that merely starts with the export's name is not the export.
+	for _, keep := range []string{".beads/hooks/pre-commit", ".beads/issues.jsonl.bak"} {
+		if !strings.Contains(seen, keep) {
+			t.Errorf("provider did not see %s:\n%s", keep, seen)
+		}
 	}
 }
 

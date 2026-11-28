@@ -6,15 +6,15 @@
     "description": "Security requirements on strspc and its CI, mapped to OWASP ASVS 5.0.0 L1."
   },
   "rule_set": {
-    "version": "0.9.0",
-    "timestamp": "2026-11-27T20:21:38Z",
-    "hash": "blake3:4d04260cbee9ffeed00c1dda03557a9dd1c9be7ebce9d80a7504b53302ef64a0"
+    "version": "0.11.0",
+    "timestamp": "2026-11-28T09:30:17Z",
+    "hash": "blake3:fcb5f7cb1416a4ed64d290ff9e4d443adc6fcccffd2c2e59d3c69bea76456428"
   },
   "rules": [
     {
       "id": "SEC-001",
       "revision": 0,
-      "state": "P",
+      "state": "I",
       "body": "strspc MUST connect to an HTTP-based service over HTTPS only, unless the service is on a loopback address.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-13",
@@ -55,6 +55,15 @@
       "added_by": "github:pleberre",
       "added_at": "2026-11-13",
       "supersedes": null
+    },
+    {
+      "id": "SEC-006",
+      "revision": 0,
+      "state": "P",
+      "body": "strspc MUST validate a rule file and a config file against their schemas before using their content when the schema is available.",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-28",
+      "supersedes": "SEC-004"
     }
   ],
   "notes": [
@@ -119,6 +128,24 @@
       "content": "owasp.asvs:V15.1.1",
       "added_by": "github:pleberre",
       "added_at": "2026-11-13",
+      "revision": 0
+    },
+    {
+      "id": "SEC-006/01",
+      "rule_ref": "SEC-006",
+      "type": "standard",
+      "content": "owasp.asvs:V2.2.1",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-28",
+      "revision": 0
+    },
+    {
+      "id": "SEC-006/02",
+      "rule_ref": "SEC-006",
+      "type": "standard",
+      "content": "owasp.asvs:V2.2.2",
+      "added_by": "github:pleberre",
+      "added_at": "2026-11-28",
       "revision": 0
     }
   ]

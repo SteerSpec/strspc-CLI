@@ -8,7 +8,8 @@ Every command that changes an entity file or a `realm.json` validates it against
 and leaves it untouched when it doesn't match. That covers `rule`, `note`, `entity`, `realm dep`,
 `realm note`, `realm standards`, `realm contributor`, `entity rehash`, `realm rehash` and
 `realm rewrite-added-by`, and `realm add-subrealm` for the parent it writes from. `realm dep upgrade` does so before it looks up any release;
-with `--check` it only reports, and doesn't validate. Fix a file that doesn't match by hand, and `strspc lint` shows each
+with `--check` it only reports, and doesn't validate `realm.json`; it still validates
+`.strspc/config.yaml` before reading its pins (see [Realms and dependencies](#realms-and-dependencies)). Fix a file that doesn't match by hand, and `strspc lint` shows each
 violation. The schemas come from the [schema cache](reference.md#schema-cache); when one isn't cached
 and can't be fetched, the command fails until you run `strspc schema fetch` online.
 
@@ -137,8 +138,10 @@ every rule is then judged on all of it, so a rule spanning files is judged on th
 each file holds is kept in `.strspc/cache.db` (`--no-cache` skips it), so a rerun reads only the
 files that changed. An audit that fits one request isn't cached.
 
-As with `strspc check`, files under `.strspc/` and `rules/` are never read, even when `--path` matches
-them: the configuration and the project's own rule files are covered by `lint` and `diff`. A rule
+As with `strspc check`, files under `.strspc/` and `rules/`, and `.beads/issues.jsonl`, are never read, even when `--path` matches
+them: the configuration and the project's own rule files are covered by `lint` and `diff`, and the beads
+tracker's export is task state that can be out of date, not code. The rest of `.beads/`, such as its git
+hooks, is read. A rule
 about those files can't be verified this way. Untracked, deleted, symlinked and binary files aren't
 read either; the report lists those it skipped. Tracked in
 [#291](https://github.com/SteerSpec/strspc-CLI/issues/291).
@@ -292,6 +295,9 @@ copies are replaced by them, so the realm doesn't trip RM015 (schema drift). Thi
 that inherit the pin; one that pins its own core is left alone. Files the core release doesn't hold
 are left alone too. If the new version breaks the realm, `realm.json` and the schema files are
 restored and the command exits non-zero.
+The repository's `.strspc/config.yaml`, when there is one, gets the same pin change. It is validated
+against `config.v1` first, as every command that reads it does: a config that doesn't match, or no
+schema to check it against, stops the upgrade before any file is written.
 Dependencies are never downgraded. Sources that aren't `github://` references, and those on `@latest`,
 a branch or a commit SHA, are skipped. See [GitHub sources](reference.md#github-sources) for private
 repositories.
