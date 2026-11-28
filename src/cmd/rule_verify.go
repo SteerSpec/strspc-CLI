@@ -49,8 +49,8 @@ func newRuleVerifyCmd() *cobra.Command {
 			"(or of --path, minus --exclude) is sent to the configured AI provider with numbered lines, and\n" +
 			"each rule gets a verdict, compliant, violated, not_applicable or unknown, with an explanation\n" +
 			"and the lines it rests on. Something a rule requires that no file has is a violation. As with\n" +
-			"check, files under .strspc/ and rules/ are never read, even when --path matches them; nor are\n" +
-			"untracked, deleted, symlinked or binary files.\n\n" +
+			"check, files under .strspc/ and rules/, and .beads/issues.jsonl, are never read, even when\n" +
+			"--path matches them; nor are untracked, deleted, symlinked or binary files.\n\n" +
 			"This is the check rule promote runs before taking a rule from Published to Implemented.\n\n" +
 			"The files read stand for the whole code: --path and --exclude narrow what counts as existing,\n" +
 			"so excluding tests makes a rule such as \"every command has a test\" fail. A tree too large\n" +

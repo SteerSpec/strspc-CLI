@@ -45,12 +45,12 @@ func TestResolveDiffSourcePrecedence(t *testing.T) {
 
 func TestGitDiffArgs(t *testing.T) {
 	got := strings.Join(gitDiffArgs(".", "HEAD"), " ")
-	want := "diff --no-color --no-ext-diff -U3 --diff-filter=ACMR HEAD -- . :(exclude,literal).strspc :(exclude,literal)rules"
+	want := "diff --no-color --no-ext-diff -U3 --diff-filter=ACMR HEAD -- . :(exclude,literal).strspc :(exclude,literal)rules :(exclude,literal).beads/issues.jsonl"
 	if got != want {
 		t.Errorf("root args:\n got %s\nwant %s", got, want)
 	}
 	got = strings.Join(gitDiffArgs("svc/api", "--cached"), " ")
-	want = "diff --no-color --no-ext-diff -U3 --diff-filter=ACMR --cached -- :(literal)svc/api :(exclude,literal)svc/api/.strspc :(exclude,literal)svc/api/rules"
+	want = "diff --no-color --no-ext-diff -U3 --diff-filter=ACMR --cached -- :(literal)svc/api :(exclude,literal)svc/api/.strspc :(exclude,literal)svc/api/rules :(exclude,literal)svc/api/.beads/issues.jsonl"
 	if got != want {
 		t.Errorf("subdir args:\n got %s\nwant %s", got, want)
 	}
@@ -328,6 +328,32 @@ func TestFilterDiff(t *testing.T) {
 		disagree := "diff --git a/rules/x.json b/src/ok.go\nindex 1..2 100644\n"
 		if got := filterDiff(disagree, "."); got != disagree {
 			t.Errorf("ambiguous header must be kept, got %q", got)
+		}
+	})
+	t.Run("a pure rename or copy touching an exclude is dropped", func(t *testing.T) {
+		move := func(kind, from, to string) string {
+			return "diff --git a/" + from + " b/" + to + "\nsimilarity index 100%\n" + kind + " from " + from + "\n" + kind + " to " + to + "\n"
+		}
+		for _, sec := range []string{
+			move("rename", "src/task.json", ".beads/issues.jsonl"),
+			move("rename", ".beads/issues.jsonl", "src/task.json"),
+			move("copy", "src/a.json", "rules/A.json"),
+			move("rename", "src/c.yaml", ".strspc/config.yaml"),
+			"diff --git \"a/src/t\\303\\251.json\" \"b/rules/t\\303\\251.json\"\nsimilarity index 100%\nrename from \"src/t\\303\\251.json\"\nrename to \"rules/t\\303\\251.json\"\n",
+			"diff --git a/src/x b/rules/x\nrename from src/x\nrename to \"rules/bad\\q\"\n",
+		} {
+			if got := filterDiff(sec+section("src/a.go"), "."); got != section("src/a.go") {
+				t.Errorf("move section was kept:\n%s", got)
+			}
+		}
+		kept := move("rename", "src/a.go", "src/b.go")
+		if got := filterDiff(kept, "."); got != kept {
+			t.Errorf("a rename outside the excludes must be kept, got %q", got)
+		}
+		// A rename with hunks is judged by its +++ path, as before.
+		withHunk := "diff --git a/rules/R.json b/src/r.json\nsimilarity index 90%\nrename from rules/R.json\nrename to src/r.json\n--- a/rules/R.json\n+++ b/src/r.json\n@@ -1 +1 @@\n-a\n+b\n"
+		if got := filterDiff(withHunk, "."); got != withHunk {
+			t.Errorf("a rename out of rules/ with content must be kept, got %q", got)
 		}
 	})
 	t.Run("embedded quotes and spaces follow git quoting rules", func(t *testing.T) {
