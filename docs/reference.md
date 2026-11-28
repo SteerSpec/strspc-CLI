@@ -31,13 +31,17 @@ latest schema is refreshed after an hour, when the network can be reached.
 | Command | Does |
 | ------- | ---- |
 | `strspc schema` | List the cached schemas, with their core release and when they were fetched |
-| `strspc schema fetch [path]` | Download the latest config, entity and realm schemas, and the entity, realm and bootstrap schemas of the core release each local realm in the project pins (with its sub-realms). `--dir <realm>` and `--core-version <X.Y.Z>` add more |
+| `strspc schema fetch [path]` | Download the latest config, entity and realm schemas, and the entity, realm, bootstrap and (when the release has one) config schemas of the core release each local realm in the project pins (with its sub-realms). `--dir <realm>` and `--core-version <X.Y.Z>` add more. It reads the config without validating it, so it works with an empty cache |
 | `strspc schema update` | Download the latest schemas again; a copy is replaced only once its download succeeds |
 | `strspc schema clear` | Delete the cached schemas |
 
 Run `strspc schema fetch` once while online to validate offline afterwards, for example before a
-pre-commit hook runs `strspc check`. In CI, cache the directory or set `STRSPC_SCHEMA_CACHE` to a
-path the workflow caches.
+pre-commit hook runs `strspc check`. A command that can't read or fetch the schema it needs fails
+rather than use a file it hasn't validated. For `.strspc/config.yaml`, a current latest `config.v1`
+decides. The one of the newest core release cached decides only when there is no latest copy, or
+when the only latest copy has expired and names an older core release
+([check](check.md#safety-and-configuration-checks) has the details). In CI, cache the directory or
+set `STRSPC_SCHEMA_CACHE` to a path the workflow caches.
 
 `strspc realm init` keeps the schemas it vendors in the same cache, below `versions/`, and reads
 them from there. A pinned release that is cached, from an earlier init or from
@@ -55,7 +59,7 @@ cached stays in use.
 `schema fetch`, `schema update` and `realm init` mark the cache with a `.strspc-schema-cache` file.
 `schema clear` runs only on the default location or a marked directory. It deletes only the schema
 files strspc writes (`config/v1.json`, `entity/v1.json`, `realm/v1.json`, `entity/bootstrap.json`,
-the last three below `versions/X.Y.Z/` too, and their temporary files), also inside the `.update-N` folders an interrupted update leaves, and
+all four below `versions/X.Y.Z/` too, and their temporary files), also inside the `.update-N` folders an interrupted update leaves, and
 then the empty folders there. Other files and symbolic links are kept.
 
 > [!WARNING]
@@ -90,8 +94,8 @@ then the empty folders there. Other files and symbolic links are kept.
 
 Every code the manager emits (`RL`, `RD`, `RM`, `RR`, `RSV`, `RE`, `EC`, `RF`) is listed in
 [SPEC §6.3](https://github.com/SteerSpec/strspc-manager/blob/v1.47.1/docs/SPEC.md#63-diagnostic-codes).
-The CLI adds two warnings of its own, `CHK002` and `CHK003`, described under
-[check](check.md#safety-and-configuration-checks). `strspc explain` covers all of them.
+The CLI adds two codes of its own, error `CHK002` (the config doesn't match `config.v1`) and warning
+`CHK003`, described under [check](check.md#safety-and-configuration-checks). `strspc explain` covers all of them.
 
 ## Published files
 

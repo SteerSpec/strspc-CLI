@@ -23,9 +23,9 @@ var cliCodes = map[string]result.CodeInfo{
 	"CHK002": {
 		Code:     "CHK002",
 		Module:   "strspc",
-		Severity: "Warning",
+		Severity: "Error",
 		Title:    "Config does not match its schema",
-		Summary:  "`.strspc/config.yaml` does not match the published `config.v1` schema. The check continues.",
+		Summary:  "`.strspc/config.yaml` does not match the published `config.v1` schema, so the check stops before using it.",
 		Fix:      "Correct the key or value the message names in `.strspc/config.yaml`.",
 	},
 	"CHK003": {

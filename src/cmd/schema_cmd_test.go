@@ -238,3 +238,46 @@ func TestSchemaCacheDirFrom(t *testing.T) {
 		t.Errorf("options without a cache = %v, want none", opts)
 	}
 }
+
+// schema fetch fills a cold cache even when the config doesn't match
+// config.v1: it reads the config without validating it (SEC-004 exempts it,
+// as nothing could validate it before the fetch). A release's config schema
+// is cached too.
+func TestSchemaFetchWithInvalidConfig(t *testing.T) {
+	_, cache := serveSchemaCache(t)
+	dir := writeSchemaProject(t)
+	writeRefsFile(t, dir, ".strspc/config.yaml", "rules:\n  - source: ./rules/\n    scope: local\nfail_on: [implemented]\nunknown_key: 1\n")
+
+	_, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", dir)
+	assertExit(t, err, exitOK)
+	cachedSchema(t, cache, "config/v1.json")
+	cachedSchema(t, cache, "versions/1.2.3/config/v1.json")
+	cachedSchema(t, cache, "versions/1.3.0/config/v1.json")
+}
+
+// A release that publishes no config schema is skipped, not a failure.
+func TestSchemaFetchReleaseWithoutConfigSchema(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/_schema/config.v1.schema.json") {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"type":"object"}`))
+	}))
+	t.Cleanup(srv.Close)
+	orig := newSchemaFetcher
+	newSchemaFetcher = func(opts ...schema.Option) *schema.Fetcher {
+		return newCachedSchemaFetcher(append([]schema.Option{schema.WithBaseURL(srv.URL + "/schemas")}, opts...)...)
+	}
+	t.Cleanup(func() { newSchemaFetcher = orig })
+	cache := filepath.Join(t.TempDir(), "schemas")
+	t.Setenv(envSchemaCache, cache)
+
+	out, err := testutil.ExecuteCommand(NewRootCmd(), "schema", "fetch", t.TempDir(), "--core-version", "1.2.3")
+	assertExit(t, err, exitOK)
+	testutil.AssertContains(t, out, "skipped")
+	cachedSchema(t, cache, "versions/1.2.3/entity/v1.json")
+	if _, err := os.Stat(filepath.Join(cache, "versions", "1.2.3", "config", "v1.json")); err == nil {
+		t.Error("the latest config schema must not be cached as the release's")
+	}
+}

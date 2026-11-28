@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -150,7 +151,7 @@ func TestInitConfigIsValid(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	cfg, err := loadStrspcConfig(dir)
+	cfg, err := loadStrspcConfig(context.Background(), dir)
 	if err != nil {
 		t.Fatalf("generated config does not load: %v", err)
 	}
@@ -187,7 +188,7 @@ func TestInitProviderNull(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	cfg, err := loadStrspcConfig(dir)
+	cfg, err := loadStrspcConfig(context.Background(), dir)
 	if err != nil {
 		t.Fatalf("generated config does not load: %v", err)
 	}

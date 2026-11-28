@@ -1,5 +1,14 @@
 version: 2
 
+# The diagnostic codes this release reports, as `strspc explain --list --json`
+# prints them, published with the release so that steerspec.dev can build its
+# per-code pages for a given version without running the binary. build/ is
+# ignored by git, so the hook leaves the tree clean.
+before:
+  hooks:
+    - mkdir -p build
+    - sh -c 'go run ./src explain --list --json > build/diagnostics.json'
+
 builds:
   - id: strspc
     main: ./src
@@ -37,6 +46,17 @@ archives:
       - NOTICE
       - README.md
       - CHANGELOG.md
+
+release:
+  extra_files:
+    - glob: build/diagnostics.json
+      name_template: "strspc-CLI_{{ .Version }}_diagnostics.json"
+
+# The checksums cover the diagnostics file too.
+checksum:
+  extra_files:
+    - glob: build/diagnostics.json
+      name_template: "strspc-CLI_{{ .Version }}_diagnostics.json"
 
 changelog:
   sort: asc

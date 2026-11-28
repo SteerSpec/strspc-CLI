@@ -1,5 +1,6 @@
 /strspc
 dist/
+/build/
 *.exe
 coverage.out
 

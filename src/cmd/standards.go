@@ -194,7 +194,7 @@ func runStandardsCoverage(ctx context.Context, out, errOut io.Writer, cwd string
 		}
 	}
 	if err := r.loadConfig(); err != nil {
-		return r.fail(exitConfig, err)
+		return r.fail(exitConfig, err, configSchemaDiagnostics(err)...)
 	}
 	evaluator := r.coverageEvaluator()
 	r.entries = coverageEntries(r.entries, allSources)

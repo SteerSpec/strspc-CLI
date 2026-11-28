@@ -189,7 +189,8 @@ func TestSyncConfigErrors(t *testing.T) {
 		cfg  string
 		want string
 	}{
-		{"unknown scope", "rules:\n  - source: ./rules/\n    scope: team\n", `invalid scope "team"`},
+		{"unknown scope", "rules:\n  - source: ./rules/\n    scope: team\n", "/rules/0/scope"},
+		{"empty", "", "does not match the latest config.v1 schema"},
 		{"unparsable ttl", "rules:\n  - source: ./rules/\n    scope: local\ncache:\n  ttl: soon\n", `parsing cache.ttl "soon"`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

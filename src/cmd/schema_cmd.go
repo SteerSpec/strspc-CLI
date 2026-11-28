@@ -22,7 +22,7 @@ import (
 )
 
 // latestSchemaPaths are the schemas used without a core pin: the config
-// schema `strspc check` validates config.yaml against, and the entity and
+// schema every command validates config.yaml against, and the entity and
 // realm schemas of a realm that pins no core version.
 var latestSchemaPaths = []string{configV1SchemaPath, schema.EntityV1Path, schema.RealmV1Path}
 
@@ -30,6 +30,12 @@ var latestSchemaPaths = []string{configV1SchemaPath, schema.EntityV1Path, schema
 // release: the entity and realm schemas lint and realm validate read for a
 // realm pinned to it, and the bootstrap schema realm init also vendors.
 var releaseSchemaPaths = []string{schema.EntityV1Path, schema.RealmV1Path, schema.BootstrapPath}
+
+// releaseOptionalPaths are the schemas `schema fetch` also caches for a core
+// release when it publishes them: its config schema, which decides when no
+// latest copy can be had or only an older, expired one (validateConfig). A release
+// without one isn't a failure.
+var releaseOptionalPaths = []string{configV1SchemaPath}
 
 // schemaCacheEntries are the top-level names the schema fetcher writes in the
 // cache: one directory per latest schema family, and versions/ for releases.
@@ -45,10 +51,11 @@ const schemaLatestTTL = time.Hour
 
 // schemaTarget is a set of schemas fetched with the same options.
 type schemaTarget struct {
-	label   string // "latest" or "dev.steerspec.core X.Y.Z"
-	version string // the core release, or "" for the latest schemas
-	opts    []schema.Option
-	paths   []string
+	label    string // "latest" or "dev.steerspec.core X.Y.Z"
+	version  string // the core release, or "" for the latest schemas
+	opts     []schema.Option
+	paths    []string
+	optional []string // fetched like paths, but a failure only skips them
 }
 
 func newSchemaCmd() *cobra.Command {
@@ -96,10 +103,11 @@ func newSchemaFetchCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "fetch [path]",
 		Short: "Download the schemas a project needs into the cache",
-		Long: "Fetch the latest config, entity and realm schemas, and the entity, realm and bootstrap\n" +
-			"schemas of the core release that each local realm pins: the local sources of\n" +
-			".strspc/config.yaml in path (default: the current directory) that hold a realm.json, their\n" +
-			"sub-realms, and each --dir. --core-version adds a release, so that `realm init --core-version`\n" +
+		Long: "Fetch the latest config, entity and realm schemas, and the entity, realm, bootstrap and\n" +
+			"(when the release has one) config schemas of the core release that each local realm pins:\n" +
+			"the local sources of .strspc/config.yaml in path (default: the current directory) that hold\n" +
+			"a realm.json, their sub-realms, and each --dir. The config is not validated first, so that\n" +
+			"fetch can fill a cold cache. --core-version adds a release, so that `realm init --core-version`\n" +
 			"works offline too. A schema already cached is not downloaded again. Exits 1\n" +
 			"when a schema can't be fetched and 2 when the configuration or a realm can't be read.\n\n" +
 			"Examples:\n" +
@@ -179,10 +187,11 @@ func schemaFetchTargets(cwd string, dirs, versions []string) ([]schemaTarget, er
 		}
 		seen[v] = true
 		targets = append(targets, schemaTarget{
-			label:   coreRealmID + " " + v,
-			version: v,
-			opts:    []schema.Option{schema.WithCoreVersion(v)},
-			paths:   releaseSchemaPaths,
+			label:    coreRealmID + " " + v,
+			version:  v,
+			opts:     []schema.Option{schema.WithCoreVersion(v)},
+			paths:    releaseSchemaPaths,
+			optional: releaseOptionalPaths,
 		})
 	}
 
@@ -228,7 +237,15 @@ func schemaProjectRealms(cwd string) ([]string, error) {
 	if _, err := os.Lstat(config); errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
-	cfg, err := loadStrspcConfig(filepath.Dir(filepath.Dir(config)))
+	// Not validated against config.v1, unlike every other read of the config
+	// (SEC-004): fetch is what fills a cold schema cache, so it can't require
+	// the schema first. It uses only the local sources, to find the core
+	// releases to fetch, and reads nothing else from the config.
+	raw, err := readStrspcConfig(filepath.Dir(filepath.Dir(config)))
+	if err != nil {
+		return nil, fmt.Errorf("reading the project's configuration: %w", err)
+	}
+	cfg, err := parseStrspcConfig(raw)
 	if err != nil {
 		return nil, fmt.Errorf("reading the project's configuration: %w", err)
 	}
@@ -326,7 +343,7 @@ func fetchSchemaTargets(cmd *cobra.Command, targets []schemaTarget, refresh bool
 			opts = append(opts, schema.WithCacheDir(staging))
 		}
 		fetcher := newSchemaFetcher(opts...)
-		for _, p := range t.paths {
+		for i, p := range slices.Concat(t.paths, t.optional) {
 			data, err := fetcher.Fetch(cmd.Context(), p)
 			if err == nil {
 				// Downloads are checked already: this is a copy from the cache.
@@ -339,6 +356,10 @@ func fetchSchemaTargets(cmd *cobra.Command, targets []schemaTarget, refresh bool
 				err = moveIntoCache(staging, cacheDir, p)
 			case err == nil:
 				err = checkCached(cacheDir, t.version, p, data)
+			}
+			if err != nil && i >= len(t.paths) {
+				writeln(w, fmt.Sprintf("  skipped %-26s %s: %v", t.label, p, err))
+				continue
 			}
 			if err != nil {
 				failed++
@@ -448,11 +469,11 @@ func checkSchemaCacheDir(cacheDir string) error {
 var schemaStagingDir = regexp.MustCompile(`^\.update-\d+$`)
 
 // schemaCacheFile matches exactly the cache entries strspc's fetches write:
-// the latest config, entity and realm v1 schemas, a release's entity and
-// realm v1 schemas below versions/X.Y.Z/, the bootstrap schema next to the
-// entity schema, and the temporary files next to them.
+// the latest config, entity and realm v1 schemas, a release's config, entity
+// and realm v1 schemas below versions/X.Y.Z/, the bootstrap schema next to
+// the entity schema, and the temporary files next to them.
 var schemaCacheFile = regexp.MustCompile(`^(?:` +
-	`(config|entity|realm|versions/\d+\.\d+\.\d+/(entity|realm))/(v1\.json|\.schema-cache-[^/]+)` +
+	`(config|entity|realm|versions/\d+\.\d+\.\d+/(config|entity|realm))/(v1\.json|\.schema-cache-[^/]+)` +
 	`|(versions/\d+\.\d+\.\d+/)?entity/bootstrap\.json` +
 	`)$`)
 

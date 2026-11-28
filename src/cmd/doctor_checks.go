@@ -194,27 +194,31 @@ func doctorConfigChecks(env *doctorEnv) ([]doctorResult, *doctorProject) {
 	return out, project
 }
 
-// doctorConfigSchemaCheck validates the config against the cached config.v1
-// schema in the shared schema cache.
+// doctorConfigSchemaCheck validates the config as every command does before
+// using it (validateConfig), against the cached config.v1 schemas of the
+// shared schema cache. A mismatch fails: the other commands refuse the
+// config. Doctor goes on with its other checks either way.
 func doctorConfigSchemaCheck(env *doctorEnv, raw []byte) doctorResult {
 	const g = "config"
 	fetcher := schema.New(append(schemaCacheOptionsFrom(env.getenv, env.userCacheDir), schema.WithClient(env.httpClient), withSchemasOnly())...)
-	compiled, err := compileConfigSchema(env.ctx, fetcher)
-	if err != nil {
-		if errors.Is(err, errDoctorOffline) {
-			return doctorOutcome(g, "schema", "", doctorSkip, "the config.v1 schema is not cached", "strspc schema fetch")
-		}
-		return doctorOutcome(g, "schema", "", doctorSkip, err.Error(), "")
-	}
-	violations := configSchemaViolations(compiled, raw)
-	switch len(violations) {
-	case 0:
+	cacheDir, _ := schemaCacheDirFrom(env.getenv, env.userCacheDir)
+	err := validateConfig(env.ctx, fetcher, cacheDir, raw)
+	var refused *configSchemaError
+	switch {
+	case err == nil:
 		return doctorOutcome(g, "schema", "", doctorPass, "matches config.v1", "")
-	case 1:
-		return doctorOutcome(g, "schema", "", doctorWarn, violations[0], "fix .strspc/config.yaml")
+	case errors.As(err, &refused):
+		msg := refused.violations[0]
+		if n := len(refused.violations) - 1; n > 0 {
+			msg = fmt.Sprintf("%s (and %d more)", msg, n)
+		}
+		return doctorOutcome(g, "schema", "", doctorFail, msg, "fix .strspc/config.yaml; strspc check lists every mismatch")
+	case errors.Is(err, errConfigSchemaUnavailable) && errors.Is(err, errDoctorOffline):
+		return doctorOutcome(g, "schema", "", doctorSkip, "the config.v1 schema is not cached", "strspc schema fetch")
+	case errors.Is(err, errConfigSchemaUnavailable), errors.Is(err, errConfigSchemaUnusable):
+		return doctorOutcome(g, "schema", "", doctorSkip, err.Error(), "strspc schema update")
 	default:
-		return doctorOutcome(g, "schema", "", doctorWarn,
-			fmt.Sprintf("%s (and %d more)", violations[0], len(violations)-1), "fix .strspc/config.yaml")
+		return doctorOutcome(g, "schema", "", doctorFail, err.Error(), "fix the YAML in .strspc/config.yaml")
 	}
 }
 

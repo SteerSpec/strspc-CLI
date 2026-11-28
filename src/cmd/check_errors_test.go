@@ -31,13 +31,18 @@ func TestCheckConfigLoadErrors(t *testing.T) {
 	const tail = "evaluator:\n  provider: null\nfail_on: [I]\n"
 	tests := []struct {
 		name, config, want string
+		loose              bool // past a schema that allows any mapping
 	}{
-		{"unparsable YAML", "rules: [\n", "parsing config.yaml"},
-		{"unknown scope", "rules:\n  - source: ./rules/\n    scope: everywhere\n" + tail, "invalid scope"},
-		{"bad cache ttl", "rules:\n  - source: ./rules/\n    scope: local\n" + tail + "cache:\n  ttl: forever\n", "parsing cache.ttl"},
+		{"unparsable YAML", "rules: [\n", "parsing config.yaml", false},
+		{"unknown scope", "rules:\n  - source: ./rules/\n    scope: everywhere\n" + tail, "/rules/0/scope", false},
+		{"unknown scope past the schema", "rules:\n  - source: ./rules/\n    scope: everywhere\n" + tail, "invalid scope", true},
+		{"bad cache ttl", "rules:\n  - source: ./rules/\n    scope: local\n" + tail + "cache:\n  ttl: forever\n", "parsing cache.ttl", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.loose {
+				allowAnyConfig(t)
+			}
 			dir := t.TempDir()
 			writeRawCheckConfig(t, dir, tt.config)
 			_, err := runCheckCmd(t, dir)
