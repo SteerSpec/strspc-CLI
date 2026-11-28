@@ -1,0 +1,76 @@
+{
+  "rule_id": "SEC-001",
+  "revision": 0,
+  "body_hash": "blake3:d91e5ae5c4548185e8b5f3584821e7f6942aae4319ca45f3a2adb06d7bb0e7bb",
+  "promoted_at": "2026-11-28T08:35:22Z",
+  "entity_version": "0.10.0",
+  "scope": "all tracked files excluding .beads/**",
+  "files": 253,
+  "files_hash": "b65eed4c808daa90c00f4567ca624ce5cce9938514ea02162e050717efdd45ab",
+  "provider": "claude",
+  "model": "claude-haiku-5-5",
+  "audit_prompt": "audit-a3+v9/effort=medium/split=100000,40,2/1,plan=2",
+  "min_confidence": 0.8,
+  "verdict": "compliant",
+  "confidence": 0.85,
+  "explanation": "The codebase's HTTP clients and endpoint checks enforce HTTPS, allowing plain http only for loopback hosts (ollama, test servers), and tests confirm non-loopback http is refused. Some schema fetch paths are not visibly checked in every part, but the reviewed code consistently applies the https-or-loopback policy.",
+  "evidence": [
+    {
+      "file": "src/cmd/realm_dep_upgrade.go",
+      "line": 60,
+      "excerpt": "func getGitHubAPI(...) ... if err := checkHTTPS(req.URL); err != nil {",
+      "line_confirmed": true,
+      "reported_line": 65
+    },
+    {
+      "file": "src/cmd/realm_init.go",
+      "line": 413,
+      "excerpt": "var schemaHTTPClient = newHTTPSOnlyClient(30 * time.Second)",
+      "line_confirmed": true
+    },
+    {
+      "file": "src/cmd/realm_init.go",
+      "line": 601,
+      "excerpt": "err := validateHTTPS(url)",
+      "line_confirmed": true,
+      "reported_line": 603
+    },
+    {
+      "file": "src/cmd/provider_table.go",
+      "line": 50,
+      "excerpt": "return isHTTPS(u) && hostIsOrUnder(u, \"anthropic.com\")",
+      "line_confirmed": true
+    },
+    {
+      "file": "src/cmd/provider_table.go",
+      "line": 66,
+      "excerpt": "return checkHTTPS(u) == nil && isLoopbackHost(u.Hostname())",
+      "line_confirmed": true
+    },
+    {
+      "file": "src/cmd/check.go",
+      "line": 1165,
+      "excerpt": "if e := strings.TrimSpace(fromEnv); e != \"\" { ... if err := validateHTTPS(e); err != nil {",
+      "line_confirmed": true
+    },
+    {
+      "file": "docs/check.md",
+      "line": 169,
+      "excerpt": "Endpoint safety: https:// or http:// to loopback host only",
+      "line_confirmed": false
+    },
+    {
+      "file": "src/cmd/provider_table_test.go",
+      "line": 42,
+      "excerpt": "\"ollama\", \"http://192.168.1.5:11434\", false},",
+      "line_confirmed": true
+    },
+    {
+      "file": ".github/actions/setup-strspc/action.yml",
+      "line": 52,
+      "excerpt": "\"https://api.github.com/repos/${REPO}/$1\"",
+      "line_confirmed": true,
+      "reported_line": 51
+    }
+  ]
+}
