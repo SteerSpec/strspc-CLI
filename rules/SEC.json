@@ -6,9 +6,9 @@
     "description": "Security requirements on strspc and its CI, mapped to OWASP ASVS 5.0.0 L1."
   },
   "rule_set": {
-    "version": "0.10.3",
-    "timestamp": "2026-11-28T08:35:27Z",
-    "hash": "blake3:47520b74228023d99aa8a2998c2e6a29f18c00d3445dea08ef46020d86fca260"
+    "version": "0.11.0",
+    "timestamp": "2026-11-28T09:30:17Z",
+    "hash": "blake3:fcb5f7cb1416a4ed64d290ff9e4d443adc6fcccffd2c2e59d3c69bea76456428"
   },
   "rules": [
     {
@@ -59,7 +59,7 @@
     {
       "id": "SEC-006",
       "revision": 0,
-      "state": "D",
+      "state": "P",
       "body": "strspc MUST validate a rule file and a config file against their schemas before using their content when the schema is available.",
       "added_by": "github:pleberre",
       "added_at": "2026-11-28",
