@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.47.1](https://github.com/SteerSpec/strspc-CLI/compare/v1.47.0...v1.47.1) (2026-11-28)
+
+
+### Bug Fixes
+
+* **check:** never evaluate or verify the beads export (.beads/issues.jsonl) ([#405](https://github.com/SteerSpec/strspc-CLI/issues/405)) ([151a394](https://github.com/SteerSpec/strspc-CLI/commit/151a3942016b687147a54bad5df89136a4cc38f9))
+
 ## [1.47.0](https://github.com/SteerSpec/strspc-CLI/compare/v1.46.0...v1.47.0) (2026-11-28)
 
 
