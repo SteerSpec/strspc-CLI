@@ -305,7 +305,7 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 				return emit()
 			}
 			if check {
-				if cfg, err := planConfigPin(dir, ups); err != nil {
+				if cfg, err := planConfigPin(cmd.Context(), dir, ups); err != nil {
 					report.Errors = append(report.Errors, sanitizeLine(err.Error()))
 					return errors.Join(err, emit())
 				} else if cfg != nil {
@@ -318,6 +318,13 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 				return fmt.Errorf("%d dependency upgrade(s) available", len(ups))
 			}
 
+			// The config is validated (and its pins checked) before any file is
+			// written, so a config that doesn't match config.v1 changes nothing.
+			// It is planned again below, after the schema sync.
+			if _, err := planConfigPin(cmd.Context(), dir, ups); err != nil {
+				report.Errors = append(report.Errors, sanitizeLine(err.Error()))
+				return errors.Join(fmt.Errorf("%w; files left unchanged", err), emit())
+			}
 			original, err := os.ReadFile(realmPath)
 			if err != nil {
 				return fmt.Errorf("reading realm.json: %w", err)
@@ -373,7 +380,7 @@ func newRealmDepUpgradeCmd() *cobra.Command {
 			// The repository's own config pins the same dependency; leaving it
 			// would validate against the old release. Written after the schema
 			// sync so a rollback below restores it too.
-			cfgPin, err = planConfigPin(dir, ups)
+			cfgPin, err = planConfigPin(cmd.Context(), dir, ups)
 			if err == nil && cfgPin != nil {
 				err = cfgPin.write(cfgPin.updated)
 			}

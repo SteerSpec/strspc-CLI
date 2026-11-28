@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -112,7 +113,11 @@ func configAt(root string) configState {
 // rule source that is exactly an upgraded dependency's old source to its new
 // one. The text is edited in place so comments and layout survive. It returns
 // nil when there is no config or nothing in it matches.
-func planConfigPin(dir string, ups []depUpgrade) (*configPin, error) {
+//
+// The config is validated against config.v1 before anything in it is read
+// (SEC-004), as every reader does: a config that doesn't match, or no schema
+// to check it against, stops the upgrade.
+func planConfigPin(ctx context.Context, dir string, ups []depUpgrade) (*configPin, error) {
 	root := findRepoConfig(dir)
 	if root == "" {
 		return nil, nil
@@ -126,6 +131,10 @@ func planConfigPin(dir string, ups []depUpgrade) (*configPin, error) {
 	original, err := r.ReadFile(configRel)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+	cacheDir, _ := schemaCacheDir() // unlocatable: no release copy, the latest schema only
+	if err := validateConfig(ctx, newConfigSchemaFetcher(root), cacheDir, original); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	updated := original
 	for i := range ups {
@@ -159,13 +168,9 @@ func checkConfigPinsMoved(data []byte, ups []depUpgrade) error {
 			Source string `yaml:"source"`
 		} `yaml:"rules"`
 	}
-	if yaml.Unmarshal(data, &cfg) != nil {
-		// Not YAML: nothing here can be checked. The upgrade doesn't validate
-		// the config against config.v1 (SEC-004): it rewrites source pins in
-		// the text, and reads rules[].source here only to refuse an upgrade it
-		// couldn't rewrite. No setting decides what it does. The next command
-		// that uses the config validates it, and refuses it.
-		return nil
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		// The original was validated; a rewrite that breaks the YAML is refused.
+		return fmt.Errorf("the rewritten config is not YAML: %w", err)
 	}
 	for _, r := range cfg.Rules {
 		for i := range ups {
