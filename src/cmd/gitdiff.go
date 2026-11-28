@@ -93,9 +93,11 @@ func resolveDiffSource(f diffFlags, getenv func(string) string) diffSource {
 var resolvePRBase = prBaseSHA
 
 // diffExcludes are directories that are never evaluated: the Configuration
-// itself and the project's own rule files (lint and diff cover those). A
+// itself, the project's own rule files (lint and diff cover those) and the
+// beads issue tracker, whose committed export is task state, not code, and
+// can be stale (an open issue read as evidence that a rule isn't met). A
 // directory pathspec matches everything beneath it.
-var diffExcludes = []string{".strspc", "rules"}
+var diffExcludes = []string{".strspc", "rules", ".beads"}
 
 // collectDiff produces the unified diff for src. Git commands run from
 // repoDir so that paths in the diff are repository-relative; subDir (also

@@ -29,6 +29,7 @@ func setupVerifyRepo(t *testing.T, provider string) string {
 	}
 	writeFile(t, dir, "src/main.go", "package main\n\nfunc main() {}\n")
 	writeFile(t, dir, "docs/notes.md", "# Notes\n")
+	writeFile(t, dir, ".beads/issues.jsonl", "{\"id\":\"x-1\",\"status\":\"open\"}\n")
 	gitRun(t, dir, "init", "-q", "-b", "main")
 	gitRun(t, dir, "add", ".")
 	gitRun(t, dir, "commit", "-q", "-m", "base")
@@ -119,7 +120,7 @@ func TestCollectTreeFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := strings.Join(pathsOf(all), ","); got != "docs/notes.md,src/main.go" || len(skipped) != 0 {
-		t.Fatalf("files = %s, skipped %v; want docs and src only (untracked, .strspc/ and rules/ are not read)", got, skipped)
+		t.Fatalf("files = %s, skipped %v; want docs and src only (untracked, .strspc/, rules/ and .beads/ are not read)", got, skipped)
 	}
 	if all[1].Content != "package main\n\nfunc main() {}\n" {
 		t.Errorf("content = %q", all[1].Content)
@@ -416,7 +417,7 @@ func TestRuleVerifyReportsEachVerdict(t *testing.T) {
 		t.Errorf("files hash %q, audit prompt %q", vo.FilesHash, vo.AuditPrompt)
 	}
 	if vo.Estimate.Files != 2 {
-		t.Errorf("files = %d, want 2 (untracked, .strspc/ and rules/ are not read)", vo.Estimate.Files)
+		t.Errorf("files = %d, want 2 (untracked, .strspc/, rules/ and .beads/ are not read)", vo.Estimate.Files)
 	}
 	for _, d := range vo.Diagnostics {
 		if d.Code == ruleeval.CodeViolated {

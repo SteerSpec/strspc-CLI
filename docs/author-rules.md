@@ -138,8 +138,9 @@ every rule is then judged on all of it, so a rule spanning files is judged on th
 each file holds is kept in `.strspc/cache.db` (`--no-cache` skips it), so a rerun reads only the
 files that changed. An audit that fits one request isn't cached.
 
-As with `strspc check`, files under `.strspc/` and `rules/` are never read, even when `--path` matches
-them: the configuration and the project's own rule files are covered by `lint` and `diff`. A rule
+As with `strspc check`, files under `.strspc/`, `rules/` and `.beads/` are never read, even when `--path` matches
+them: the configuration and the project's own rule files are covered by `lint` and `diff`, and the beads
+tracker's committed export is task state that can be out of date, not code. A rule
 about those files can't be verified this way. Untracked, deleted, symlinked and binary files aren't
 read either; the report lists those it skipped. Tracked in
 [#291](https://github.com/SteerSpec/strspc-CLI/issues/291).

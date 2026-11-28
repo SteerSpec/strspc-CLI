@@ -31,7 +31,7 @@ strspc check --format github                 # ::error/::warning annotations + $
 | `--verbose` | Print resolution, diff, cache and token-usage details to stderr |
 
 Diff selection precedence: `--diff-file` > `--staged` > `--pr` > `--base` > `$GITHUB_BASE_REF`
-(`origin/<ref>`, fetched when missing) > working tree vs HEAD. Files under `.strspc/` and `rules/` are
+(`origin/<ref>`, fetched when missing) > working tree vs HEAD. Files under `.strspc/`, `rules/` and `.beads/` are
 never evaluated. The check only writes inside `.strspc/` (`cache/`, `cache.db`).
 
 | Exit code | Meaning |
