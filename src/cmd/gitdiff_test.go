@@ -45,12 +45,12 @@ func TestResolveDiffSourcePrecedence(t *testing.T) {
 
 func TestGitDiffArgs(t *testing.T) {
 	got := strings.Join(gitDiffArgs(".", "HEAD"), " ")
-	want := "diff --no-color --no-ext-diff -U3 --diff-filter=ACMR HEAD -- . :(exclude,literal).strspc :(exclude,literal)rules :(exclude,literal).beads"
+	want := "diff --no-color --no-ext-diff -U3 --diff-filter=ACMR HEAD -- . :(exclude,literal).strspc :(exclude,literal)rules :(exclude,literal).beads/issues.jsonl"
 	if got != want {
 		t.Errorf("root args:\n got %s\nwant %s", got, want)
 	}
 	got = strings.Join(gitDiffArgs("svc/api", "--cached"), " ")
-	want = "diff --no-color --no-ext-diff -U3 --diff-filter=ACMR --cached -- :(literal)svc/api :(exclude,literal)svc/api/.strspc :(exclude,literal)svc/api/rules :(exclude,literal)svc/api/.beads"
+	want = "diff --no-color --no-ext-diff -U3 --diff-filter=ACMR --cached -- :(literal)svc/api :(exclude,literal)svc/api/.strspc :(exclude,literal)svc/api/rules :(exclude,literal)svc/api/.beads/issues.jsonl"
 	if got != want {
 		t.Errorf("subdir args:\n got %s\nwant %s", got, want)
 	}

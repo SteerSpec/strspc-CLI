@@ -92,12 +92,13 @@ func resolveDiffSource(f diffFlags, getenv func(string) string) diffSource {
 // tests can stub the gh CLI.
 var resolvePRBase = prBaseSHA
 
-// diffExcludes are directories that are never evaluated: the Configuration
-// itself, the project's own rule files (lint and diff cover those) and the
-// beads issue tracker, whose committed export is task state, not code, and
-// can be stale (an open issue read as evidence that a rule isn't met). A
-// directory pathspec matches everything beneath it.
-var diffExcludes = []string{".strspc", "rules", ".beads"}
+// diffExcludes are paths that are never evaluated: the Configuration itself,
+// the project's own rule files (lint and diff cover those) and the beads
+// issue tracker's export, which is task state, not code, and can be stale
+// (an open issue read as evidence that a rule isn't met). Only the export is
+// excluded: the rest of .beads/, such as the git hooks it installs, is code
+// and stays evaluated. A directory pathspec matches everything beneath it.
+var diffExcludes = []string{".strspc", "rules", ".beads/issues.jsonl"}
 
 // collectDiff produces the unified diff for src. Git commands run from
 // repoDir so that paths in the diff are repository-relative; subDir (also
@@ -430,18 +431,24 @@ func excludedFromDiff(p, subDir string) bool {
 	return underAnyExclude(p, subDir)
 }
 
-// underAnyExclude reports whether p lies under one of diffExcludes rooted at
-// subDir (or at the repository root when subDir is ".").
+// underAnyExclude reports whether p is one of diffExcludes, or lies under
+// one, rooted at subDir (or at the repository root when subDir is ".").
 func underAnyExclude(p, subDir string) bool {
-	for _, dir := range diffExcludes {
-		if subDir != "." && strings.HasPrefix(p, path.Join(subDir, dir)+"/") {
+	for _, ex := range diffExcludes {
+		if subDir != "." && matchesExclude(p, path.Join(subDir, ex)) {
 			return true
 		}
-		if strings.HasPrefix(p, dir+"/") {
+		if matchesExclude(p, ex) {
 			return true
 		}
 	}
 	return false
+}
+
+// matchesExclude reports whether p is ex itself (a file exclude) or lies
+// beneath it (a directory exclude), as a literal pathspec matches.
+func matchesExclude(p, ex string) bool {
+	return p == ex || strings.HasPrefix(p, ex+"/")
 }
 
 func runGitDiff(ctx context.Context, repoDir, subDir string, rangeArgs ...string) (string, error) {

@@ -93,8 +93,8 @@ func newCheckCmd() *cobra.Command {
 			"the check; other violations are warnings.\n\n" +
 			"Diff selection, highest precedence first: --diff-file, --staged, --pr, --base,\n" +
 			"$GITHUB_BASE_REF (origin/<ref>, fetched when missing), then the working tree vs HEAD.\n" +
-			"--pr and --base diff from the merge base with HEAD. Files under .strspc/, rules/ and\n" +
-			".beads/ are never evaluated.\n\n" +
+			"--pr and --base diff from the merge base with HEAD. Files under .strspc/ and rules/,\n" +
+			"and .beads/issues.jsonl, are never evaluated.\n\n" +
 			"Exit codes: 0 compliant, 1 violations in fail_on states, 2 configuration or rule\n" +
 			"resolution error, 3 AI provider unavailable (no API key, rejected credentials),\n" +
 			"4 the JSON report could not be written.\n" +
